@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Campaña {
+  id        Int        @id @default(autoincrement())
+  nombre    String
+  createdAt  DateTime   @default(now())
+  enviadoAt  DateTime?
+  contactos Contacto[]
+  reportes  Reporte[]
+}
+
+model Contacto {
+  id         Int      @id @default(autoincrement())
+  numero     String
+  mensaje    String
+  campañaId  Int
+  campaña    Campaña  @relation(fields: [campañaId], references: [id])
+}
+
+model Reporte {
+  id         Int      @id @default(autoincrement())
+  numero     String
+  mensaje    String
+  estado     String
+  campañaId  Int
+  campaña    Campaña  @relation(fields: [campañaId], references: [id])
+}
+
+model Sesion {
+  id         Int      @id @default(autoincrement())
+  sessionId  String   @unique
+  estado     String
+  ani        String?   // nuevo campo opcional
+}

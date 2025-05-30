@@ -1,0 +1,4 @@
+[2025-05-30 10:55:58] ERROR: Error al actualizar desconexión de session-1748613227804: Cannot set properties of undefined (setting 'estado')
+[2025-05-30 11:53:07] WARN: Sesión no válida para envío: session-1748613348184
+[2025-05-30 11:53:07] WARN: POST /api/send-messages 400 - 2ms
+[2025-05-30 13:48:07] ERROR: Error cargando sesiones activas: Cannot read properties of undefined (reading 'wid')
