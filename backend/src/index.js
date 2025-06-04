@@ -9,6 +9,7 @@ const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const logger = require('./logger');
 const requestLogger = require('./middleware/requestLogger');
+const e = require('express');
 const fsPromises = require('fs').promises;
 
 const app = express();
@@ -208,10 +209,29 @@ app.post('/api/send-messages', async (req, res) => {
             for (let i = 0; i < contactos.length; i++) {
                 const { numero, mensaje } = contactos[i];
                 try {
-                    await client.sendMessage(numero + '@c.us', mensaje);
-                    await prisma.reporte.create({
-                        data: { numero, mensaje, estado: 'enviado', campañaId: camp.id }
-                    });
+                    const waId = `${numero}@c.us`;
+                    const isRegistered = await client.isRegisteredUser(waId);
+
+                    if (isRegistered) {
+                        try {
+                            await client.sendMessage(waId, mensaje);
+                            await prisma.reporte.create({
+                                data: { numero, mensaje, estado: 'enviado', campañaId: camp.id }
+                            });
+                            enviadosTotal++;
+                        } catch (err) {
+                            logger.error(`Error al enviar a ${numero} desde sesión: ${err.message}`);
+                            await prisma.reporte.create({
+                                data: { numero, mensaje, estado: 'error', campañaId: camp.id }
+                            });
+                        }
+                    } else {
+                        logger.warn(`Número sin WhatsApp: ${numero}`);
+                        await prisma.reporte.create({
+                            data: { numero, mensaje, estado: 'sin_whatsapp', campañaId: camp.id }
+                        });
+                    }
+
                     enviadosTotal++;
                 } catch (err) {
                     logger.error(`Error al enviar a ${numero} desde sesión: ${err.message}`);
@@ -317,9 +337,10 @@ async function cargarSesionesActivas() {
 
             sesiones[sessionId] = { client, estado: 'conectando' };
 
-            client.on('ready', async () => {                
+            client.on('ready', async () => {
                 sesiones[sessionId].estado = 'conectado';
                 sesiones[sessionId].ani = `${client.info.wid.user}-${client.info.pushname}`;
+
                 await prisma.sesion.update({
                     where: { sessionId },
                     data: { estado: 'conectado' }
@@ -329,11 +350,13 @@ async function cargarSesionesActivas() {
 
             client.on('auth_failure', () => {
                 sesiones[sessionId].estado = 'fallo de autenticación';
+
                 logger.warn(`Error de autenticación en sesión ${sessionId}`);
             });
 
             client.on('disconnected', async () => {
                 sesiones[sessionId].estado = 'desconectado';
+
                 await prisma.sesion.update({
                     where: { sessionId },
                     data: { estado: 'desconectado' }
