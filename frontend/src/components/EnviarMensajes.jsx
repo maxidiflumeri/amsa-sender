@@ -8,22 +8,33 @@ import {
     Select,
     MenuItem,
     Button,
-    LinearProgress,
     Typography,
     Box,
     Alert,
-    IconButton
+    IconButton,
+    Tooltip,
+    TextField,
+    Accordion,
+    AccordionSummary,
+    AccordionDetails,
+    CircularProgress
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import api from '../api/axios';
 
-export default function EnviarMensajesModal({ open, onClose, campaña, onReset }) {
+export default function EnviarMensajesModal({ open, onSendSuccess, onClose, campaña }) {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [sesiones, setSesiones] = useState([]);
     const [selectedSesion, setSelectedSesion] = useState([]);
     const [loading, setLoading] = useState(false);
     const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
-    const [progreso, setProgreso] = useState(0);
+    const [config, setConfig] = useState({
+        batchSize: 10,
+        delayEntreMensajes: 1500,
+        delayEntreLotes: 2000
+    });
 
     useEffect(() => {
         if (open) {
@@ -43,31 +54,25 @@ export default function EnviarMensajesModal({ open, onClose, campaña, onReset }
 
         setLoading(true);
         setMensaje({ tipo: '', texto: '' });
-        setProgreso(10);
 
         try {
             await api.post('/send-messages', {
                 sessionIds: selectedSesion,
-                campaña: campaña.id
+                campaña: campaña.id,
+                config
             });
 
-            // Simulación de progreso con setTimeout
-            let progresoSimulado = 10;
-            const intervalo = setInterval(() => {
-                progresoSimulado += 10;
-                setProgreso(progresoSimulado);
-                if (progresoSimulado >= 100) {
-                    clearInterval(intervalo);
-                    setMensaje({ tipo: 'success', texto: 'Envío completado correctamente' });
-                    setLoading(false);
-                }
-            }, 300);
-
+            onSendSuccess()
         } catch (error) {
             console.error('Error al enviar mensajes', error);
-            setMensaje({ tipo: 'error', texto: 'Ocurrió un error al enviar mensajes' });
+            setMensaje({ tipo: 'error', texto: 'Ocurrió un error al iniciar el envío' });
+        } finally {
             setLoading(false);
         }
+    };
+
+    const handleChangeConfig = (field, value) => {
+        setConfig(prev => ({ ...prev, [field]: Number(value) }));
     };
 
     return (
@@ -109,17 +114,64 @@ export default function EnviarMensajesModal({ open, onClose, campaña, onReset }
                     </Select>
                 </FormControl>
 
+                <Accordion sx={{ mb: 2 }}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Typography>Configuración avanzada</Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                        <Box display="flex" flexDirection="column" gap={2}>
+                            <TextField
+                                label={
+                                    <Box display="flex" alignItems="center" gap={1}>
+                                        Tamaño del lote
+                                        <Tooltip title="Cantidad de contactos que se envían por sesión">
+                                            <InfoOutlinedIcon fontSize="small" color="action" />
+                                        </Tooltip>
+                                    </Box>
+                                }
+                                type="number"
+                                fullWidth
+                                value={config.batchSize}
+                                onChange={e => handleChangeConfig('batchSize', e.target.value)}
+                            />
+
+                            <TextField
+                                label={
+                                    <Box display="flex" alignItems="center" gap={1}>
+                                        Delay entre mensajes (ms)
+                                        <Tooltip title="Tiempo de espera entre cada mensaje enviado">
+                                            <InfoOutlinedIcon fontSize="small" color="action" />
+                                        </Tooltip>
+                                    </Box>
+                                }
+                                type="number"
+                                fullWidth
+                                value={config.delayEntreMensajes}
+                                onChange={e => handleChangeConfig('delayEntreMensajes', e.target.value)}
+                            />
+
+                            <TextField
+                                label={
+                                    <Box display="flex" alignItems="center" gap={1}>
+                                        Delay entre lotes (ms)
+                                        <Tooltip title="Pausa luego de completar los mensajes de una sesión">
+                                            <InfoOutlinedIcon fontSize="small" color="action" />
+                                        </Tooltip>
+                                    </Box>
+                                }
+                                type="number"
+                                fullWidth
+                                value={config.delayEntreLotes}
+                                onChange={e => handleChangeConfig('delayEntreLotes', e.target.value)}
+                            />
+                        </Box>
+                    </AccordionDetails>
+                </Accordion>
+
                 {mensaje.texto && (
                     <Alert severity={mensaje.tipo} sx={{ mb: 2 }}>
                         {mensaje.texto}
                     </Alert>
-                )}
-
-                {loading && (
-                    <Box sx={{ my: 2 }}>
-                        <Typography variant="body2" gutterBottom>Enviando mensajes...</Typography>
-                        <LinearProgress variant="determinate" value={progreso} />
-                    </Box>
                 )}
 
                 <Box textAlign="center" sx={{ mt: 2 }}>
@@ -128,8 +180,9 @@ export default function EnviarMensajesModal({ open, onClose, campaña, onReset }
                         variant="contained"
                         onClick={enviarMensajes}
                         disabled={loading}
+                        startIcon={loading ? <CircularProgress size={20} /> : null}
                     >
-                        {loading ? 'Enviando...' : 'Iniciar envío'}
+                        {loading ? 'Iniciando...' : 'Iniciar envío'}
                     </Button>
                 </Box>
             </DialogContent>

@@ -21,40 +21,37 @@ import {
     Tabs,
     Tab,
     TableSortLabel,
+    Tooltip,
+    DialogActions
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import SendIcon from '@mui/icons-material/Send';
+import DeleteIcon from '@mui/icons-material/Delete';
 import api from '../api/axios';
 import SubirCampaña from './SubirCampaña';
 import EnviarMensajesModal from './EnviarMensajes';
+import Snackbar from '@mui/material/Snackbar';
+import MuiAlert from '@mui/material/Alert';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 export default function VerCampañas() {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-
-    // Estado campañas y modales
     const [campañas, setCampañas] = useState([]);
     const [campañaSeleccionada, setCampañaSeleccionada] = useState(null);
     const [modalNueva, setModalNueva] = useState(false);
     const [modalEnvio, setModalEnvio] = useState(false);
     const [campañaAEnviar, setCampañaAEnviar] = useState(null);
-    const [mensaje, setMensaje] = useState(null);
-
-    // Estado pestañas: 0 = Pendientes, 1 = Enviadas
+    const [campañaAEliminar, setCampañaAEliminar] = useState(null);
+    const [confirmarEliminacion, setConfirmarEliminacion] = useState(false);
+    const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
     const [tab, setTab] = useState(0);
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(5);
+    const [order, setOrder] = useState('asc');
+    const [orderBy, setOrderBy] = useState('nombre');
+    const [snackbarOpen, setSnackbarOpen] = useState(false);
 
-    // Paginación y orden para cada tabla
-    const [pagePendientes, setPagePendientes] = useState(0);
-    const [rowsPerPagePendientes, setRowsPerPagePendientes] = useState(5);
-    const [orderPendientes, setOrderPendientes] = useState('asc');
-    const [orderByPendientes, setOrderByPendientes] = useState('nombre');
-
-    const [pageEnviadas, setPageEnviadas] = useState(0);
-    const [rowsPerPageEnviadas, setRowsPerPageEnviadas] = useState(5);
-    const [orderEnviadas, setOrderEnviadas] = useState('asc');
-    const [orderByEnviadas, setOrderByEnviadas] = useState('nombre');
-
-    // Carga campañas
     const cargarCampañas = async () => {
         try {
             const res = await api.get('/campanias');
@@ -68,94 +65,77 @@ export default function VerCampañas() {
         cargarCampañas();
     }, []);
 
-    // Funciones de ordenamiento
-    function descendingComparator(a, b, orderBy) {
-        let aValue = a[orderBy];
-        let bValue = b[orderBy];
+    const pendientes = campañas.filter(c => c.estado === 'pendiente');
+    const procesando = campañas.filter(c => c.estado === 'procesando');
+    const enviadas = campañas.filter(c => c.estado === 'finalizada');
+    const campañasMostradas = tab === 0 ? pendientes : tab === 1 ? procesando : enviadas;
 
-        // Para fechas (createdAt, enviadoAt), comparo como timestamp
-        if (orderBy === 'createdAt' || orderBy === 'enviadoAt') {
-            aValue = aValue ? new Date(aValue).getTime() : 0;
-            bValue = bValue ? new Date(bValue).getTime() : 0;
+    const descendingComparator = (a, b, orderBy) => {
+        let aVal = a[orderBy], bVal = b[orderBy];
+        if (['createdAt', 'enviadoAt'].includes(orderBy)) {
+            aVal = aVal ? new Date(aVal).getTime() : 0;
+            bVal = bVal ? new Date(bVal).getTime() : 0;
         }
-
-        // Para contactos.length
         if (orderBy === 'contactos') {
-            aValue = a.contactos ? a.contactos.length : 0;
-            bValue = b.contactos ? b.contactos.length : 0;
+            aVal = a.contactos?.length || 0;
+            bVal = b.contactos?.length || 0;
         }
+        return bVal < aVal ? -1 : bVal > aVal ? 1 : 0;
+    };
 
-        if (bValue < aValue) return -1;
-        if (bValue > aValue) return 1;
-        return 0;
-    }
-
-    function getComparator(order, orderBy) {
-        return order === 'desc'
+    const getComparator = (order, orderBy) =>
+        order === 'desc'
             ? (a, b) => descendingComparator(a, b, orderBy)
             : (a, b) => -descendingComparator(a, b, orderBy);
-    }
 
-    function stableSort(array, comparator) {
-        const stabilizedThis = array.map((el, index) => [el, index]);
-        stabilizedThis.sort((a, b) => {
-            const order = comparator(a[0], b[0]);
-            if (order !== 0) return order;
-            return a[1] - b[1];
-        });
-        return stabilizedThis.map(el => el[0]);
-    }
+    const stableSort = (array, comparator) =>
+        array
+            .map((el, index) => [el, index])
+            .sort((a, b) => {
+                const cmp = comparator(a[0], b[0]);
+                return cmp !== 0 ? cmp : a[1] - b[1];
+            })
+            .map(el => el[0]);
 
-    // Dividir campañas en enviadas y pendientes
-    const pendientes = campañas.filter(c => !c.enviadoAt);
-    const enviadas = campañas.filter(c => c.enviadoAt);
-
-    // Variables de paginacion y orden segun pestaña
-    const campañasMostradas = tab === 0 ? pendientes : enviadas;
-    const page = tab === 0 ? pagePendientes : pageEnviadas;
-    const rowsPerPage = tab === 0 ? rowsPerPagePendientes : rowsPerPageEnviadas;
-    const order = tab === 0 ? orderPendientes : orderEnviadas;
-    const orderBy = tab === 0 ? orderByPendientes : orderByEnviadas;
-
-    // Ordenar campañas según estado
     const campañasOrdenadas = stableSort(campañasMostradas, getComparator(order, orderBy));
-
-    // Slicing para paginacion
     const campañasPaginadas = campañasOrdenadas.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
-    // Handlers
-    const handleChangeTab = (event, newValue) => {
+    const handleChangeTab = (_, newValue) => {
         setTab(newValue);
+        setPage(0);
     };
 
     const handleRequestSort = (property) => {
-        if (tab === 0) {
-            const isAsc = orderByPendientes === property && orderPendientes === 'asc';
-            setOrderPendientes(isAsc ? 'desc' : 'asc');
-            setOrderByPendientes(property);
-        } else {
-            const isAsc = orderByEnviadas === property && orderEnviadas === 'asc';
-            setOrderEnviadas(isAsc ? 'desc' : 'asc');
-            setOrderByEnviadas(property);
-        }
+        const isAsc = orderBy === property && order === 'asc';
+        setOrder(isAsc ? 'desc' : 'asc');
+        setOrderBy(property);
     };
 
-    const handleChangePage = (event, newPage) => {
-        if (tab === 0) {
-            setPagePendientes(newPage);
-        } else {
-            setPageEnviadas(newPage);
-        }
-    };
-
+    const handleChangePage = (_, newPage) => setPage(newPage);
     const handleChangeRowsPerPage = (event) => {
-        const newRows = parseInt(event.target.value, 10);
-        if (tab === 0) {
-            setRowsPerPagePendientes(newRows);
-            setPagePendientes(0);
-        } else {
-            setRowsPerPageEnviadas(newRows);
-            setPageEnviadas(0);
+        setRowsPerPage(parseInt(event.target.value, 10));
+        setPage(0);
+    };
+
+    const confirmarEliminar = (campaña) => {
+        setCampañaAEliminar(campaña);
+        setConfirmarEliminacion(true);
+    };
+
+    const eliminarCampaña = async () => {
+        if (!campañaAEliminar) return;
+        try {
+            await api.delete(`/campanias/${campañaAEliminar.id}`);
+            setMensaje({ tipo: 'success', texto: 'Campaña eliminada correctamente' });
+            setSnackbarOpen(true);
+            cargarCampañas();
+        } catch (err) {
+            console.error('Error al eliminar campaña', err);
+            setMensaje({ tipo: 'error', texto: 'No se pudo eliminar la campaña' });
+            setSnackbarOpen(true);
+        } finally {
+            setConfirmarEliminacion(false);
+            setCampañaAEliminar(null);
         }
     };
 
@@ -175,98 +155,74 @@ export default function VerCampañas() {
 
                 <Tabs value={tab} onChange={handleChangeTab} sx={{ mb: 2 }}>
                     <Tab label={`Pendientes (${pendientes.length})`} />
+                    <Tab label={`Procesando (${procesando.length})`} />
                     <Tab label={`Enviadas (${enviadas.length})`} />
                 </Tabs>
 
                 <Table>
                     <TableHead>
                         <TableRow>
-                            <TableCell sortDirection={orderBy === 'nombre' ? order : false}>
+                            <TableCell>
                                 <TableSortLabel
                                     active={orderBy === 'nombre'}
-                                    direction={orderBy === 'nombre' ? order : 'asc'}
+                                    direction={order}
                                     onClick={() => handleRequestSort('nombre')}
                                 >
                                     Nombre
                                 </TableSortLabel>
                             </TableCell>
-                            <TableCell sortDirection={orderBy === 'contactos' ? order : false} align="right">
-                                <TableSortLabel
-                                    active={orderBy === 'contactos'}
-                                    direction={orderBy === 'contactos' ? order : 'asc'}
-                                    onClick={() => handleRequestSort('contactos')}
-                                >
-                                    Contactos
-                                </TableSortLabel>
-                            </TableCell>
-                            <TableCell sortDirection={orderBy === 'createdAt' ? order : false}>
-                                <TableSortLabel
-                                    active={orderBy === 'createdAt'}
-                                    direction={orderBy === 'createdAt' ? order : 'asc'}
-                                    onClick={() => handleRequestSort('createdAt')}
-                                >
-                                    Creado
-                                </TableSortLabel>
-                            </TableCell>
-                            <TableCell sortDirection={orderBy === 'enviadoAt' ? order : false}>
-                                <TableSortLabel
-                                    active={orderBy === 'enviadoAt'}
-                                    direction={orderBy === 'enviadoAt' ? order : 'asc'}
-                                    onClick={() => handleRequestSort('enviadoAt')}
-                                >
-                                    Enviado
-                                </TableSortLabel>
-                            </TableCell>
+                            <TableCell align="right">Contactos</TableCell>
+                            <TableCell>Creado</TableCell>
+                            <TableCell>Enviado</TableCell>
                             <TableCell>Acciones</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {campañasPaginadas.length > 0 ? campañasPaginadas.map(c => {
-                            const creado = c.createdAt ? new Date(c.createdAt).toLocaleString() : '–';
-                            const enviado = c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–';
-
-                            return (
-                                <TableRow key={c.id}>
-                                    <TableCell
-                                        sx={{ cursor: 'pointer' }}
-                                        onClick={() => setCampañaSeleccionada(c)}
-                                    >
-                                        {c.nombre}
-                                    </TableCell>
-                                    <TableCell align="right">{c.contactos.length}</TableCell>
-                                    <TableCell>{creado}</TableCell>
-                                    <TableCell>{enviado}</TableCell>
-                                    <TableCell>
-                                        {c.enviadoAt ? (
-                                            <Chip label="Enviado" color="success" />
-                                        ) : (
-                                            <Button
-                                                variant="outlined"
-                                                startIcon={<SendIcon />}
-                                                onClick={() => {
-                                                    setCampañaAEnviar(c);
-                                                    setModalEnvio(true);
-                                                }}
-                                                sx={{
-                                                    color: '#075E54',
-                                                    borderColor: '#075E54',
-                                                    '&:hover': {
-                                                        borderColor: '#06493e',
-                                                        backgroundColor: 'rgba(7, 94, 84, 0.08)',
-                                                    }
-                                                }}
-                                            >
-                                                Enviar campaña
-                                            </Button>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            );
-                        }) : (
-                            <TableRow>
-                                <TableCell colSpan={5} align="center">
-                                    No hay campañas para mostrar.
+                        {campañasPaginadas.map(c => (
+                            <TableRow key={c.id}>
+                                <TableCell
+                                    sx={{ cursor: 'pointer' }}
+                                    onClick={() => setCampañaSeleccionada(c)}
+                                >
+                                    {c.nombre}
                                 </TableCell>
+                                <TableCell align="right">{c.contactos.length}</TableCell>
+                                <TableCell>{c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}</TableCell>
+                                <TableCell>{c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–'}</TableCell>
+                                <TableCell>
+                                    {tab === 0 && (
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<SendIcon />}
+                                            onClick={() => {
+                                                setCampañaAEnviar(c);
+                                                setModalEnvio(true);
+                                            }}
+                                            sx={{
+                                                color: '#075E54',
+                                                borderColor: '#075E54',
+                                                '&:hover': {
+                                                    borderColor: '#06493e',
+                                                    backgroundColor: 'rgba(7, 94, 84, 0.08)',
+                                                }
+                                            }}
+                                        >
+                                            Enviar campaña
+                                        </Button>
+                                    )}
+                                    {(tab === 0 || tab === 2) && (
+                                        <Tooltip title="Eliminar campaña">
+                                            <IconButton color="error" onClick={() => confirmarEliminar(c)}>
+                                                <DeleteIcon />
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                        {campañasPaginadas.length === 0 && (
+                            <TableRow>
+                                <TableCell colSpan={5} align="center">No hay campañas para mostrar.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -283,16 +239,6 @@ export default function VerCampañas() {
                 />
             </Paper>
 
-            {mensaje && (
-                <Alert
-                    severity={mensaje.tipo}
-                    onClose={() => setMensaje(null)}
-                    sx={{ mt: 2 }}
-                >
-                    {mensaje.texto}
-                </Alert>
-            )}
-
             <Dialog open={modalNueva} onClose={() => setModalNueva(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>Nueva campaña</DialogTitle>
                 <DialogContent dividers>
@@ -301,18 +247,13 @@ export default function VerCampañas() {
                             setModalNueva(false);
                             cargarCampañas();
                             setMensaje({ tipo: 'success', texto: 'Campaña subida correctamente' });
+                            setSnackbarOpen(true)
                         }}
-                        setMensaje={setMensaje}
                     />
                 </DialogContent>
             </Dialog>
 
-            <Dialog
-                open={!!campañaSeleccionada}
-                onClose={() => setCampañaSeleccionada(null)}
-                maxWidth="sm"
-                fullWidth
-            >
+            <Dialog open={!!campañaSeleccionada} onClose={() => setCampañaSeleccionada(null)} maxWidth="sm" fullWidth>
                 <DialogTitle>
                     Contactos de "{campañaSeleccionada?.nombre}"
                     <IconButton
@@ -340,16 +281,59 @@ export default function VerCampañas() {
                 </DialogContent>
             </Dialog>
 
+            <Dialog
+                open={confirmarEliminacion}
+                onClose={() => setConfirmarEliminacion(false)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>¿Eliminar campaña?</DialogTitle>
+                <DialogContent dividers>
+                    <Typography>
+                        ¿Estás seguro de que querés eliminar la campaña "{campañaAEliminar?.nombre}"?
+                        Esta acción eliminará sus contactos, pero los reportes se conservarán.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setConfirmarEliminacion(false)} color="inherit">
+                        Cancelar
+                    </Button>
+                    <Button onClick={eliminarCampaña} color="error" variant="contained">
+                        Eliminar
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
             {campañaAEnviar && (
                 <EnviarMensajesModal
                     open={modalEnvio}
-                    onClose={() => {
-                        cargarCampañas();
+                    onSendSuccess={() => {
                         setModalEnvio(false);
-                    }}
+                        cargarCampañas();
+                        setSnackbarOpen(true)
+                        setMensaje({ tipo: 'success', texto: 'Envío iniciado en segundo plano exitosamente' });
+                    }}                    
+                    onClose={() => setModalEnvio(false)}
                     campaña={campañaAEnviar}
                 />
             )}
+
+            <Snackbar
+                open={snackbarOpen}
+                autoHideDuration={6000}
+                onClose={() => setSnackbarOpen(false)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <MuiAlert
+                    elevation={6}
+                    variant="filled"
+                    severity={mensaje.tipo}
+                    onClose={() => setSnackbarOpen(false)}
+                    icon={<CheckCircleIcon fontSize="inherit" />}
+                >
+                    {mensaje.texto}
+                </MuiAlert>
+            </Snackbar>
         </>
     );
 }

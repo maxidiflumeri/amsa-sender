@@ -163,97 +163,75 @@ app.post('/api/upload-csv', upload.single('file'), async (req, res) => {
 
 // ====================== ENVÍO DE MENSAJES ======================
 app.post('/api/send-messages', async (req, res) => {
-    const { sessionIds, campaña } = req.body;
+    const { sessionIds, campaña, config = {} } = req.body;
+    const { batchSize = 10, delayBetweenMessages = 1500, delayAfterBatch = 60000 } = config;
 
-    // Validar sesiones
-    const sesionesValidas = sessionIds
-        .map(id => ({ id, sesion: sesiones[id] }))
+    const sesionesValidas = sessionIds.map(id => ({ id, sesion: sesiones[id] }))
         .filter(({ sesion }) => sesion && sesion.estado === 'conectado');
 
     if (sesionesValidas.length === 0) {
-        logger.warn(`No hay sesiones válidas para enviar. IDs: ${sessionIds.join(', ')}`);
         return res.status(400).json({ error: 'Ninguna sesión válida o conectada.' });
     }
 
-    try {
-        const camp = await prisma.campaña.findFirst({
-            where: { id: campaña },
-            include: { contactos: true }
-        });
+    // 🔁 Respondemos al cliente inmediatamente
+    res.status(200).json({ mensaje: 'Envío iniciado en segundo plano' });
 
-        if (!camp) {
-            logger.warn(`Campaña no encontrada: ${campaña}`);
-            return res.status(404).json({ error: 'Campaña no encontrada.' });
-        }
+    // 🔧 Proceso asincrónico en segundo plano
+    setImmediate(async () => {
+        try {
+            await prisma.campaña.update({ where: { id: campaña }, data: { estado: 'procesando' } });
 
-        const totalContactos = camp.contactos.length;
-        const cantidadPorSesion = Math.ceil(totalContactos / sesionesValidas.length);
+            const camp = await prisma.campaña.findFirst({
+                where: { id: campaña },
+                include: { contactos: true }
+            });
+            if (!camp) return;
 
-        logger.info(`Iniciando envío de campaña ${campaña} con ${totalContactos} contactos usando ${sesionesValidas.length} sesiones`);
+            const totalContactos = camp.contactos.length;
+            const cantidadPorSesion = Math.ceil(totalContactos / sesionesValidas.length);
+            const grupos = sesionesValidas.map(({ sesion }, i) => {
+                const start = i * cantidadPorSesion;
+                const end = start + cantidadPorSesion;
+                return { sesion, contactos: camp.contactos.slice(start, end) };
+            });
 
-        // Dividir contactos y asignar por sesión
-        const grupos = sesionesValidas.map(({ id, sesion }, index) => {
-            const start = index * cantidadPorSesion;
-            const end = start + cantidadPorSesion;
-            return {
-                sesion,
-                contactos: camp.contactos.slice(start, end)
-            };
-        });
+            for (const { sesion, contactos } of grupos) {
+                const client = sesion.client;
 
-        let enviadosTotal = 0;
+                for (let i = 0; i < contactos.length; i++) {
+                    const { numero, mensaje } = contactos[i];
+                    const jid = numero + '@c.us';
+                    const enviadoAt = new Date();
 
-        // Envío paralelo por sesión
-        await Promise.all(grupos.map(async ({ sesion, contactos }) => {
-            const client = sesion.client;
-            for (let i = 0; i < contactos.length; i++) {
-                const { numero, mensaje } = contactos[i];
-                try {
-                    const waId = `${numero}@c.us`;
-                    const isRegistered = await client.isRegisteredUser(waId);
+                    try {
+                        const tieneWhatsapp = await client.isRegisteredUser(jid);
+                        const estado = tieneWhatsapp ? 'enviado' : 'no_whatsapp';
 
-                    if (isRegistered) {
-                        try {
-                            await client.sendMessage(waId, mensaje);
-                            await prisma.reporte.create({
-                                data: { numero, mensaje, estado: 'enviado', campañaId: camp.id }
-                            });
-                            enviadosTotal++;
-                        } catch (err) {
-                            logger.error(`Error al enviar a ${numero} desde sesión: ${err.message}`);
-                            await prisma.reporte.create({
-                                data: { numero, mensaje, estado: 'error', campañaId: camp.id }
-                            });
-                        }
-                    } else {
-                        logger.warn(`Número sin WhatsApp: ${numero}`);
+                        if (tieneWhatsapp) await client.sendMessage(jid, mensaje);
+
                         await prisma.reporte.create({
-                            data: { numero, mensaje, estado: 'sin_whatsapp', campañaId: camp.id }
+                            data: { numero, mensaje, estado, enviadoAt, campañaId: camp.id }
+                        });
+                    } catch (err) {
+                        await prisma.reporte.create({
+                            data: { numero, mensaje, estado: 'error', enviadoAt, campañaId: camp.id }
                         });
                     }
 
-                    enviadosTotal++;
-                } catch (err) {
-                    logger.error(`Error al enviar a ${numero} desde sesión: ${err.message}`);
-                    await prisma.reporte.create({
-                        data: { numero, mensaje, estado: 'error', campañaId: camp.id }
-                    });
+                    const waitTime = ((i + 1) % batchSize === 0) ? delayAfterBatch : delayBetweenMessages;
+                    await new Promise(r => setTimeout(r, waitTime));
                 }
-                await new Promise((r) => setTimeout(r, (i + 1) % 10 === 0 ? 60000 : 1500));
             }
-        }));
 
-        await prisma.campaña.update({
-            where: { id: camp.id },
-            data: { enviadoAt: new Date() }
-        });
-
-        logger.info(`Campaña ${camp.id} completada. Mensajes enviados: ${enviadosTotal}/${totalContactos}`);
-        res.json({ total: enviadosTotal });
-    } catch (error) {
-        logger.error(`Error en envío múltiple de campaña ${campaña}: ${error.message}`);
-        res.status(500).json({ error: 'Error al enviar mensajes con múltiples sesiones.' });
-    }
+            await prisma.campaña.update({
+                where: { id: camp.id },
+                data: { estado: 'finalizada', enviadoAt: new Date() }
+            });
+        } catch (error) {
+            console.error('Error en el envío de mensajes en segundo plano:', error);
+            await prisma.campaña.update({ where: { id: campaña }, data: { estado: 'pendiente' } });
+        }
+    });
 });
 
 
@@ -282,15 +260,40 @@ app.get('/api/reports', async (req, res) => {
 app.get('/api/campanias', async (req, res) => {
     try {
         const camp = await prisma.campaña.findMany({
+            where: { archivada: false },
             include: { contactos: true },
             orderBy: { createdAt: 'desc' },
         });
+
         res.json(camp);
     } catch (err) {
         logger.error(`Error al obtener campañas: ${err.message}`);
         res.status(500).json({ error: 'Error al obtener campañas' });
     }
 });
+
+// ====================== OBTENER CAMPAÑAS PARA REPORTES ======================
+app.get('/api/campanias-con-reportes', async (req, res) => {
+    try {
+        const reportes = await prisma.reporte.findMany({
+            include: { campaña: true }
+        });
+
+        const campañasUnicas = Array.from(
+            new Map(
+                reportes
+                    .filter(r => r.campaña !== null)
+                    .map(r => [r.campaña.id, r.campaña])
+            ).values()
+        );
+
+        res.json(campañasUnicas);
+    } catch (err) {
+        logger.error(`Error al obtener campañas con reportes: ${err.message}`);
+        res.status(500).json({ error: 'Error al obtener campañas con reportes.' });
+    }
+});
+
 
 // ====================== ELIMINAR TODAS LAS SESIONES ======================
 app.delete('/api/sessions/clear', async (req, res) => {
@@ -320,6 +323,37 @@ app.get('/api/status/:id', (req, res) => {
         estado: cliente.estado,
         ani: cliente.ani
     });
+});
+
+// ====================== ELIMINAR CAMPAÑAS POR ID ======================
+
+app.delete('/api/campanias/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const campaña = await prisma.campaña.findUnique({ where: { id: parseInt(id) } });
+
+        if (!campaña) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+
+        if (campaña.estado === 'procesando') {
+            return res.status(400).json({ error: 'No se puede eliminar una campaña en proceso de envío' });
+        }
+
+        // Borramos contactos, pero NO los reportes
+        await prisma.contacto.deleteMany({ where: { campañaId: campaña.id } });
+
+        // Eliminamos la campaña manteniendo los reportes que referencian su nombre
+        await prisma.campaña.update({
+            where: { id: campaña.id },
+            data: { archivada: true }
+        });
+
+        res.json({ message: 'Campaña eliminada con contactos. Reportes conservados.' });
+    } catch (error) {
+        console.error('Error al eliminar campaña:', error);
+        res.status(500).json({ error: 'Error interno al eliminar campaña' });
+    }
 });
 
 // ====================== RECUPERAR SESIONES ACTIVAS AL ARRANCAR ======================

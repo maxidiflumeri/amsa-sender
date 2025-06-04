@@ -8,12 +8,14 @@ datasource db {
 }
 
 model Campaña {
-  id        Int        @id @default(autoincrement())
-  nombre    String
-  createdAt  DateTime   @default(now())
+  id         Int         @id @default(autoincrement())
+  nombre     String
+  createdAt  DateTime    @default(now())
   enviadoAt  DateTime?
-  contactos Contacto[]
-  reportes  Reporte[]
+  estado     String      @default("pendiente") // nuevo campo
+  contactos  Contacto[]
+  reportes   Reporte[]
+  archivada  Boolean @default(false)
 }
 
 model Contacto {
@@ -25,12 +27,13 @@ model Contacto {
 }
 
 model Reporte {
-  id         Int      @id @default(autoincrement())
+  id         Int         @id @default(autoincrement())
   numero     String
   mensaje    String
   estado     String
-  campañaId  Int
-  campaña    Campaña  @relation(fields: [campañaId], references: [id])
+  enviadoAt  DateTime?   // nuevo campo
+  campaña   Campaña? @relation(fields: [campañaId], references: [id], onDelete: SetNull)
+  campañaId Int?
 }
 
 model Sesion {

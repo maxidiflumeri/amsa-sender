@@ -27,7 +27,7 @@ export default function VerReportes() {
 
     // Obtener campañas al cargar
     useEffect(() => {
-        api.get('/campanias')
+        api.get('/campanias-con-reportes')
             .then(res => setCampañas(res.data))
             .catch(err => console.error('Error cargando campañas', err));
     }, []);
@@ -138,8 +138,8 @@ export default function VerReportes() {
                                 <TableCell>{getEstadoChip(r.estado)}</TableCell>
                                 <TableCell>{r.campaña?.nombre || '–'}</TableCell>
                                 <TableCell>
-                                    {r.campaña?.enviadoAt
-                                        ? new Date(r.campaña.enviadoAt).toLocaleString()
+                                    {r.enviadoAt
+                                        ? new Date(r.enviadoAt).toLocaleString()
                                         : '–'}
                                 </TableCell>
                             </TableRow>
