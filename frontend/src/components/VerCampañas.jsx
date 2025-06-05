@@ -22,18 +22,21 @@ import {
     Tab,
     TableSortLabel,
     Tooltip,
-    DialogActions
+    DialogActions,
+    Snackbar
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
+import PauseIcon from '@mui/icons-material/Pause';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import MuiAlert from '@mui/material/Alert';
 import api from '../api/axios';
 import SubirCampaña from './SubirCampaña';
 import EnviarMensajesModal from './EnviarMensajes';
-import Snackbar from '@mui/material/Snackbar';
-import MuiAlert from '@mui/material/Alert';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CircularProgress from '@mui/material/CircularProgress';
 
 export default function VerCampañas() {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -51,6 +54,7 @@ export default function VerCampañas() {
     const [order, setOrder] = useState('asc');
     const [orderBy, setOrderBy] = useState('nombre');
     const [snackbarOpen, setSnackbarOpen] = useState(false);
+    const [procesandoCampañaId, setProcesandoCampañaId] = useState(null);
 
     const cargarCampañas = async () => {
         try {
@@ -66,7 +70,7 @@ export default function VerCampañas() {
     }, []);
 
     const pendientes = campañas.filter(c => c.estado === 'pendiente');
-    const procesando = campañas.filter(c => c.estado === 'procesando');
+    const procesando = campañas.filter(c => ['procesando', 'pausada'].includes(c.estado));
     const enviadas = campañas.filter(c => c.estado === 'finalizada');
     const campañasMostradas = tab === 0 ? pendientes : tab === 1 ? procesando : enviadas;
 
@@ -139,6 +143,61 @@ export default function VerCampañas() {
         }
     };
 
+    const pausarCampaña = async (id) => {
+        setProcesandoCampañaId(id);
+        try {
+            await api.post(`/campanias/${id}/pausar`);
+            const ok = await esperarCambioEstado(id, 'pausada');
+            if (ok) {
+                setMensaje({ tipo: 'success', texto: 'Campaña pausada exitosamente' });
+            } else {
+                setMensaje({ tipo: 'warning', texto: 'Se solicitó pausar, pero no se confirmó a tiempo' });
+            }
+        } catch (err) {
+            console.error('Error al pausar campaña', err);
+            setMensaje({ tipo: 'error', texto: 'No se pudo pausar la campaña' });
+        } finally {
+            setSnackbarOpen(true);
+            await cargarCampañas();
+            setProcesandoCampañaId(null);
+        }
+    };
+    
+    const reanudarCampaña = async (id) => {
+        setProcesandoCampañaId(id);
+        try {
+            await api.post(`/campanias/${id}/reanudar`);
+            const ok = await esperarCambioEstado(id, 'procesando');
+            if (ok) {
+                setMensaje({ tipo: 'success', texto: 'Campaña reanudada exitosamente' });
+            } else {
+                setMensaje({ tipo: 'warning', texto: 'Se solicitó reanudar, pero no se confirmó a tiempo' });
+            }
+        } catch (err) {
+            console.error('Error al reanudar campaña', err);
+            setMensaje({ tipo: 'error', texto: 'No se pudo reanudar la campaña' });
+        } finally {
+            setSnackbarOpen(true);
+            await cargarCampañas();
+            setProcesandoCampañaId(null);
+        }
+    };    
+
+    const esperarCambioEstado = async (id, estadoEsperado, maxIntentos = 25, intervalo = 2000) => {
+        let intentos = 0;
+        while (intentos < maxIntentos) {
+            const res = await api.get(`/campanias/${id}`);
+            if (res.data.estado === estadoEsperado) {
+                return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, intervalo));
+            intentos++;
+        }
+        return false; // Timeout
+    };
+    
+
+
     return (
         <>
             <Paper sx={{ p: 2 }}>
@@ -174,21 +233,25 @@ export default function VerCampañas() {
                             <TableCell align="right">Contactos</TableCell>
                             <TableCell>Creado</TableCell>
                             <TableCell>Enviado</TableCell>
+                            <TableCell>Estado</TableCell>
                             <TableCell>Acciones</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
                         {campañasPaginadas.map(c => (
                             <TableRow key={c.id}>
-                                <TableCell
-                                    sx={{ cursor: 'pointer' }}
-                                    onClick={() => setCampañaSeleccionada(c)}
-                                >
+                                <TableCell sx={{ cursor: 'pointer' }} onClick={() => setCampañaSeleccionada(c)}>
                                     {c.nombre}
                                 </TableCell>
                                 <TableCell align="right">{c.contactos.length}</TableCell>
                                 <TableCell>{c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}</TableCell>
                                 <TableCell>{c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–'}</TableCell>
+                                <TableCell>
+                                    {c.estado === 'procesando' && <Chip label="Procesando" color="info" />}
+                                    {c.estado === 'pausada' && <Chip label="Pausada" color="warning" />}
+                                    {c.estado === 'pendiente' && <Chip label="Pendiente" />}
+                                    {c.estado === 'finalizada' && <Chip label="Finalizada" color="success" />}
+                                </TableCell>
                                 <TableCell>
                                     {tab === 0 && (
                                         <Button
@@ -210,6 +273,38 @@ export default function VerCampañas() {
                                             Enviar campaña
                                         </Button>
                                     )}
+
+                                    {tab === 1 && (
+                                        <>
+                                            {c.estado === 'procesando' && (
+                                                <Tooltip title="Pausar campaña">
+                                                    <span>
+                                                        <IconButton
+                                                            color="warning"
+                                                            onClick={() => pausarCampaña(c.id)}
+                                                            disabled={procesandoCampañaId === c.id}
+                                                        >
+                                                            {procesandoCampañaId === c.id ? <CircularProgress size={24} /> : <PauseIcon />}
+                                                        </IconButton>
+                                                    </span>
+                                                </Tooltip>
+                                            )}
+                                            {c.estado === 'pausada' && (
+                                                <Tooltip title="Reanudar campaña">
+                                                    <span>
+                                                        <IconButton
+                                                            color="success"
+                                                            onClick={() => reanudarCampaña(c.id)}
+                                                            disabled={procesandoCampañaId === c.id}
+                                                        >
+                                                            {procesandoCampañaId === c.id ? <CircularProgress size={24} /> : <PlayArrowIcon />}
+                                                        </IconButton>
+                                                    </span>
+                                                </Tooltip>
+                                            )}
+                                        </>
+                                    )}
+
                                     {(tab === 0 || tab === 2) && (
                                         <Tooltip title="Eliminar campaña">
                                             <IconButton color="error" onClick={() => confirmarEliminar(c)}>
@@ -222,7 +317,7 @@ export default function VerCampañas() {
                         ))}
                         {campañasPaginadas.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={5} align="center">No hay campañas para mostrar.</TableCell>
+                                <TableCell colSpan={6} align="center">No hay campañas para mostrar.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -247,7 +342,7 @@ export default function VerCampañas() {
                             setModalNueva(false);
                             cargarCampañas();
                             setMensaje({ tipo: 'success', texto: 'Campaña subida correctamente' });
-                            setSnackbarOpen(true)
+                            setSnackbarOpen(true);
                         }}
                     />
                 </DialogContent>
@@ -310,9 +405,9 @@ export default function VerCampañas() {
                     onSendSuccess={() => {
                         setModalEnvio(false);
                         cargarCampañas();
-                        setSnackbarOpen(true)
+                        setSnackbarOpen(true);
                         setMensaje({ tipo: 'success', texto: 'Envío iniciado en segundo plano exitosamente' });
-                    }}                    
+                    }}
                     onClose={() => setModalEnvio(false)}
                     campaña={campañaAEnviar}
                 />

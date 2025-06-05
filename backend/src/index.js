@@ -116,7 +116,14 @@ app.post('/api/send-messages', async (req, res) => {
     const { sessionIds, campaña, config = {} } = req.body;
 
     try {
-        await prisma.campaña.update({ where: { id: campaña }, data: { estado: 'procesando' } });
+        await prisma.campaña.update({
+            where: { id: campaña },
+            data: {
+                estado: 'procesando',
+                sesiones: JSON.stringify(sessionIds),
+                config
+            }
+        });
         await colaEnvios.add('enviar', { sessionIds, campaña, config });
         return res.status(200).json({ message: 'Envío encolado correctamente' });
     } catch (err) {
@@ -150,6 +157,19 @@ app.get('/api/campanias', async (req, res) => {
             orderBy: { createdAt: 'desc' },
         });
         res.json(camp);
+    } catch (err) {
+        logger.error(`Error al obtener campañas: ${err.message}`);
+        res.status(500).json({ error: 'Error al obtener campañas' });
+    }
+});
+
+// ====================== OBTENER CAMPAÑAS POR ID ======================
+app.get('/api/campanias/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const campaña = await prisma.campaña.findUnique({ where: { id: parseInt(id) } });
+        if (!campaña) return res.status(404).json({ error: 'Campaña no encontrada' });
+        res.json(campaña);
     } catch (err) {
         logger.error(`Error al obtener campañas: ${err.message}`);
         res.status(500).json({ error: 'Error al obtener campañas' });
@@ -210,6 +230,51 @@ app.delete('/api/campanias/:id', async (req, res) => {
     } catch (error) {
         console.error('Error al eliminar campaña:', error);
         res.status(500).json({ error: 'Error interno al eliminar campaña' });
+    }
+});
+
+// ====================== PAUSAR CAMPAÑA POR ID ======================
+app.post('/api/campanias/:id/pausar', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await prisma.campaña.update({
+            where: { id: parseInt(id) },
+            data: { pausada: true }
+        });
+        res.json({ message: 'Campaña pausada correctamente' });
+    } catch (err) {
+        res.status(500).json({ error: 'Error al pausar campaña' });
+    }
+});
+
+// ====================== REANUDAR CAMPAÑA POR ID ======================
+app.post('/api/campanias/:id/reanudar', async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+        const campaña = await prisma.campaña.findUnique({ where: { id } });
+
+        if (!campaña || campaña.estado !== 'pausada') {
+            return res.status(400).json({ error: 'Campaña no válida o no pausada' });
+        }
+
+        const sessionIds = JSON.parse(campaña.sesiones || '[]');
+        const config = campaña.config;
+
+        if (!sessionIds.length || !config) {
+            return res.status(400).json({ error: 'Faltan datos para reanudar la campaña' });
+        }
+
+        await colaEnvios.add('enviar', { sessionIds, campaña: id, config });
+
+        await prisma.campaña.update({
+            where: { id },
+            data: { estado: 'procesando', pausada: false }
+        });
+
+        res.json({ ok: true });
+    } catch (err) {
+        logger.error('Error al reanudar campaña:', err);
+        res.status(500).json({ error: 'Error interno al reanudar' });
     }
 });
 
