@@ -12,6 +12,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import api from '../api/axios';
 
 export default function SubirCampaña({ onUploadSuccess, setMensaje }) {
+    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [archivo, setArchivo] = useState(null);
     const [nombreCampaña, setNombreCampaña] = useState('');
     const [subiendo, setSubiendo] = useState(false);
@@ -80,6 +81,7 @@ export default function SubirCampaña({ onUploadSuccess, setMensaje }) {
                         disabled={subiendo}
                         onClick={handleUpload}
                         startIcon={subiendo ? <CircularProgress size={20} /> : null}
+                        sx={{ mb: 2, backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }}
                     >
                         {subiendo ? 'Subiendo...' : 'Subir'}
                     </Button>

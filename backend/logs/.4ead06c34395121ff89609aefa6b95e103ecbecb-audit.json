@@ -14,6 +14,16 @@
             "date": 1749053407337,
             "name": "logs\\warn-2025-06-04.log",
             "hash": "3517e7d2759937f20310619c1a825284a38077380045c00a8039ed7a0f6bd5ac"
+        },
+        {
+            "date": 1749147158446,
+            "name": "logs\\warn-2025-06-05.log",
+            "hash": "415c41a210a3d9eb1c085ebbf3977af6eaaa8f6d5873c0686cd41d5ca95fb884"
+        },
+        {
+            "date": 1749212722095,
+            "name": "logs\\warn-2025-06-06.log",
+            "hash": "90ce6973c756272543d314ea647f5956645851c082131e61471c80fd968e2e28"
         }
     ],
     "hashType": "sha256"

@@ -1,36 +1,53 @@
-// backend/index.js
+// ====================== DEPENDENCIAS ======================
 const express = require('express');
 const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const cors = require('cors');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
+const cors = require('cors');
 const logger = require('./logger');
 const requestLogger = require('./middleware/requestLogger');
-const e = require('express');
-const fsPromises = require('fs').promises;
 const colaEnvios = require('./queues/colaEnvios');
-const { conectarNuevaSesion, cargarSesionesActivas, getSesionesActivas, limpiarSesiones, getSesion } = require('./sesionManager');
+const {
+    conectarNuevaSesion,
+    cargarSesionesActivas,
+    getSesionesActivas,
+    limpiarSesiones,
+    getSesion
+} = require('./sesionManager');
 
 const app = express();
 const prisma = new PrismaClient();
 const PORT = 3001;
+
+// ====================== MANEJO DE ERRORES GLOBALES ======================
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('🚨 Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    logger.error('💥 Uncaught Exception:', err);
+});
+
+// ====================== MIDDLEWARE ======================
 app.use(cors());
 app.use(express.json());
-app.use(requestLogger); // Middleware para registrar las solicitudes
+app.use(requestLogger);
 
+// ====================== CONFIGURAR MULTER ======================
 const storage = multer.diskStorage({
     destination: './uploads',
     filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
 });
 const upload = multer({ storage });
 
-// ====================== CONECTAR SESIÓN ======================
+// ====================== ENDPOINTS ======================
+
+// Conectar sesión
 app.get('/api/conectar', async (req, res) => {
     const sessionId = 'session-' + Date.now();
-
     try {
         const resultado = await conectarNuevaSesion(sessionId);
         res.json(resultado);
@@ -40,7 +57,7 @@ app.get('/api/conectar', async (req, res) => {
     }
 });
 
-// ====================== ESTADO DE SESIONES ======================
+// Estado de sesiones
 app.get('/api/status', async (req, res) => {
     try {
         const estados = getSesionesActivas();
@@ -51,7 +68,7 @@ app.get('/api/status', async (req, res) => {
     }
 });
 
-// ====================== SUBIDA DE CSV ======================
+// Subida de CSV
 app.post('/api/upload-csv', upload.single('file'), async (req, res) => {
     if (!req.file) {
         logger.warn('Intento de subir sin archivo CSV.');
@@ -62,7 +79,6 @@ app.post('/api/upload-csv', upload.single('file'), async (req, res) => {
     const nombreCampaña = campaña || 'Campaña sin nombre';
     const contactos = [];
     const filePath = req.file.path;
-
     let nuevaCampaña;
 
     try {
@@ -111,10 +127,9 @@ app.post('/api/upload-csv', upload.single('file'), async (req, res) => {
     }
 });
 
-// ====================== ENVÍO DE MENSAJES ======================
+// Envío de mensajes
 app.post('/api/send-messages', async (req, res) => {
     const { sessionIds, campaña, config = {} } = req.body;
-
     try {
         await prisma.campaña.update({
             where: { id: campaña },
@@ -127,16 +142,15 @@ app.post('/api/send-messages', async (req, res) => {
         await colaEnvios.add('enviar', { sessionIds, campaña, config });
         return res.status(200).json({ message: 'Envío encolado correctamente' });
     } catch (err) {
-        console.error('Error al encolar campaña', err);
+        logger.error('Error al encolar campaña', err);
         await prisma.campaña.update({ where: { id: campaña }, data: { estado: 'pendiente' } });
         return res.status(500).json({ error: 'No se pudo encolar la campaña' });
     }
 });
 
-// ====================== OBTENER REPORTES ======================
+// Obtener reportes
 app.get('/api/reports', async (req, res) => {
     const { campañaId } = req.query;
-
     try {
         const where = campañaId ? { campañaId: Number(campañaId) } : {};
         const reportes = await prisma.reporte.findMany({ where, include: { campaña: true } });
@@ -148,7 +162,7 @@ app.get('/api/reports', async (req, res) => {
     }
 });
 
-// ====================== OBTENER CAMPAÑAS ======================
+// Obtener campañas
 app.get('/api/campanias', async (req, res) => {
     try {
         const camp = await prisma.campaña.findMany({
@@ -163,7 +177,7 @@ app.get('/api/campanias', async (req, res) => {
     }
 });
 
-// ====================== OBTENER CAMPAÑAS POR ID ======================
+// Obtener campaña por ID
 app.get('/api/campanias/:id', async (req, res) => {
     const { id } = req.params;
     try {
@@ -176,7 +190,7 @@ app.get('/api/campanias/:id', async (req, res) => {
     }
 });
 
-// ====================== OBTENER CAMPAÑAS PARA REPORTES ======================
+// Obtener campañas con reportes
 app.get('/api/campanias-con-reportes', async (req, res) => {
     try {
         const reportes = await prisma.reporte.findMany({ include: { campaña: true } });
@@ -190,11 +204,11 @@ app.get('/api/campanias-con-reportes', async (req, res) => {
     }
 });
 
-// ====================== ELIMINAR TODAS LAS SESIONES ======================
+// Eliminar todas las sesiones
 app.delete('/api/sessions/clear', async (req, res) => {
     try {
         await prisma.sesion.deleteMany();
-        limpiarSesiones()
+        await limpiarSesiones();
         logger.info('Todas las sesiones eliminadas.');
         res.json({ message: 'Todas las sesiones han sido eliminadas.' });
     } catch (error) {
@@ -203,7 +217,7 @@ app.delete('/api/sessions/clear', async (req, res) => {
     }
 });
 
-// ====================== ESTADO DE SESIÓN POR ID ======================
+// Estado de sesión por ID
 app.get('/api/status/:id', (req, res) => {
     const { id } = req.params;
     const cliente = getSesion(id);
@@ -216,7 +230,7 @@ app.get('/api/status/:id', (req, res) => {
     res.json({ id, estado: cliente.estado, ani: cliente.ani });
 });
 
-// ====================== ELIMINAR CAMPAÑAS POR ID ======================
+// Eliminar campaña por ID
 app.delete('/api/campanias/:id', async (req, res) => {
     const { id } = req.params;
     try {
@@ -228,12 +242,12 @@ app.delete('/api/campanias/:id', async (req, res) => {
         await prisma.campaña.update({ where: { id: campaña.id }, data: { archivada: true } });
         res.json({ message: 'Campaña eliminada con contactos. Reportes conservados.' });
     } catch (error) {
-        console.error('Error al eliminar campaña:', error);
+        logger.error('Error al eliminar campaña:', error);
         res.status(500).json({ error: 'Error interno al eliminar campaña' });
     }
 });
 
-// ====================== PAUSAR CAMPAÑA POR ID ======================
+// Pausar campaña
 app.post('/api/campanias/:id/pausar', async (req, res) => {
     const { id } = req.params;
     try {
@@ -247,7 +261,7 @@ app.post('/api/campanias/:id/pausar', async (req, res) => {
     }
 });
 
-// ====================== REANUDAR CAMPAÑA POR ID ======================
+// Reanudar campaña
 app.post('/api/campanias/:id/reanudar', async (req, res) => {
     const id = parseInt(req.params.id);
     try {
@@ -278,10 +292,11 @@ app.post('/api/campanias/:id/reanudar', async (req, res) => {
     }
 });
 
-// ====================== RECUPERAR SESIONES ACTIVAS AL ARRANCAR ======================
+// ====================== RECUPERAR SESIONES ACTIVAS ======================
 cargarSesionesActivas();
 
-// ====================== INICIAR ESCUCHA PUBSUB ======================
+// ====================== ESCUCHA DE PUBSUB ======================
 require('./sesionPubSub');
 
+// ====================== INICIAR SERVIDOR ======================
 app.listen(PORT, () => logger.info(`Servidor backend corriendo en http://localhost:${PORT}`));

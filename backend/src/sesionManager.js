@@ -111,18 +111,41 @@ function getSesionesActivas() {
     return Object.entries(sesiones).map(([id, s]) => ({ id, estado: s.estado, ani: s.ani }));
 }
 
-function limpiarSesiones() {
+async function limpiarSesiones() {
     for (const id of Object.keys(sesiones)) {
+        const sesion = sesiones[id];
+        const estado = sesion?.estado || 'desconocido';
+
         try {
-            sesiones[id].client.destroy();
-        } catch (e) {
-            logger.warn(`Error al destruir sesión ${id}: ${e.message}`);
+            if (estado !== 'desconectado' && sesion?.client) {
+                logger.info(`🧼 Cerrando sesión activa ${id}...`);
+
+                // Cerramos el navegador manualmente si está conectado
+                if (sesion.client.pupBrowser?.isConnected()) {
+                    await sesion.client.pupBrowser.close().catch(err => {
+                        logger.warn(`⚠️ Error cerrando browser Puppeteer en sesión ${id}: ${err.message}`);
+                    });
+                }
+
+                // Ejecutamos destroy para cerrar bien la sesión
+                await sesion.client.destroy();
+                logger.info(`✅ Sesión ${id} destruida correctamente.`);
+            } else {
+                logger.info(`ℹ️ Sesión ${id} ya estaba desconectada, no se ejecuta destroy().`);
+            }
+        } catch (err) {
+            if (err.code === 'EBUSY') {
+                logger.warn(`⚠️ Archivo bloqueado al destruir sesión ${id}: ${err.message}`);
+            } else {
+                logger.error(`💥 Error inesperado al destruir sesión ${id}: ${err.message}`);
+            }
         }
+
         delete sesiones[id];
     }
-    logger.info('🧹 Sesiones en memoria limpiadas.');
-}
 
+    logger.info('🧹 Todas las sesiones en memoria fueron limpiadas.');
+}
 
 module.exports = {
     conectarNuevaSesion,

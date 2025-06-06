@@ -7,11 +7,15 @@ import {
     Paper,
     CircularProgress,
     Alert,
+    useTheme,
+    Fade,
 } from '@mui/material';
 import QRCode from 'react-qr-code';
 
 export default function ConectarCuenta() {
+    const theme = useTheme();
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+
     const [qr, setQr] = useState(null);
     const [id, setId] = useState(null);
     const [ani, setAni] = useState(null);
@@ -21,7 +25,7 @@ export default function ConectarCuenta() {
     const conectar = async () => {
         setLoading(true);
         try {
-            const res = await api.get('/conectar'); // debe retornar { qr: string, id: string }
+            const res = await api.get('/conectar');
             setQr(res.data.qr);
             setId(res.data.id);
         } catch (err) {
@@ -31,7 +35,6 @@ export default function ConectarCuenta() {
         }
     };
 
-    // Polling para verificar si se conectó
     useEffect(() => {
         if (!id || conectado) return;
 
@@ -52,24 +55,88 @@ export default function ConectarCuenta() {
     }, [id, conectado]);
 
     return (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="70vh">
-            <Paper sx={{ p: 4, textAlign: 'center', maxWidth: 400 }}>
-                <Typography variant="h6" gutterBottom>Conectar Cuenta WhatsApp</Typography>
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="70vh" px={2}>
+            <Paper
+                elevation={6}
+                sx={{
+                    p: 4,
+                    borderRadius: 4,
+                    maxWidth: 420,
+                    width: '100%',
+                    textAlign: 'center',
+                    backgroundColor: theme.palette.background.paper,
+                }}
+            >
+                <Typography
+                    variant="h5"
+                    gutterBottom
+                    sx={{ fontWeight: 600, fontFamily: commonFont }}
+                >
+                    Conectar Cuenta WhatsApp
+                </Typography>
 
                 {!qr && !conectado && (
-                    <Button variant="contained" onClick={conectar} disabled={loading} sx={{ backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }}>
+                    <Button
+                        variant="contained"
+                        onClick={conectar}
+                        disabled={loading}
+                        sx={{
+                            mt: 3,
+                            px: 4,
+                            py: 1.3,
+                            borderRadius: 2,
+                            fontFamily: commonFont,
+                            textTransform: 'none',
+                            fontSize: '1rem',
+                            backgroundColor: '#075E54',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                                backgroundColor: '#0b7b65',
+                                transform: 'scale(1.03)',
+                                boxShadow: 4,
+                            },
+                        }}
+                    >
                         {loading ? <CircularProgress size={24} color="inherit" /> : 'Generar QR'}
                     </Button>
                 )}
 
-                {qr && (
-                    <Box display="flex" justifyContent="center" my={2}>
-                        <QRCode value={qr} size={180} />
+                <Fade in={!!qr}>
+                    <Box
+                        display="flex"
+                        justifyContent="center"
+                        my={3}
+                        p={2}
+                        borderRadius={2}
+                        sx={{
+                            backgroundColor: '#ffffff',
+                            boxShadow: theme.palette.mode === 'dark' ? 4 : 1,
+                        }}
+                    >
+                        {qr && (
+                            <QRCode
+                                value={qr}
+                                size={180}
+                                bgColor="#ffffff"
+                                fgColor="#000000"
+                                style={{ borderRadius: 8 }}
+                            />
+                        )}
                     </Box>
-                )}
+                </Fade>
 
                 {conectado && (
-                    <Alert severity="success" sx={{ mt: 2 }}>
+                    <Alert
+                        severity="success"
+                        variant="filled"
+                        sx={{
+                            mt: 3,
+                            borderRadius: 2,
+                            fontFamily: commonFont,
+                            color: '#fff',
+                            backgroundColor: theme.palette.success.main,
+                        }}
+                    >
                         ✅ Sesión conectada exitosamente<br />
                         <strong>ID:</strong> {id}<br />
                         <strong>Ani:</strong> {ani}
