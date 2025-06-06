@@ -17,6 +17,8 @@ const {
     limpiarSesiones,
     getSesion
 } = require('./sesionManager');
+const templatesRoutes = require('./routes/templates');
+const campañasRoutes = require('./routes/campañas');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -35,6 +37,8 @@ process.on('uncaughtException', (err) => {
 app.use(cors());
 app.use(express.json());
 app.use(requestLogger);
+app.use('/api/templates', templatesRoutes);
+app.use('/api/campanias', campañasRoutes);
 
 // ====================== CONFIGURAR MULTER ======================
 const storage = multer.diskStorage({
@@ -88,14 +92,28 @@ app.post('/api/upload-csv', upload.single('file'), async (req, res) => {
             .pipe(csv())
             .on('data', (data) => {
                 const numero = data['numero']?.trim();
+                if (!numero) return;
+
+                // Separar mensaje si viene como columna, y quitarlo de los datos
                 const mensaje = data['mensaje']?.trim();
-                if (numero && mensaje) contactos.push({ numero, mensaje });
+                const { mensaje: _, numero: __, ...otrosCampos } = data;
+
+                contactos.push({
+                    numero,
+                    mensaje: mensaje || null,
+                    datos: otrosCampos
+                });
             })
             .on('end', async () => {
                 try {
                     for (const c of contactos) {
                         await prisma.contacto.create({
-                            data: { ...c, campañaId: nuevaCampaña.id }
+                            data: {
+                                numero: c.numero,
+                                mensaje: c.mensaje,
+                                datos: c.datos,
+                                campañaId: nuevaCampaña.id
+                            }
                         });
                     }
 

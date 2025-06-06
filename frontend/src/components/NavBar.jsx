@@ -27,6 +27,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import LinkIcon from '@mui/icons-material/Link';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import BarChartIcon from '@mui/icons-material/BarChart';
+import ArticleIcon from '@mui/icons-material/Article';
 
 const drawerWidth = 200;
 
@@ -35,6 +36,7 @@ const navItems = [
     { label: 'Conectar', path: '/conectar', icon: <LinkIcon /> },
     { label: 'Campañas', path: '/campanias', icon: <CampaignIcon /> },
     { label: 'Reportes', path: '/reportes', icon: <BarChartIcon /> },
+    { label: 'Templates', path: '/templates', icon: <ArticleIcon /> }
 ];
 
 export default function Layout({ children, mode, toggleTheme }) {
