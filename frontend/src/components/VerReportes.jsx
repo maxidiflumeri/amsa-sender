@@ -8,16 +8,19 @@ import {
     TableCell,
     TableBody,
     Chip,
-    TableContainer,
     TablePagination,
     Box,
     Button,
     TextField,
-    Autocomplete
+    Autocomplete,
+    useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import api from '../api/axios';
 
 export default function VerReportes() {
+    const theme = useTheme();
+    const isMobile = useMediaQuery('(max-width:768px)');
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [campañas, setCampañas] = useState([]);
     const [campañaSeleccionada, setCampañaSeleccionada] = useState(null);
@@ -25,14 +28,12 @@ export default function VerReportes() {
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
 
-    // Obtener campañas al cargar
     useEffect(() => {
         api.get('/campanias-con-reportes')
             .then(res => setCampañas(res.data))
             .catch(err => console.error('Error cargando campañas', err));
     }, []);
 
-    // Obtener reportes al cambiar campaña seleccionada
     useEffect(() => {
         if (!campañaSeleccionada) {
             setReportes([]);
@@ -72,10 +73,8 @@ export default function VerReportes() {
             `${r.numero},"${r.mensaje.replace(/"/g, '""')}",${r.estado},${r.campaña?.nombre || ''},${r.campaña?.enviadoAt || ''}`
         );
         const csv = encabezado + filas.join('\n');
-
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
-
         const link = document.createElement('a');
         link.href = url;
         link.setAttribute('download', `reporte_campaña_${campañaSeleccionada?.id}.csv`);
@@ -84,89 +83,88 @@ export default function VerReportes() {
         document.body.removeChild(link);
     };
 
-    const reportesPaginados = reportes.slice(
-        page * rowsPerPage,
-        page * rowsPerPage + rowsPerPage
-    );
+    const reportesPaginados = reportes.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
     return (
-        <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>Reportes de Envío</Typography>
+        <Box px={isMobile ? 1 : 3}>
+            <Paper sx={{ p: isMobile ? 1 : 2 }}>
+                <Box display="flex" flexDirection={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'flex-start' : 'center'} gap={2}>
+                    <Typography variant="h6">Reportes de Envío</Typography>
+                    <Button
+                        variant="contained"
+                        onClick={exportarCSV}
+                        disabled={reportes.length === 0}
+                        sx={{ backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }}
+                    >
+                        Exportar CSV
+                    </Button>
+                </Box>
 
-            <Box display="flex" gap={2} mb={2} alignItems="center" flexWrap="wrap">
-                <Autocomplete
-                    options={campañas}
-                    getOptionLabel={(option) => option.nombre}
-                    value={campañaSeleccionada}
-                    onChange={(_, newValue) => setCampañaSeleccionada(newValue)}
-                    renderInput={(params) => (
-                        <TextField
-                            {...params}
-                            label="Buscar y seleccionar campaña"
-                            placeholder="Ej: Campaña verano"
-                            sx={{ minWidth: 300 }}
-                        />
-                    )}
-                    isOptionEqualToValue={(option, value) => option.id === value.id}
-                />
-                <Button
-                    sx={{ backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }}
-                    variant="contained"
-                    onClick={exportarCSV}
-                    disabled={reportes.length === 0}
-                >
-                    Exportar CSV
-                </Button>
-            </Box>
-
-            <TableContainer>
-                <Table>
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Número</TableCell>
-                            <TableCell>Mensaje</TableCell>
-                            <TableCell>Estado</TableCell>
-                            <TableCell>Campaña</TableCell>
-                            <TableCell>Fecha de Envío</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {reportesPaginados.map((r, i) => (
-                            <TableRow key={i}>
-                                <TableCell>{r.numero}</TableCell>
-                                <TableCell>{r.mensaje}</TableCell>
-                                <TableCell>{getEstadoChip(r.estado)}</TableCell>
-                                <TableCell>{r.campaña?.nombre || '–'}</TableCell>
-                                <TableCell>
-                                    {r.enviadoAt
-                                        ? new Date(r.enviadoAt).toLocaleString()
-                                        : '–'}
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                        {reportesPaginados.length === 0 && (
-                            <TableRow>
-                                <TableCell colSpan={5}>
-                                    <Typography variant="body2" color="text.secondary">
-                                        No hay reportes para esta campaña.
-                                    </Typography>
-                                </TableCell>
-                            </TableRow>
+                <Box mt={2} mb={2}>
+                    <Autocomplete
+                        options={campañas}
+                        getOptionLabel={(option) => option.nombre}
+                        value={campañaSeleccionada}
+                        onChange={(_, newValue) => setCampañaSeleccionada(newValue)}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Buscar campaña"
+                                placeholder="Ej: Campaña verano"
+                                sx={{ minWidth: isMobile ? '100%' : 300 }}
+                            />
                         )}
-                    </TableBody>
-                </Table>
-            </TableContainer>
+                        isOptionEqualToValue={(option, value) => option.id === value.id}
+                    />
+                </Box>
 
-            <TablePagination
-                component="div"
-                count={reportes.length}
-                page={page}
-                onPageChange={handleChangePage}
-                rowsPerPage={rowsPerPage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-                rowsPerPageOptions={[5, 10, 25, 50, 100]}
-                labelRowsPerPage="Filas por página"
-            />
-        </Paper>
+                <Box overflow="auto">
+                    <Table size={isMobile ? 'small' : 'medium'}>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell>Número</TableCell>
+                                <TableCell>Mensaje</TableCell>
+                                <TableCell>Estado</TableCell>
+                                <TableCell>Campaña</TableCell>
+                                <TableCell>Fecha de Envío</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {reportesPaginados.map((r, i) => (
+                                <TableRow key={i}>
+                                    <TableCell>{r.numero}</TableCell>
+                                    <TableCell>{r.mensaje}</TableCell>
+                                    <TableCell>{getEstadoChip(r.estado)}</TableCell>
+                                    <TableCell>{r.campaña?.nombre || '–'}</TableCell>
+                                    <TableCell>
+                                        {r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : '–'}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                            {reportesPaginados.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={5}>
+                                        <Typography variant="body2" color="text.secondary">
+                                            No hay reportes para esta campaña.
+                                        </Typography>
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </Box>
+
+                <TablePagination
+                    component="div"
+                    count={reportes.length}
+                    page={page}
+                    onPageChange={handleChangePage}
+                    rowsPerPage={rowsPerPage}
+                    onRowsPerPageChange={handleChangeRowsPerPage}
+                    rowsPerPageOptions={[5, 10, 25, 50, 100]}
+                    labelRowsPerPage="Filas por página"
+                />
+            </Paper>
+        </Box>
     );
 }

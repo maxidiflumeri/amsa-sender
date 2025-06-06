@@ -2,9 +2,14 @@ generator client {
   provider = "prisma-client-js"
 }
 
+//datasource db {
+//  provider = "sqlite"
+//  url      = "file:./dev.db"
+//}
+
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "mysql"
+  url      = "mysql://root:123456@localhost:3306/whatsapp_automation"
 }
 
 model Campaña {
@@ -13,9 +18,12 @@ model Campaña {
   createdAt  DateTime    @default(now())
   enviadoAt  DateTime?
   estado     String      @default("pendiente") // nuevo campo
+  pausada    Boolean   @default(false) // <-- NUEVO
   contactos  Contacto[]
   reportes   Reporte[]
   archivada  Boolean @default(false)
+  sesiones   String?   // JSON.stringified sessionIds
+  config     Json?     // { batchSize, delayEntreMensajes, delayEntreLotes }
 }
 
 model Contacto {

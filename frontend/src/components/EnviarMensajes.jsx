@@ -32,8 +32,8 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
     const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
     const [config, setConfig] = useState({
         batchSize: 10,
-        delayEntreMensajes: 1500,
-        delayEntreLotes: 2000
+        delayEntreMensajes: 3000,
+        delayEntreLotes: 15000
     });
 
     useEffect(() => {
