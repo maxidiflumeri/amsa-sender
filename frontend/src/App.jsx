@@ -8,7 +8,7 @@ import SubirCampaña from './components/SubirCampaña';
 import EnviarMensajes from './components/EnviarMensajes';
 import VerReportes from './components/VerReportes';
 import VerCampañas from './components/VerCampañas';
-import VerTemplates from './components/verTemplates';
+import VerTemplates from './components/VerTemplates';
 
 export default function App() {
     const [mode, setMode] = useState('light');
