@@ -5,9 +5,6 @@ import {
     Box,
     IconButton,
     Button,
-    List,
-    ListItem,
-    ListItemText,
     Tooltip,
     Dialog,
     DialogTitle,
@@ -16,13 +13,24 @@ import {
     Snackbar,
     Alert,
     TextField,
-    InputAdornment
+    InputAdornment,
+    Card,
+    CardContent,
+    CardActions,
+    Collapse,
+    Pagination,
+    MenuItem,
+    Select,
+    FormControl,
+    InputLabel
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import SearchIcon from '@mui/icons-material/Search';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import api from '../api/axios';
 import TemplateModal from './TemplateModal';
 import PreviewTemplateReal from './PreviewTemplateReal';
@@ -40,6 +48,9 @@ export default function VerTemplates() {
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
     const [busqueda, setBusqueda] = useState('');
+    const [expandedTemplateId, setExpandedTemplateId] = useState(null);
+    const [paginaActual, setPaginaActual] = useState(1);
+    const [templatesPorPagina, setTemplatesPorPagina] = useState(3);
 
     const cargarTemplates = async () => {
         try {
@@ -78,6 +89,21 @@ export default function VerTemplates() {
         t.nombre.toLowerCase().includes(busqueda.toLowerCase())
     );
 
+    const totalPaginas = Math.ceil(templatesFiltrados.length / templatesPorPagina);
+    const templatesPaginados = templatesFiltrados.slice(
+        (paginaActual - 1) * templatesPorPagina,
+        paginaActual * templatesPorPagina
+    );
+
+    const handleExpandClick = (id) => {
+        setExpandedTemplateId(prev => (prev === id ? null : id));
+    };
+
+    const shouldShowExpand = (text) => {
+        const lineCount = text?.split('\n').length || 0;
+        return lineCount > 3;
+    };
+
     return (
         <Box sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -112,58 +138,102 @@ export default function VerTemplates() {
                 />
             </Box>
 
-            <Paper elevation={3}>
-                {loading ? (
-                    <Typography sx={{ p: 2 }}>Cargando templates...</Typography>
-                ) : templatesFiltrados.length === 0 ? (
-                    <Typography sx={{ p: 2 }}>No hay templates que coincidan.</Typography>
-                ) : (
-                    <List>
-                        {templatesFiltrados.map((template) => (
-                            <ListItem
-                                key={template.id}
-                                secondaryAction={
-                                    <>
-                                        <Tooltip title="Previsualizar con datos reales">
-                                            <IconButton
-                                                edge="end"
-                                                onClick={() => {
+            {loading ? (
+                <Typography sx={{ p: 2 }}>Cargando templates...</Typography>
+            ) : templatesFiltrados.length === 0 ? (
+                <Typography sx={{ p: 2 }}>No hay templates que coincidan.</Typography>
+            ) : (
+                <>
+                    <Box sx={{ display: 'grid', gap: 2 }}>
+                        {templatesPaginados.map((template) => {
+                            const isExpanded = expandedTemplateId === template.id;
+                            const showExpand = shouldShowExpand(template.contenido);
+                            const contenidoVisible = showExpand && !isExpanded
+                                ? template.contenido.split('\n').slice(0, 3).join('\n') + '...'
+                                : template.contenido;
+
+                            return (
+                                <Card key={template.id} variant="outlined" sx={{ borderRadius: 3, boxShadow: 3 }}>
+                                    <CardContent>
+                                        <Typography variant="h6">{template.nombre}</Typography>
+                                        <Typography
+                                            variant="body2"
+                                            sx={{ whiteSpace: 'pre-line', mt: 1, fontSize: '0.95rem' }}
+                                        >
+                                            {contenidoVisible}
+                                        </Typography>
+                                    </CardContent>
+                                    <CardActions sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', px: 2, pb: 2 }}>
+                                        <Box sx={{ display: 'flex', gap: 1, order: 2 }}>
+                                            <Tooltip title="Previsualizar con datos reales">
+                                                <IconButton onClick={() => {
                                                     setSelectedTemplateId(template.id);
                                                     setPreviewOpen(true);
-                                                }}
-                                            >
-                                                <VisibilityIcon />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Editar">
-                                            <IconButton edge="end" color="info" onClick={() => {
-                                                setSelectedTemplate(template);
-                                                setOpenDialog(true);
-                                            }}>
-                                                <EditIcon />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Eliminar">
-                                            <IconButton
-                                                edge="end"
-                                                color="error"
-                                                onClick={() => confirmarEliminarTemplate(template)}
-                                            >
-                                                <DeleteIcon />
-                                            </IconButton>
-                                        </Tooltip>
-                                    </>
-                                }
-                            >
-                                <ListItemText
-                                    primary={template.nombre}
-                                    secondary={template.contenido}
-                                />
-                            </ListItem>
-                        ))}
-                    </List>
-                )}
-            </Paper>
+                                                }}>
+                                                    <VisibilityIcon />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Editar">
+                                                <IconButton color="info" onClick={() => {
+                                                    setSelectedTemplate(template);
+                                                    setOpenDialog(true);
+                                                }}>
+                                                    <EditIcon />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Eliminar">
+                                                <IconButton color="error" onClick={() => confirmarEliminarTemplate(template)}>
+                                                    <DeleteIcon />
+                                                </IconButton>
+                                            </Tooltip>
+                                        </Box>
+                                        <Box sx={{ order: 1 }}>
+                                            {showExpand && (
+                                                <Button
+                                                    onClick={() => handleExpandClick(template.id)}
+                                                    endIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                                                    size="small"
+                                                    sx={{ textTransform: 'none' }}
+                                                >
+                                                    {isExpanded ? 'Ver menos' : 'Ver más'}
+                                                </Button>
+                                            )}
+                                        </Box>
+                                    </CardActions>
+                                </Card>
+                            );
+                        })}
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 4, flexWrap: 'wrap', gap: 2 }}>
+                        <Typography variant="body2" sx={{ ml: 1 }}>
+                            Mostrando {(paginaActual - 1) * templatesPorPagina + 1}-{Math.min(paginaActual * templatesPorPagina, templatesFiltrados.length)} de {templatesFiltrados.length} templates
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                            <FormControl variant="outlined" size="small">
+                                <InputLabel>Por página</InputLabel>
+                                <Select
+                                    label="Por página"
+                                    value={templatesPorPagina}
+                                    onChange={(e) => {
+                                        setTemplatesPorPagina(Number(e.target.value));
+                                        setPaginaActual(1);
+                                    }}
+                                >
+                                    {[3, 5, 10, 20].map(num => (
+                                        <MenuItem key={num} value={num}>{num}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                            <Pagination
+                                count={totalPaginas}
+                                page={paginaActual}
+                                onChange={(e, page) => setPaginaActual(page)}
+                                color="primary"
+                            />
+                        </Box>
+                    </Box>
+                </>
+            )}
 
             <TemplateModal
                 open={openDialog}

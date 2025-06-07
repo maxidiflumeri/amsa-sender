@@ -58,7 +58,7 @@ model Sesion {
 model Template {
   id        Int      @id @default(autoincrement())
   nombre    String
-  contenido String   // Ej: "Hola {{nombre}}, tu deuda es de {{deuda}}"
+  contenido String @db.Text   // Ej: "Hola {{nombre}}, tu deuda es de {{deuda}}"
   createdAt DateTime @default(now())
   campañas  Campaña[] // Relación con campañas
 }

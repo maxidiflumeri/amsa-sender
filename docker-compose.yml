@@ -11,6 +11,7 @@ services:
     ports:
       - "3001:3001"
     environment:
+      - PORT=3001
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_URL=mysql://root:123456@172.23.64.1:3306/whatsapp_automation
@@ -22,5 +23,7 @@ services:
     container_name: frontend
     ports:
       - "5173:80"
+    environment:
+      - VITE_API_URL=http://localhost:3001/api
     depends_on:
       - backend
