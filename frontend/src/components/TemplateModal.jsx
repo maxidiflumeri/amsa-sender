@@ -20,7 +20,6 @@ import CloseIcon from '@mui/icons-material/Close';
 import api from '../api/axios';
 import { useTheme } from '@mui/material/styles';
 
-
 export default function TemplateModal({ open, onClose, onSave, templateToEdit }) {
     const theme = useTheme();
     const [nombre, setNombre] = useState('');
@@ -75,7 +74,7 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
     };
 
     const generarVistaPrevia = async () => {
-        if (!contenido.trim()) return;
+        if (!contenido.trim() || !campañaReferenciaId) return;
         setLoadingPreview(true);
         try {
             const res = await api.post('/templates/preview', {
@@ -103,6 +102,8 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
             setMensaje({ tipo: 'error', texto: 'Error al guardar el template' });
         }
     };
+
+    const camposCompletos = nombre.trim() && contenido.trim() && campañaReferenciaId;
 
     return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -180,8 +181,20 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
             </DialogContent>
 
             <DialogActions>
-                <Button onClick={generarVistaPrevia}>Generar vista previa</Button>
-                <Button variant="contained" onClick={handleGuardar} sx={{ backgroundColor: '#075E54' }}>
+                <Button
+                    sx={{ backgroundColor: '#075E54' }}
+                    variant="contained"
+                    onClick={generarVistaPrevia}
+                    disabled={!camposCompletos || loadingPreview}
+                >
+                    Generar vista previa
+                </Button>
+                <Button
+                    variant="contained"
+                    onClick={handleGuardar}
+                    sx={{ backgroundColor: '#075E54' }}
+                    disabled={!camposCompletos}
+                >
                     Guardar
                 </Button>
             </DialogActions>

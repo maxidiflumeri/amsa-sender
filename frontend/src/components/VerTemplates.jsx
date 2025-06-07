@@ -14,12 +14,15 @@ import {
     DialogContent,
     DialogActions,
     Snackbar,
-    Alert
+    Alert,
+    TextField,
+    InputAdornment
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import SearchIcon from '@mui/icons-material/Search';
 import api from '../api/axios';
 import TemplateModal from './TemplateModal';
 import PreviewTemplateReal from './PreviewTemplateReal';
@@ -36,6 +39,7 @@ export default function VerTemplates() {
     const [templateAEliminar, setTemplateAEliminar] = useState(null);
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
+    const [busqueda, setBusqueda] = useState('');
 
     const cargarTemplates = async () => {
         try {
@@ -70,6 +74,10 @@ export default function VerTemplates() {
         cargarTemplates();
     }, []);
 
+    const templatesFiltrados = templates.filter(t =>
+        t.nombre.toLowerCase().includes(busqueda.toLowerCase())
+    );
+
     return (
         <Box sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -87,14 +95,31 @@ export default function VerTemplates() {
                 </Button>
             </Box>
 
+            <Box sx={{ mb: 2 }}>
+                <TextField
+                    fullWidth
+                    variant="outlined"
+                    placeholder="Buscar template por nombre..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    InputProps={{
+                        startAdornment: (
+                            <InputAdornment position="start">
+                                <SearchIcon color="action" />
+                            </InputAdornment>
+                        ),
+                    }}
+                />
+            </Box>
+
             <Paper elevation={3}>
                 {loading ? (
                     <Typography sx={{ p: 2 }}>Cargando templates...</Typography>
-                ) : templates.length === 0 ? (
-                    <Typography sx={{ p: 2 }}>No hay templates aún.</Typography>
+                ) : templatesFiltrados.length === 0 ? (
+                    <Typography sx={{ p: 2 }}>No hay templates que coincidan.</Typography>
                 ) : (
                     <List>
-                        {templates.map((template) => (
+                        {templatesFiltrados.map((template) => (
                             <ListItem
                                 key={template.id}
                                 secondaryAction={

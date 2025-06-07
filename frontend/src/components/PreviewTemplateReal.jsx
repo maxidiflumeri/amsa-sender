@@ -17,7 +17,7 @@ import {
 import api from '../api/axios';
 
 const PreviewTemplateReal = ({ open, onClose, templateId }) => {
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';    
+    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [campañas, setCampañas] = useState([]);
     const [campañaId, setCampañaId] = useState('');
     const [mensaje, setMensaje] = useState('');
@@ -112,7 +112,20 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
                 ) : null}
             </DialogContent>
             <DialogActions>
-                <Button sx={{ backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }} onClick={onClose}>Cerrar</Button>
+                <Button
+                    onClick={onClose}
+                    sx={{
+                        backgroundColor: '#075E54',
+                        color: '#fff',
+                        fontFamily: commonFont,
+                        textTransform: 'none',
+                        '&:hover': {
+                            backgroundColor: '#064e45',
+                        }
+                    }}
+                >
+                    Cerrar
+                </Button>
             </DialogActions>
         </Dialog>
     );
