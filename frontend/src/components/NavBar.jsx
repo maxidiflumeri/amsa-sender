@@ -1,4 +1,3 @@
-// src/components/Layout.js
 import React, { useState, useEffect } from 'react';
 import {
     Box,
@@ -19,6 +18,7 @@ import {
     Tooltip,
     CssBaseline
 } from '@mui/material';
+import { styled } from '@mui/material/styles';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { FaSun, FaMoon } from 'react-icons/fa';
 import { FiMenu, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
@@ -27,6 +27,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import LinkIcon from '@mui/icons-material/Link';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import BarChartIcon from '@mui/icons-material/BarChart';
+import ArticleIcon from '@mui/icons-material/Article';
 
 const drawerWidth = 200;
 
@@ -35,7 +36,58 @@ const navItems = [
     { label: 'Conectar', path: '/conectar', icon: <LinkIcon /> },
     { label: 'Campañas', path: '/campanias', icon: <CampaignIcon /> },
     { label: 'Reportes', path: '/reportes', icon: <BarChartIcon /> },
+    { label: 'Templates', path: '/templates', icon: <ArticleIcon /> }
 ];
+
+// Switch estilo iOS con íconos dentro del track
+const ThemedSwitch = styled(Switch)(({ theme }) => ({
+    width: 62,
+    height: 32,
+    padding: 0,
+    transition: 'all 0.4s ease',
+    '& .MuiSwitch-switchBase': {
+        padding: 4,
+        transition: 'all 0.4s ease',
+        '&.Mui-checked': {
+            transform: 'translateX(30px)',
+            color: '#fff',
+            transition: 'all 0.4s ease',
+            '& + .MuiSwitch-track': {
+                backgroundColor: theme.palette.mode === 'dark' ? '#4caf50' : '#65C466',
+                opacity: 1,
+            },
+        },
+    },
+    '& .MuiSwitch-thumb': {
+        width: 24,
+        height: 24,
+        borderRadius: '50%',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        transition: 'all 0.3s ease',
+    },
+    '& .MuiSwitch-track': {
+        position: 'relative',
+        borderRadius: 32,
+        backgroundColor: theme.palette.mode === 'dark' ? '#8796A5' : '#aab4be',
+        opacity: 1,
+        transition: 'background-color 0.4s ease',
+        '&:before, &:after': {
+            content: '""',
+            position: 'absolute',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: 14,
+        },
+        '&:before': {
+            content: '"🌞"',
+            left: 8,
+        },
+        '&:after': {
+            content: '"🌙"',
+            right: 8,
+        },
+    },
+}));
 
 export default function Layout({ children, mode, toggleTheme }) {
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -80,21 +132,20 @@ export default function Layout({ children, mode, toggleTheme }) {
             <Divider sx={{ my: 1 }} />
             <Box
                 px={2}
-                py={1}
+                py={2}
                 display="flex"
                 alignItems="center"
-                justifyContent={collapsed ? 'center' : 'flex-start'}
+                justifyContent="center"
             >
-                <FaSun size={16} />
-                {!collapsed && (
-                    <Switch
-                        checked={mode === 'dark'}
-                        onChange={toggleTheme}
-                        color="default"
-                        sx={{ mx: 1 }}
-                    />
+                {!collapsed ? (
+                    <ThemedSwitch checked={mode === 'dark'} onChange={toggleTheme} />
+                ) : (
+                    <Tooltip title={mode === 'dark' ? 'Modo claro' : 'Modo oscuro'}>
+                        <IconButton onClick={toggleTheme}>
+                            {mode === 'dark' ? <FaSun /> : <FaMoon />}
+                        </IconButton>
+                    </Tooltip>
                 )}
-                <FaMoon size={16} />
             </Box>
         </Box>
     );
@@ -126,7 +177,7 @@ export default function Layout({ children, mode, toggleTheme }) {
                 sx={{
                     width: { md: collapsed ? 72 : drawerWidth },
                     flexShrink: 0,
-                    height: 'calc(100% - 64px)', // mismo alto que el Drawer
+                    height: 'calc(100% - 64px)',
                 }}
             >
                 <Drawer
@@ -150,15 +201,15 @@ export default function Layout({ children, mode, toggleTheme }) {
                     {drawerContent}
                 </Drawer>
 
-                {/* Botón flotante centrado */}
+                {/* Botón flotante para colapsar/expandir */}
                 {!isMobile && (
                     <Box
                         marginTop={50}
                         position="absolute"
-                        top="50%" // 👈 se posiciona al 50% del alto disponible
+                        top="50%"
                         right={-16}
                         sx={{
-                            transform: 'translateY(-50%)', // 👈 lo sube la mitad de su propio alto
+                            transform: 'translateY(-50%)',
                             backgroundColor: theme.palette.background.paper,
                             borderRadius: '50%',
                             boxShadow: 2,
@@ -189,9 +240,9 @@ export default function Layout({ children, mode, toggleTheme }) {
                         md: collapsed ? '72px' : `${drawerWidth}px`
                     },
                     transition: 'all 0.3s ease',
-                    maxWidth: '100vw', // 👈 esto limita desborde
-                    overflowX: 'hidden', // 👈 esto evita scroll lateral
-                    position: 'absolute' // 👈 para cualquier posicionamiento interno
+                    maxWidth: '100vw',
+                    overflowX: 'hidden',
+                    position: 'absolute'
                 }}
             >
                 {children}

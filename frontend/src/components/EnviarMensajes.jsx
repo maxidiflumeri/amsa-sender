@@ -28,6 +28,8 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [sesiones, setSesiones] = useState([]);
     const [selectedSesion, setSelectedSesion] = useState([]);
+    const [templates, setTemplates] = useState([]);
+    const [selectedTemplateId, setSelectedTemplateId] = useState('');
     const [loading, setLoading] = useState(false);
     const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
     const [config, setConfig] = useState({
@@ -40,9 +42,14 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
         if (open) {
             setMensaje({ tipo: '', texto: '' });
             setSelectedSesion([]);
+            setSelectedTemplateId('');
             api.get('/status')
                 .then(res => setSesiones(res.data))
                 .catch(err => console.error('Error al obtener sesiones:', err));
+
+            api.get('/templates')
+                .then(res => setTemplates(res.data))
+                .catch(err => console.error('Error al obtener templates:', err));
         }
     }, [open]);
 
@@ -56,13 +63,21 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
         setMensaje({ tipo: '', texto: '' });
 
         try {
+            // Si se seleccionó un template, aplicar antes de enviar
+            if (selectedTemplateId) {
+                await api.post(`/campanias/${campaña.id}/aplicar-template`, {
+                    templateId: selectedTemplateId
+                });
+            }
+
+            // Enviar campaña
             await api.post('/send-messages', {
                 sessionIds: selectedSesion,
                 campaña: campaña.id,
                 config
             });
 
-            onSendSuccess()
+            onSendSuccess();
         } catch (error) {
             console.error('Error al enviar mensajes', error);
             setMensaje({ tipo: 'error', texto: 'Ocurrió un error al iniciar el envío' });
@@ -88,6 +103,21 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
                 </IconButton>
             </DialogTitle>
             <DialogContent dividers>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Template</InputLabel>
+                    <Select
+                        value={selectedTemplateId}
+                        onChange={(e) => setSelectedTemplateId(e.target.value)}
+                        label="Template"
+                    >
+                        {templates.map((t) => (
+                            <MenuItem key={t.id} value={t.id}>
+                                {t.nombre}
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+
                 <FormControl fullWidth sx={{ mb: 2 }}>
                     <InputLabel>Sesiones</InputLabel>
                     <Select
@@ -176,7 +206,12 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
 
                 <Box textAlign="center" sx={{ mt: 2 }}>
                     <Button
-                        sx={{ mb: 2, backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }}
+                        sx={{
+                            mb: 2,
+                            backgroundColor: '#075E54',
+                            fontFamily: commonFont,
+                            textTransform: 'none'
+                        }}
                         variant="contained"
                         onClick={enviarMensajes}
                         disabled={loading}

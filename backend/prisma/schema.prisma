@@ -19,6 +19,8 @@ model Campaña {
   enviadoAt  DateTime?
   estado     String      @default("pendiente") // nuevo campo
   pausada    Boolean   @default(false) // <-- NUEVO
+  templateId Int?      // FK opcional
+  template   Template? @relation(fields: [templateId], references: [id])
   contactos  Contacto[]
   reportes   Reporte[]
   archivada  Boolean @default(false)
@@ -29,10 +31,12 @@ model Campaña {
 model Contacto {
   id         Int      @id @default(autoincrement())
   numero     String
-  mensaje    String
+  mensaje    String?
+  datos      Json?    // ⬅️ Acá irán los datos variables del CSV
   campañaId  Int
   campaña    Campaña  @relation(fields: [campañaId], references: [id])
 }
+
 
 model Reporte {
   id         Int         @id @default(autoincrement())
@@ -49,4 +53,12 @@ model Sesion {
   sessionId  String   @unique
   estado     String
   ani        String?   // nuevo campo opcional
+}
+
+model Template {
+  id        Int      @id @default(autoincrement())
+  nombre    String
+  contenido String   // Ej: "Hola {{nombre}}, tu deuda es de {{deuda}}"
+  createdAt DateTime @default(now())
+  campañas  Campaña[] // Relación con campañas
 }

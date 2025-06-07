@@ -8,6 +8,7 @@ import SubirCampaña from './components/SubirCampaña';
 import EnviarMensajes from './components/EnviarMensajes';
 import VerReportes from './components/VerReportes';
 import VerCampañas from './components/VerCampañas';
+import VerTemplates from './components/verTemplates';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -183,6 +184,7 @@ export default function App() {
                     <Route path="/campanias" element={<VerCampañas />} />
                     <Route path="/enviar" element={<EnviarMensajes />} />
                     <Route path="/reportes" element={<VerReportes />} />
+                    <Route path="/templates" element={<VerTemplates />} />
                 </Routes>
             </Container>
         </ThemeProvider>
