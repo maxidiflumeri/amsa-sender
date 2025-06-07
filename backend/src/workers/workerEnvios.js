@@ -5,8 +5,17 @@ const logger = require('../logger');
 const Redis = require('ioredis');
 const { v4: uuidv4 } = require('uuid');
 
-const redis = new Redis({ maxRetriesPerRequest: null });
-const redisSub = new Redis({ maxRetriesPerRequest: null });
+const redis = new Redis({
+    host: process.env.REDIS_HOST,
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    maxRetriesPerRequest: null,
+});
+
+const redisSub = new Redis({
+    host: process.env.REDIS_HOST,
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    maxRetriesPerRequest: null,
+});
 
 const prisma = new PrismaClient();
 
@@ -51,7 +60,7 @@ const worker = new Worker('envios-whatsapp', async job => {
 
     for (const sessionId of sessionIds) {
         const contactosSesion = contactosPorSesion[sessionId];
-        const campañaActual = await prisma.campaña.findUnique({ where: { id: campaña } });        
+        const campañaActual = await prisma.campaña.findUnique({ where: { id: campaña } });
         if (campañaActual.pausada) {
             await prisma.campaña.update({
                 where: { id: parseInt(campaña) },
@@ -62,7 +71,7 @@ const worker = new Worker('envios-whatsapp', async job => {
         }
 
         for (let i = 0; i < contactosSesion.length; i += batchSize) {
-            const campañaActual = await prisma.campaña.findUnique({ where: { id: campaña } });            
+            const campañaActual = await prisma.campaña.findUnique({ where: { id: campaña } });
             if (campañaActual.pausada) {
                 await prisma.campaña.update({
                     where: { id: parseInt(campaña) },

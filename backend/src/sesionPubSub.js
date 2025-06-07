@@ -3,8 +3,17 @@ const { getSesion } = require('./sesionManager');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('./logger');
 
-const redis = new Redis({ maxRetriesPerRequest: null });
-const redisPub = new Redis({ maxRetriesPerRequest: null });
+const redis = new Redis({
+    host: process.env.REDIS_HOST,
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    maxRetriesPerRequest: null,
+});
+
+const redisPub = new Redis({
+    host: process.env.REDIS_HOST,
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    maxRetriesPerRequest: null,
+});
 
 redis.subscribe('solicitar-sesion', (err, count) => {
     if (err) {

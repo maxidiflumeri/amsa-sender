@@ -19,6 +19,7 @@ const {
 } = require('./sesionManager');
 const templatesRoutes = require('./routes/templates');
 const campañasRoutes = require('./routes/campañas');
+require('dotenv').config();
 
 const app = express();
 const prisma = new PrismaClient();
