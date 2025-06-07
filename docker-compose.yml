@@ -9,9 +9,9 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - REDIS_HOST=host.docker.internal
+      - REDIS_HOST=172.23.64.1
       - REDIS_PORT=6379
-      - DATABASE_URL=mysql://root:123456@host.docker.internal:3306/whatsapp_automation
+      - DATABASE_URL=mysql://root:123456@172.23.64.1:3306/whatsapp_automation
 
   frontend:
     build:
