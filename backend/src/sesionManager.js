@@ -10,7 +10,13 @@ const sesiones = {}; // Mapa en memoria de sesiones activas
 function conectarNuevaSesion(sessionId) {
     return new Promise(async (resolve, reject) => {
         try {
-            const client = new Client({ authStrategy: new LocalAuth({ clientId: sessionId }) });
+            const client = new Client({
+                authStrategy: new LocalAuth({ clientId: sessionId }),
+                puppeteer: {
+                    args: ['--no-sandbox', '--disable-setuid-sandbox']
+                }
+            });
+
             sesiones[sessionId] = { client, estado: 'inicializando' };
 
             let qrRespondido = false;
@@ -71,7 +77,12 @@ async function cargarSesionesActivas() {
 
 // Reconecta una sesión usando LocalAuth
 async function reconectarSesion(sessionId) {
-    const client = new Client({ authStrategy: new LocalAuth({ clientId: sessionId }) });
+    const client = new Client({
+        authStrategy: new LocalAuth({ clientId: sessionId }),
+        puppeteer: {
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        }
+    });
     sesiones[sessionId] = { client, estado: 'reconectando' };
 
     client.on('ready', async () => {
