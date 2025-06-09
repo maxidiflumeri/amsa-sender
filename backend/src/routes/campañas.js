@@ -3,6 +3,8 @@ const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const logger = require('../logger');
+const colaEnvios = require('../queues/colaEnvios');
 
 router.get('/:id/primer-contacto', async (req, res) => {
     const { id } = req.params;
@@ -123,5 +125,28 @@ router.post('/:id/aplicar-template', async (req, res) => {
         res.status(500).json({ error: 'Error al aplicar template a la campaña' });
     }
 });
+
+router.post('/:id/agendar', async (req, res) => {
+    const { id } = req.params;
+    const { fechaAgenda, sessionIds, config } = req.body;
+
+    if (!fechaAgenda) return res.status(400).json({ error: 'Fecha de agendado requerida' });
+
+    try {
+        const delay = Math.max(new Date(new Date(fechaAgenda)) - new Date(), 0);
+        const job = await colaEnvios.add('enviar', { sessionIds, campaña: parseInt(id), config }, { delay });
+
+        await prisma.campaña.update({
+            where: { id: parseInt(id) },
+            data: { agendadoAt: new Date(fechaAgenda), estado: 'programada', sesiones: JSON.stringify(sessionIds), config, jobId: job.id }
+        });
+
+        res.json({ ok: true, message: 'Campaña agendada correctamente' });
+    } catch (err) {
+        logger.error('Error al agendar campaña', err);
+        res.status(500).json({ error: 'Error al agendar campaña' });
+    }
+});
+
 
 module.exports = router;

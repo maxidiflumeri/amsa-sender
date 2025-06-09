@@ -56,8 +56,26 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
     }, [open, templateToEdit]);
 
     const insertarVariable = (variable) => {
-        setContenido((prev) => `${prev}{{${variable}}}`);
-    };
+        const textarea = document.querySelector('textarea');
+        if (!textarea) return;
+    
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+    
+        const textoAntes = contenido.substring(0, start);
+        const textoDespues = contenido.substring(end);
+        const insertar = `{{${variable}}}`;
+    
+        const nuevoContenido = textoAntes + insertar + textoDespues;
+        setContenido(nuevoContenido);
+    
+        // Volver a enfocar el textarea y ubicar el cursor después del texto insertado
+        setTimeout(() => {
+            textarea.focus();
+            const nuevaPos = start + insertar.length;
+            textarea.setSelectionRange(nuevaPos, nuevaPos);
+        }, 0);
+    };    
 
     const handleSeleccionCampañaReferencia = async (id) => {
         setCampañaReferenciaId(id);
@@ -104,6 +122,73 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
     };
 
     const camposCompletos = nombre.trim() && contenido.trim() && campañaReferenciaId;
+
+    const insertarFormato = (tipo) => {
+        const textarea = document.querySelector('textarea');
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const seleccionado = contenido.substring(start, end);
+
+        let formatoInicio = '';
+        let formatoFin = '';
+
+        switch (tipo) {
+            case 'negrita':
+                formatoInicio = '*';
+                formatoFin = '*';
+                break;
+            case 'cursiva':
+                formatoInicio = '_';
+                formatoFin = '_';
+                break;
+            case 'tachado':
+                formatoInicio = '~';
+                formatoFin = '~';
+                break;
+            case 'monoespaciado':
+                formatoInicio = '`';
+                formatoFin = '`';
+                break;
+            case 'salto':
+                const nuevoContenidoSalto = contenido.substring(0, start) + '\n' + contenido.substring(end);
+                setContenido(nuevoContenidoSalto);
+                setTimeout(() => {
+                    textarea.focus();
+                    textarea.setSelectionRange(start + 1, start + 1);
+                }, 0);
+                return;
+        }
+
+        const nuevoContenido =
+            contenido.substring(0, start) +
+            formatoInicio +
+            (seleccionado || '') +
+            formatoFin +
+            contenido.substring(end);
+
+        setContenido(nuevoContenido);
+
+        // Reposicionar el cursor
+        setTimeout(() => {
+            textarea.focus();
+            const nuevaPos = start + formatoInicio.length + (seleccionado ? seleccionado.length : 0) + formatoFin.length;
+            textarea.setSelectionRange(nuevaPos, nuevaPos);
+        }, 0);
+    };
+
+    const parsearFormatoWhatsApp = (texto) => {
+        if (!texto) return '';
+
+        return texto
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+            .replace(/_(.*?)_/g, '<em>$1</em>')
+            .replace(/~(.*?)~/g, '<s>$1</s>')
+            .replace(/`(.*?)`/g, '<code>$1</code>')
+            .replace(/\n/g, '<br />');
+    };
 
     return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -153,17 +238,32 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
                     ))}
                 </Box>
 
-                <TextField
-                    label="Contenido del mensaje"
-                    multiline
-                    minRows={4}
-                    fullWidth
-                    sx={{ mb: 2 }}
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>Contenido del mensaje</Typography>
+
+                <Box display="flex" gap={1} flexWrap="wrap" mb={1}>
+                    <Button size="small" variant="outlined" onClick={() => insertarFormato('negrita')}>Negrita</Button>
+                    <Button size="small" variant="outlined" onClick={() => insertarFormato('cursiva')}>Cursiva</Button>
+                    <Button size="small" variant="outlined" onClick={() => insertarFormato('tachado')}>Tachado</Button>
+                    <Button size="small" variant="outlined" onClick={() => insertarFormato('monoespaciado')}>Monoespaciado</Button>
+                    <Button size="small" variant="outlined" onClick={() => insertarFormato('salto')}>↵ Salto de línea</Button>
+                </Box>
+
+                <textarea
                     value={contenido}
                     onChange={(e) => setContenido(e.target.value)}
+                    rows={6}
+                    style={{
+                        width: '100%',
+                        padding: '10px',
+                        borderRadius: '4px',
+                        border: `1px solid ${theme.palette.divider}`,
+                        backgroundColor: theme.palette.background.paper,
+                        color: theme.palette.text.primary,
+                        resize: 'vertical'
+                    }}
                 />
 
-                <Typography variant="subtitle1" gutterBottom>Vista previa:</Typography>
+                <Typography variant="subtitle1" gutterBottom>Vista previa visual:</Typography>
                 <Box
                     sx={{
                         border: '1px solid',
@@ -172,12 +272,12 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
                         borderRadius: 1,
                         backgroundColor: theme.palette.background.paper,
                         color: theme.palette.text.primary,
-                        maxHeight: 150,
-                        overflowY: 'auto'
+                        maxHeight: 200,
+                        overflowY: 'auto',
+                        whiteSpace: 'pre-wrap',
                     }}
-                >
-                    {loadingPreview ? <CircularProgress size={20} /> : vistaPrevia || '[Sin vista previa]'}
-                </Box>
+                    dangerouslySetInnerHTML={{ __html: parsearFormatoWhatsApp(contenido) }}
+                />
             </DialogContent>
 
             <DialogActions>
