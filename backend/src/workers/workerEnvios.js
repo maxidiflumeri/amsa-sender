@@ -66,6 +66,11 @@ const worker = new Worker('envios-whatsapp', async job => {
                 where: { id: parseInt(campaña) },
                 data: { estado: 'pausada' }
             });
+
+            await redis.publish('campania-pausada', JSON.stringify({
+                campañaId: campaña
+            }));
+            
             logger.warn(`⏸️ Campaña ${campaña} fue pausada manualmente. Envío detenido.`);
             return;
         }
@@ -77,6 +82,11 @@ const worker = new Worker('envios-whatsapp', async job => {
                     where: { id: parseInt(campaña) },
                     data: { estado: 'pausada' }
                 });
+
+                await redis.publish('campania-pausada', JSON.stringify({
+                    campañaId: campaña
+                }));
+
                 logger.warn(`⏸️ Campaña ${campaña} fue pausada manualmente. Envío detenido.`);
                 return;
             }
@@ -84,6 +94,20 @@ const worker = new Worker('envios-whatsapp', async job => {
             const lote = contactosSesion.slice(i, i + batchSize);
 
             for (const contacto of lote) {
+                if (campañaActual.pausada) {
+                    await prisma.campaña.update({
+                        where: { id: parseInt(campaña) },
+                        data: { estado: 'pausada' }
+                    });
+    
+                    await redis.publish('campania-pausada', JSON.stringify({
+                        campañaId: campaña
+                    }));
+                    
+                    logger.warn(`⏸️ Campaña ${campaña} fue pausada manualmente. Envío detenido.`);
+                    return;
+                }
+                
                 const messageId = uuidv4();
 
                 const respuesta = await new Promise((resolve, reject) => {
@@ -117,6 +141,13 @@ const worker = new Worker('envios-whatsapp', async job => {
 
                 if (respuesta.estado === 'enviado') {
                     enviados++;
+
+                    await redis.publish('progreso-envio', JSON.stringify({
+                        campañaId: campaña,
+                        enviados,
+                        total
+                    }));
+
                     await prisma.reporte.create({
                         data: {
                             numero: contacto.numero,
@@ -165,6 +196,10 @@ const worker = new Worker('envios-whatsapp', async job => {
             data: { estado: 'finalizada', enviadoAt: new Date() }
         });
         logger.info(`🏁 Campaña ${campaña} finalizada con ${enviados} mensajes enviados`);
+        // Emitir evento vía Redis
+        await redis.publish('campania-finalizada', JSON.stringify({
+            campañaId: campaña
+        }));
     }
 }, {
     connection: redis
