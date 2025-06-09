@@ -12,7 +12,7 @@ import {
     DialogContent,
     List,
     ListItem,
-    ListItemText,
+    Divider,
     IconButton,
     Button,
     Chip,
@@ -40,6 +40,8 @@ import EnviarMensajesModal from './EnviarMensajes';
 import { io } from 'socket.io-client';
 import LinearProgress from '@mui/material/LinearProgress';
 import CircularProgress from '@mui/material/CircularProgress';
+import EventIcon from '@mui/icons-material/Event';
+import { useTheme } from '@mui/material/styles';
 
 export default function VerCampañas() {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -60,6 +62,16 @@ export default function VerCampañas() {
     const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
     const [progresos, setProgresos] = useState({});
     const [pausando, setPausando] = useState([]);
+    const [mostrarCalendario, setMostrarCalendario] = useState(false);
+
+    const theme = useTheme();
+    const codeStyle = {
+        backgroundColor: theme.palette.mode === 'dark' ? '#2e2e2e' : '#f4f4f4',
+        color: theme.palette.mode === 'dark' ? '#fff' : '#000',
+        padding: '2px 6px',
+        borderRadius: 4,
+        fontFamily: 'monospace',
+    };
 
     const cargarCampañas = async () => {
         try {
@@ -83,6 +95,11 @@ export default function VerCampañas() {
             }
         });
 
+        socket.on('campania_estado', ({ campaña, estado }) => {
+            console.log('llega evento de campaña programada')
+            cargarCampañas();
+        });
+
         socket.on('progreso', ({ enviados, total, campañaId }) => {
             setProgresos((prev) => ({
                 ...prev,
@@ -104,10 +121,16 @@ export default function VerCampañas() {
         return () => socket.disconnect();
     }, [campañas]);
 
+
+    const agendadas = campañas.filter(c => c.estado === 'programada');
     const pendientes = campañas.filter(c => c.estado === 'pendiente');
     const procesando = campañas.filter(c => ['procesando', 'pausada'].includes(c.estado));
     const enviadas = campañas.filter(c => c.estado === 'finalizada');
-    const campañasMostradas = tab === 0 ? pendientes : tab === 1 ? procesando : enviadas;
+    const campañasMostradas =
+        tab === 0 ? pendientes :
+            tab === 1 ? agendadas :
+                tab === 2 ? procesando :
+                    enviadas;
 
     const descendingComparator = (a, b, orderBy) => {
         let aVal = a[orderBy], bVal = b[orderBy];
@@ -178,6 +201,13 @@ export default function VerCampañas() {
     };
 
     const abrirModalEnvio = (campaña) => {
+        setMostrarCalendario(false);
+        setCampañaAEnviar(campaña);
+        setModalEnvio(true);
+    };
+
+    const abrirModalAgendar = (campaña) => {
+        setMostrarCalendario(true);
         setCampañaAEnviar(campaña);
         setModalEnvio(true);
     };
@@ -232,6 +262,7 @@ export default function VerCampañas() {
                     sx={{ my: 2 }}
                 >
                     <Tab label={`Pendientes (${pendientes.length})`} />
+                    <Tab label={`Agendadas (${agendadas.length})`} />
                     <Tab label={`Procesando (${procesando.length})`} />
                     <Tab label={`Enviadas (${enviadas.length})`} />
                 </Tabs>
@@ -253,6 +284,7 @@ export default function VerCampañas() {
                                 <TableCell>Creado</TableCell>
                                 <TableCell>Enviado</TableCell>
                                 <TableCell>Estado</TableCell>
+                                <TableCell>Agendada para</TableCell>
                                 <TableCell>Progreso</TableCell>
                                 <TableCell>Acciones</TableCell>
                             </TableRow>
@@ -270,6 +302,12 @@ export default function VerCampañas() {
                                             {c.estado === 'pausada' && <Chip label="Pausada" color="warning" />}
                                             {c.estado === 'pendiente' && <Chip label="Pendiente" />}
                                             {c.estado === 'finalizada' && <Chip label="Finalizada" color="success" />}
+                                            {c.estado === 'programada' && <Chip label="Programada" color="info" />}
+                                        </TableCell>
+                                        <TableCell>
+                                            {c.agendadoAt
+                                                ? new Date(c.agendadoAt).toLocaleString()
+                                                : '—'}
                                         </TableCell>
                                         <TableCell>
                                             {c.estado === 'procesando' && (
@@ -287,12 +325,21 @@ export default function VerCampañas() {
                                         </TableCell>
                                         <TableCell onClick={(e) => e.stopPropagation()}>
                                             {c.estado === 'pendiente' && (
-                                                <Tooltip title="Enviar campaña">
-                                                    <IconButton color="primary" onClick={() => abrirModalEnvio(c)}>
-                                                        <SendIcon />
-                                                    </IconButton>
-                                                </Tooltip>
+                                                <>
+                                                    <Tooltip title="Enviar campaña">
+                                                        <IconButton color="primary" onClick={() => abrirModalEnvio(c)}>
+                                                            <SendIcon />
+                                                        </IconButton>
+                                                    </Tooltip>
+
+                                                    <Tooltip title="Agendar campaña">
+                                                        <IconButton color="secondary" onClick={() => abrirModalAgendar(c)}>
+                                                            <EventIcon />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                </>
                                             )}
+
                                             {c.estado === 'procesando' && (
                                                 pausando.includes(c.id) ? (
                                                     <Tooltip title="Pausando...">
@@ -315,7 +362,7 @@ export default function VerCampañas() {
                                                     </IconButton>
                                                 </Tooltip>
                                             )}
-                                            {(c.estado === 'pendiente' || c.estado === 'pausada' || c.estado === 'finalizada') && (
+                                            {(c.estado === 'pendiente' || c.estado === 'pausada' || c.estado === 'finalizada' || c.estado === 'programada') && (
                                                 <Tooltip title="Eliminar campaña">
                                                     <IconButton color="error" onClick={() => confirmarEliminar(c)}>
                                                         <DeleteIcon />
@@ -369,12 +416,36 @@ export default function VerCampañas() {
                 <DialogContent dividers>
                     <List>
                         {campañaSeleccionada?.contactos.map((contacto, idx) => (
-                            <ListItem key={idx}>
-                                <ListItemText
-                                    primary={`Número: ${contacto.numero}`}
-                                    secondary={`Mensaje: ${contacto.mensaje}`}
-                                />
-                            </ListItem>
+                            <React.Fragment key={idx}>
+                                <ListItem alignItems="flex-start" sx={{ flexDirection: 'column', alignItems: 'stretch', px: 1.5 }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                                        📞 Número: <code tyle={codeStyle}>{contacto.numero}</code>
+                                    </Typography>
+
+                                    {contacto.mensaje && (
+                                        <Typography variant="body2" sx={{ mb: 0.5 }}>
+                                            📨 Mensaje: <code tyle={codeStyle}>{contacto.mensaje}</code>
+                                        </Typography>
+                                    )}
+
+                                    {contacto.datos && Object.keys(contacto.datos).length > 0 && (
+                                        <Box>
+                                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>🧾 Datos:</Typography>
+                                            <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                                                {Object.entries(contacto.datos).map(([key, value]) => (
+                                                    <li key={key}>
+                                                        <Typography variant="body2">
+                                                            <strong>{key}:</strong>{' '}
+                                                            <code tyle={codeStyle}>{String(value)}</code>
+                                                        </Typography>
+                                                    </li>
+                                                ))}
+                                            </Box>
+                                        </Box>
+                                    )}
+                                </ListItem>
+                                <Divider sx={{ my: 1 }} />
+                            </React.Fragment>
                         ))}
                         {campañaSeleccionada?.contactos.length === 0 && (
                             <Typography variant="body2">No hay contactos en esta campaña.</Typography>
@@ -417,6 +488,7 @@ export default function VerCampañas() {
                     }}
                     onClose={() => setModalEnvio(false)}
                     campaña={campañaAEnviar}
+                    mostrarCalendario={mostrarCalendario}
                 />
             )}
 

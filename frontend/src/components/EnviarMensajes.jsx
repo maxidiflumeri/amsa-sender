@@ -23,8 +23,10 @@ import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import api from '../api/axios';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import dayjs from 'dayjs';
 
-export default function EnviarMensajesModal({ open, onSendSuccess, onClose, campaña }) {
+export default function EnviarMensajesModal({ open, onSendSuccess, onClose, campaña, mostrarCalendario = false }) {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [sesiones, setSesiones] = useState([]);
     const [selectedSesion, setSelectedSesion] = useState([]);
@@ -37,12 +39,15 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
         delayEntreMensajes: 3000,
         delayEntreLotes: 15000
     });
+    const [fechaAgendada, setFechaAgendada] = useState(null);
 
     useEffect(() => {
         if (open) {
             setMensaje({ tipo: '', texto: '' });
             setSelectedSesion([]);
             setSelectedTemplateId('');
+            setFechaAgendada(null);
+
             api.get('/status')
                 .then(res => setSesiones(res.data))
                 .catch(err => console.error('Error al obtener sesiones:', err));
@@ -59,32 +64,52 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
             return;
         }
 
+        if (!selectedTemplateId) {
+            setMensaje({ tipo: 'error', texto: 'Seleccioná un template para continuar' });
+            return;
+        }
+
+        if (mostrarCalendario && !fechaAgendada || dayjs(fechaAgendada).isBefore(dayjs())) {
+            setMensaje({ tipo: 'error', texto: 'Seleccioná una fecha válida para el envío agendado' });
+            return;
+        }
+
         setLoading(true);
         setMensaje({ tipo: '', texto: '' });
 
         try {
-            // Si se seleccionó un template, aplicar antes de enviar
+            // Aplicar template si corresponde
             if (selectedTemplateId) {
                 await api.post(`/campanias/${campaña.id}/aplicar-template`, {
                     templateId: selectedTemplateId
                 });
             }
 
-            // Enviar campaña
-            await api.post('/send-messages', {
-                sessionIds: selectedSesion,
-                campaña: campaña.id,
-                config
-            });
+            if (fechaAgendada) {
+                // Envío agendado
+                await api.post(`/campanias/${campaña.id}/agendar`, {
+                    sessionIds: selectedSesion,
+                    fechaAgenda: fechaAgendada,
+                    config
+                });
+            } else {
+                // Envío inmediato
+                await api.post('/send-messages', {
+                    sessionIds: selectedSesion,
+                    campaña: campaña.id,
+                    config
+                });
+            }
 
             onSendSuccess();
         } catch (error) {
-            console.error('Error al enviar mensajes', error);
+            console.error('Error al iniciar el envío', error);
             setMensaje({ tipo: 'error', texto: 'Ocurrió un error al iniciar el envío' });
         } finally {
             setLoading(false);
         }
     };
+
 
     const handleChangeConfig = (field, value) => {
         setConfig(prev => ({ ...prev, [field]: Number(value) }));
@@ -93,7 +118,7 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
     return (
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
             <DialogTitle>
-                Enviar campaña: "{campaña?.nombre}"
+                {`${mostrarCalendario? 'Agendar campaña: ' : 'Enviar campaña: '} ${campaña?.nombre}`}
                 <IconButton
                     aria-label="cerrar"
                     onClick={onClose}
@@ -143,6 +168,20 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
                         ))}
                     </Select>
                 </FormControl>
+
+                {mostrarCalendario && (
+                    <Box display="flex" justifyContent="center" sx={{ mt: 2, mb: 4 }}>
+                        <DateTimePicker
+                            label="Agendar envío"
+                            value={fechaAgendada}
+                            onChange={setFechaAgendada}
+                            minDateTime={dayjs()}
+                            renderInput={(params) => (
+                                <TextField {...params} />
+                            )}
+                        />
+                    </Box>
+                )}
 
                 <Accordion sx={{ mb: 2 }}>
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -214,10 +253,10 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
                         }}
                         variant="contained"
                         onClick={enviarMensajes}
-                        disabled={loading}
+                        disabled={loading || selectedSesion.length === 0 || !selectedTemplateId}
                         startIcon={loading ? <CircularProgress size={20} /> : null}
                     >
-                        {loading ? 'Iniciando...' : 'Iniciar envío'}
+                        {loading ? 'Iniciando...' : mostrarCalendario ? 'Agendar campaña' : 'Iniciar envío'}
                     </Button>
                 </Box>
             </DialogContent>

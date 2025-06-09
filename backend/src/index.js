@@ -259,7 +259,13 @@ app.delete('/api/campanias/:id', async (req, res) => {
         const campaña = await prisma.campaña.findUnique({ where: { id: parseInt(id) } });
         if (!campaña) return res.status(404).json({ error: 'Campaña no encontrada' });
         if (campaña.estado === 'procesando') return res.status(400).json({ error: 'No se puede eliminar una campaña en proceso de envío' });
-
+        if (campaña?.jobId) {
+            const job = await colaEnvios.getJob(campaña.jobId);            
+            if (job) {
+                await job.remove();
+                logger.info(`🗑️ Job ${campaña.jobId} eliminado de la cola.`);
+            }
+        }
         await prisma.contacto.deleteMany({ where: { campañaId: campaña.id } });
         await prisma.campaña.update({ where: { id: campaña.id }, data: { archivada: true } });
         res.json({ message: 'Campaña eliminada con contactos. Reportes conservados.' });
@@ -373,7 +379,20 @@ redisSub.subscribe('campania-pausada', (err, count) => {
     }
 });
 
+redisSub.subscribe('campania-estado', (err, count) => {
+    if (err) {
+        logger.error('❌ Error al suscribirse a campania-estado:', err);
+    } else {
+        logger.info(`📡 Subscrito a campania-estado (${count} canales)`);
+    }
+});
+
 redisSub.on('message', (channel, message) => {
+    if (channel === 'campania-estado') {
+        const { campaña, estado } = JSON.parse(message);
+        io.emit('campania_estado', { campaña, estado });
+    }
+
     if (channel === 'campania-finalizada') {
         const { campañaId } = JSON.parse(message);
         io.emit('campania_finalizada', { campañaId });
