@@ -69,15 +69,41 @@ export default function VerReportes() {
     };
 
     const exportarCSV = () => {
-        const encabezado = 'Número,Mensaje,Estado,Campaña,Fecha de Envío\n';
-        const filas = reportes.map(r =>
-            `${r.numero},"${r.mensaje.replace(/"/g, '""')}",${r.estado},${r.campaña?.nombre || ''},${r.campaña?.enviadoAt || ''}`
-        );
-        const csv = encabezado + filas.join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
+        if (!reportes.length) return;
+
+        const headers = [
+            'Número',
+            'Mensaje',
+            'Estado',
+            'Campaña',
+            'Línea Móvil Origen',
+            'Fecha de Envío'
+        ];
+
+        const filas = reportes.map(r => [
+            r.numero,
+            r.mensaje,
+            r.estado,
+            r.campaña?.nombre || '',
+            r.aniEnvio || '',
+            r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : ''
+        ]);
+
+        const escapeCSV = (valor) =>
+            `"${String(valor).replace(/\r?\n/g, '\\n').replace(/"/g, '""')}"`;
+
+
+        const contenidoCSV = [
+            headers.map(escapeCSV).join(','),
+            ...filas.map(fila => fila.map(escapeCSV).join(','))
+        ].join('\r\n');
+
+        const blob = new Blob(["\uFEFF" + contenidoCSV], {
+            type: 'text/csv;charset=utf-8;'
+        });
+
         const link = document.createElement('a');
-        link.href = url;
+        link.href = URL.createObjectURL(blob);
         link.setAttribute('download', `reporte_campaña_${campañaSeleccionada?.id}.csv`);
         document.body.appendChild(link);
         link.click();

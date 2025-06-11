@@ -115,11 +115,24 @@ export default function Layout({ children, mode, toggleTheme }) {
                 sx={{
                     borderBottom: '1px solid',
                     borderColor: 'divider',
+                    position: 'relative',
                 }}
             >
                 <Tooltip title={collapsed ? 'Expandir menú' : 'Colapsar menú'}>
-                    <IconButton onClick={toggleCollapse}>
-                        {collapsed ? <FiChevronRight /> : <FiChevronLeft />}
+                    <IconButton
+                        onClick={toggleCollapse}
+                        sx={{
+                            backgroundColor: theme.palette.background.paper,
+                            border: `1px solid ${theme.palette.divider}`,
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                            '&:hover': {
+                                backgroundColor: theme.palette.action.hover,
+                            },
+                            transition: 'transform 0.3s ease',
+                            transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)'
+                        }}
+                    >
+                        <FiChevronLeft />
                     </IconButton>
                 </Tooltip>
             </Box>
@@ -149,6 +162,7 @@ export default function Layout({ children, mode, toggleTheme }) {
             </Box>
 
             <Divider sx={{ my: 1 }} />
+
             <Box
                 px={2}
                 py={2}
@@ -205,6 +219,7 @@ export default function Layout({ children, mode, toggleTheme }) {
                     onClose={handleDrawerToggle}
                     ModalProps={{ keepMounted: true }}
                     sx={{
+                        transition: 'width 0.3s ease',
                         '& .MuiDrawer-paper': {
                             width: collapsed ? 72 : drawerWidth,
                             top: 64,
