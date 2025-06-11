@@ -123,10 +123,11 @@ export default function VerReportes() {
                     <Table size={isMobile ? 'small' : 'medium'}>
                         <TableHead>
                             <TableRow>
-                                <TableCell>Número</TableCell>
+                                <TableCell>Línea Movil</TableCell>
                                 <TableCell>Mensaje</TableCell>
                                 <TableCell>Estado</TableCell>
                                 <TableCell>Campaña</TableCell>
+                                <TableCell>Línea Movil Origen</TableCell>
                                 <TableCell>Fecha de Envío</TableCell>
                             </TableRow>
                         </TableHead>
@@ -137,6 +138,7 @@ export default function VerReportes() {
                                     <TableCell>{r.mensaje}</TableCell>
                                     <TableCell>{getEstadoChip(r.estado)}</TableCell>
                                     <TableCell>{r.campaña?.nombre || '–'}</TableCell>
+                                    <TableCell>{r.aniEnvio || '–'}</TableCell>
                                     <TableCell>
                                         {r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : '–'}
                                     </TableCell>

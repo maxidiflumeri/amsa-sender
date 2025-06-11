@@ -105,6 +105,25 @@ export default function Layout({ children, mode, toggleTheme }) {
 
     const drawerContent = (
         <Box height="100%" display="flex" flexDirection="column">
+            {/* Encabezado con botón de colapsar */}
+            <Box
+                display="flex"
+                justifyContent={collapsed ? 'center' : 'flex-end'}
+                alignItems="center"
+                px={1}
+                py={1}
+                sx={{
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                }}
+            >
+                <Tooltip title={collapsed ? 'Expandir menú' : 'Colapsar menú'}>
+                    <IconButton onClick={toggleCollapse}>
+                        {collapsed ? <FiChevronRight /> : <FiChevronLeft />}
+                    </IconButton>
+                </Tooltip>
+            </Box>
+
             <Box sx={{ flexGrow: 1 }}>
                 <List sx={{ paddingTop: 1 }}>
                     {navItems.map(({ label, path, icon }) => (
@@ -200,29 +219,6 @@ export default function Layout({ children, mode, toggleTheme }) {
                 >
                     {drawerContent}
                 </Drawer>
-
-                {/* Botón flotante para colapsar/expandir */}
-                {!isMobile && (
-                    <Box
-                        marginTop={50}
-                        position="absolute"
-                        top="50%"
-                        right={-16}
-                        sx={{
-                            transform: 'translateY(-50%)',
-                            backgroundColor: theme.palette.background.paper,
-                            borderRadius: '50%',
-                            boxShadow: 2,
-                            zIndex: theme.zIndex.drawer + 2,
-                        }}
-                    >
-                        <Tooltip title={collapsed ? 'Expandir menú' : 'Colapsar menú'}>
-                            <IconButton onClick={toggleCollapse} size="small">
-                                {collapsed ? <FiChevronRight /> : <FiChevronLeft />}
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
-                )}
             </Box>
 
             {/* Contenido principal */}
