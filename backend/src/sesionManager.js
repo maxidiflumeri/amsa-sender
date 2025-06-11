@@ -2,66 +2,97 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { PrismaClient } = require('@prisma/client');
 const logger = require('./logger');
+const Redis = require('ioredis');
 
 const prisma = new PrismaClient();
 const sesiones = {}; // Mapa en memoria de sesiones activas
 
+const redis = new Redis({
+    host: process.env.REDIS_HOST,
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    maxRetriesPerRequest: null,
+});
+
 // Conecta una sesión desde cero (nuevo QR)
 function conectarNuevaSesion(sessionId) {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const client = new Client({
-                authStrategy: new LocalAuth({ clientId: sessionId }),
-                puppeteer: {
-                    args: ['--no-sandbox', '--disable-setuid-sandbox']
-                }
-            });
+    const client = new Client({
+        authStrategy: new LocalAuth({ clientId: sessionId }),
+        puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] },
+    });
 
-            sesiones[sessionId] = { client, estado: 'inicializando' };
+    sesiones[sessionId] = { client, estado: 'inicializando' };
+    let qrTimer = null;
 
-            let qrRespondido = false;
+    client.on('qr', (qr) => {
+        sesiones[sessionId].qr = qr;
+        sesiones[sessionId].estado = 'esperando escaneo';
 
-            client.on('qr', (qr) => {
-                sesiones[sessionId].qr = qr;
-                sesiones[sessionId].estado = 'esperando escaneo';
-                if (!qrRespondido) {
-                    qrRespondido = true;
-                    resolve({ id: sessionId, qr });  // <<< importante
-                }
-            });
+        redis.publish('estado-sesion', JSON.stringify({ estado: 'qr', qr, ani: '', sessionId }));
+    });
 
-            client.on('ready', async () => {
-                sesiones[sessionId].estado = 'conectado';
-                sesiones[sessionId].ani = `${client.info.wid.user}-${client.info.pushname}`;
-                await prisma.sesion.upsert({
-                    where: { sessionId },
-                    update: { estado: 'conectado', ani: sesiones[sessionId].ani },
-                    create: { sessionId, estado: 'conectado', ani: sesiones[sessionId].ani }
-                });
-                logger.info(`Sesión ${sessionId} conectada como ${client.info.wid.user}`);
-            });
+    client.on('authenticated', async () => {
+        sesiones[sessionId].estado = 'iniciando_sesion';
 
-            client.on('auth_failure', (msg) => {
-                logger.warn(`Fallo de autenticación en ${sessionId}: ${msg}`);
-            });
+        await redis.publish('estado-sesion', JSON.stringify({
+            estado: 'iniciando_sesion',
+            qr: '',
+            ani: '',
+            sessionId
+        }));
+    });
 
-            client.on('disconnected', async () => {
-                sesiones[sessionId].estado = 'desconectado';
-                await prisma.sesion.update({
-                    where: { sessionId },
-                    data: { estado: 'desconectado' }
-                });
-                logger.info(`Sesión ${sessionId} desconectada.`);
-            });
+    client.on('ready', async () => {
+        if (qrTimer) clearTimeout(qrTimer);
+        const ani = `${client.info.wid.user}-${client.info.pushname}`;
+        sesiones[sessionId].estado = 'conectado';
+        sesiones[sessionId].ani = ani;
 
-            await client.initialize();
-        } catch (error) {
-            logger.error(`Error al inicializar sesión ${sessionId}: ${error.message}`);
-            reject(error);
-        }
+        await redis.publish('estado-sesion', JSON.stringify({
+            estado: 'conectado',
+            qr: '',
+            ani,
+            sessionId
+        }));
+
+        await prisma.sesion.upsert({
+            where: { sessionId },
+            update: { estado: 'conectado', ani },
+            create: { sessionId, estado: 'conectado', ani },
+        });
+
+        logger.info(`Sesión ${sessionId} conectada como ${client.info.wid.user}`);
+    });
+
+    client.on('auth_failure', (msg) => {
+        logger.warn(`Fallo de autenticación en ${sessionId}: ${msg}`);
+        redis.publish('estado-sesion', JSON.stringify({
+            estado: 'fallo_autenticacion',
+            sessionId,
+            mensaje: msg
+        }));
+    });
+
+    client.on('disconnected', async () => {
+        sesiones[sessionId].estado = 'desconectado';
+        await prisma.sesion.update({
+            where: { sessionId },
+            data: { estado: 'desconectado' },
+        });
+        logger.info(`Sesión ${sessionId} desconectada.`);
+        redis.publish('estado-sesion', JSON.stringify({
+            estado: 'desconectado',
+            qr: '',
+            ani: '',
+            sessionId
+        }));
+        
+        logger.info(`🔌 Sesión ${sessionId} desconectada.`);
+    });
+
+    client.initialize().catch(error => {
+        logger.error(`Error al inicializar sesión ${sessionId}: ${error.message}`);
     });
 }
-
 
 // Reconecta todas las sesiones activas desde la base
 async function cargarSesionesActivas() {
@@ -92,6 +123,12 @@ async function reconectarSesion(sessionId) {
             where: { sessionId },
             data: { estado: 'conectado', ani }
         });
+        await redis.publish('estado-sesion', JSON.stringify({
+            estado: 'conectado',
+            qr: '',
+            ani,
+            sessionId
+        }));
         logger.info(`🔁 Sesión ${sessionId} reconectada (${ani})`);
     });
 

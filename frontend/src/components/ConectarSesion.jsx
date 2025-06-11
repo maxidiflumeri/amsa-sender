@@ -11,6 +11,7 @@ import {
     Fade,
 } from '@mui/material';
 import QRCode from 'react-qr-code';
+import { io } from 'socket.io-client';
 
 export default function ConectarCuenta() {
     const theme = useTheme();
@@ -21,37 +22,43 @@ export default function ConectarCuenta() {
     const [ani, setAni] = useState(null);
     const [loading, setLoading] = useState(false);
     const [conectado, setConectado] = useState(false);
+    const [autenticado, setAutenticado] = useState(false);
 
     const conectar = async () => {
         setLoading(true);
         try {
-            const res = await api.get('/conectar');
-            setQr(res.data.qr);
-            setId(res.data.id);
+            await api.post('/conectar');
         } catch (err) {
             console.error('Error al conectar:', err);
-        } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        if (!id || conectado) return;
+        const socket = io(import.meta.env.VITE_HOST_SOCKET); // cambiar si tenés otro host            
 
-        const interval = setInterval(async () => {
-            try {
-                const res = await api.get(`/status/${id}`);
-                if (res.data.estado === 'conectado') {
-                    setAni(res.data.ani);
-                    setConectado(true);
-                    setQr(null);
-                }
-            } catch (err) {
-                console.error('Error verificando estado:', err);
+        socket.on('estado_sesion', ({ estado, qr, ani, sessionId }) => {
+            if (estado == 'iniciando_sesion') {
+                setAni(ani);
+                setAutenticado(true);
+                setQr(null);
             }
-        }, 2000);
 
-        return () => clearInterval(interval);
+            if (estado == 'conectado') {
+                setAni(ani);
+                setConectado(true);
+                setAutenticado(false);
+                setQr(null);
+            }
+
+            if (estado == 'qr') {
+                setQr(qr);
+                setId(sessionId);
+                setLoading(false);
+            }
+        });
+
+        return () => socket.disconnect();
     }, [id, conectado]);
 
     return (
@@ -75,7 +82,7 @@ export default function ConectarCuenta() {
                     Conectar Cuenta WhatsApp
                 </Typography>
 
-                {!qr && !conectado && (
+                {!qr && !conectado && !autenticado && (
                     <Button
                         variant="contained"
                         onClick={conectar}
@@ -124,6 +131,13 @@ export default function ConectarCuenta() {
                         )}
                     </Box>
                 </Fade>
+
+                {autenticado && (
+                    <Box display="flex" flexDirection="column" alignItems="center" my={3}>
+                        <CircularProgress />
+                        <Typography mt={2}>Conectando con WhatsApp...</Typography>
+                    </Box>
+                )}
 
                 {conectado && (
                     <Alert

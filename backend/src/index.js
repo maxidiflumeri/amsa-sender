@@ -54,15 +54,12 @@ const upload = multer({ storage });
 // ====================== ENDPOINTS ======================
 
 // Conectar sesión
-app.get('/api/conectar', async (req, res) => {
+
+app.post('/api/conectar', async (req, res) => {
     const sessionId = 'session-' + Date.now();
-    try {
-        const resultado = await conectarNuevaSesion(sessionId);
-        res.json(resultado);
-    } catch (err) {
-        logger.error(`Error al conectar sesión ${sessionId}: ${err.message}`);
-        res.status(500).json({ error: 'Error al conectar sesión' });
-    }
+
+    conectarNuevaSesion(sessionId); // 🔁 No se espera el resolve
+    res.status(200).json({ sessionId }); // ✅ responde al frontend rápido
 });
 
 // Estado de sesiones
@@ -387,6 +384,14 @@ redisSub.subscribe('campania-estado', (err, count) => {
     }
 });
 
+redisSub.subscribe('estado-sesion', (err, count) => {
+    if (err) {
+        logger.error('❌ Error al suscribirse a estado-sesion:', err);
+    } else {
+        logger.info(`📡 Subscrito a estado-sesion (${count} canales)`);
+    }
+});
+
 redisSub.on('message', (channel, message) => {
     if (channel === 'campania-estado') {
         const { campaña, estado } = JSON.parse(message);
@@ -401,6 +406,11 @@ redisSub.on('message', (channel, message) => {
     if (channel === 'campania-pausada') {
         const { campañaId } = JSON.parse(message);
         io.emit('campania_pausada', { campañaId });
+    }
+
+    if (channel === 'estado-sesion') {
+        const { estado, qr, ani, sessionId } = JSON.parse(message);
+        io.emit('estado_sesion', { estado, qr, ani, sessionId });
     }
 
     if (channel === 'progreso-envio') {
