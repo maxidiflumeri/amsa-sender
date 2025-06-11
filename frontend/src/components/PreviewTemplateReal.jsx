@@ -6,27 +6,33 @@ import {
     DialogActions,
     Button,
     Typography,
-    Paper,
     MenuItem,
     Select,
     InputLabel,
     FormControl,
     Box,
-    CircularProgress
+    CircularProgress,
+    IconButton,
+    Tooltip,
+    useTheme,
+    Fade
 } from '@mui/material';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import api from '../api/axios';
 
 const PreviewTemplateReal = ({ open, onClose, templateId }) => {
+    const theme = useTheme();
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [campañas, setCampañas] = useState([]);
     const [campañaId, setCampañaId] = useState('');
     const [mensaje, setMensaje] = useState('');
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState('');
+    const [copiado, setCopiado] = useState(false);
 
     const obtenerCampañas = async () => {
         try {
-            const res = await api.get('/campanias'); // Asegurate de tener este endpoint
+            const res = await api.get('/campanias');
             setCampañas(res.data);
         } catch (err) {
             console.error('Error cargando campañas:', err);
@@ -35,7 +41,6 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
 
     const generarPreview = async () => {
         if (!campañaId || !templateId) return;
-
         setCargando(true);
         setMensaje('');
         setError('');
@@ -53,6 +58,21 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
         }
     };
 
+    const copiarAlPortapapeles = async () => {
+        try {
+            await navigator.clipboard.writeText(mensaje);
+            setCopiado(true);
+            setTimeout(() => setCopiado(false), 2000);
+        } catch (err) {
+            console.error('Error al copiar:', err);
+        }
+    };
+
+    const obtenerHoraActual = () => {
+        const now = new Date();
+        return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
     useEffect(() => {
         if (open) {
             obtenerCampañas();
@@ -61,9 +81,23 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
         }
     }, [open]);
 
+    const parsearFormatoWhatsApp = (texto) => {
+        if (!texto) return '';
+
+        return texto
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+            .replace(/_(.*?)_/g, '<em>$1</em>')
+            .replace(/~(.*?)~/g, '<s>$1</s>')
+            .replace(/`(.*?)`/g, '<code>$1</code>')
+            .replace(/\n/g, '<br />');
+    };
+
     return (
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-            <DialogTitle>Vista previa con datos reales</DialogTitle>
+            <DialogTitle>Vista previa tipo WhatsApp</DialogTitle>
             <DialogContent dividers>
                 <FormControl fullWidth sx={{ mb: 3 }}>
                     <InputLabel>Seleccioná una campaña</InputLabel>
@@ -85,7 +119,12 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
                     fullWidth
                     onClick={generarPreview}
                     disabled={!campañaId}
-                    sx={{ mb: 3, backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }}
+                    sx={{
+                        mb: 3,
+                        backgroundColor: '#075E54',
+                        fontFamily: commonFont,
+                        textTransform: 'none'
+                    }}
                 >
                     Generar vista previa
                 </Button>
@@ -95,18 +134,88 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
                         <CircularProgress />
                     </Box>
                 ) : mensaje ? (
-                    <Paper
-                        variant="outlined"
+                    <Box
                         sx={{
-                            p: 3,
-                            minHeight: 120,
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            fontSize: '1rem'
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 2,
+                            backgroundColor: theme.palette.mode === 'dark' ? '#1a1a1a' : '#e5ddd5',
+                            borderRadius: 2,
+                            p: 2,
+                            minHeight: 200
                         }}
                     >
-                        {mensaje}
-                    </Paper>
+                        {/* Mensaje entrante simulado */}
+                        <Fade in={true} timeout={500}>
+                            <Box
+                                sx={{
+                                    backgroundColor: theme.palette.mode === 'dark' ? '#2a2f32' : '#fff',
+                                    color: theme.palette.mode === 'dark' ? '#e9edef' : '#000',
+                                    borderRadius: '16px',
+                                    px: 2,
+                                    py: 1.5,
+                                    maxWidth: '75%',
+                                    display: 'inline-block',
+                                    boxShadow: 2,
+                                    fontSize: '1rem',
+                                    fontFamily: commonFont,
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word'
+                                }}
+                            >
+                                Hola, quería saber más sobre sus servicios.
+                                <Box sx={{ fontSize: '0.75rem', color: '#aaa', textAlign: 'right', mt: 1 }}>
+                                    {obtenerHoraActual()}
+                                </Box>
+                            </Box>
+                        </Fade>
+
+                        {/* Mensaje saliente generado */}
+                        <Fade in={true} timeout={700}>
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
+                                <Box
+                                    sx={{
+                                        backgroundColor: theme.palette.mode === 'dark' ? '#005c4b' : '#dcf8c6',
+                                        color: theme.palette.mode === 'dark' ? '#fff' : '#000',
+                                        borderRadius: '16px',
+                                        px: 2,
+                                        py: 1.5,
+                                        maxWidth: '75%',
+                                        boxShadow: 3,
+                                        fontSize: '1rem',
+                                        fontFamily: commonFont,
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word',
+                                        position: 'relative'
+                                    }}
+                                >
+                                    <span
+                                        dangerouslySetInnerHTML={{
+                                            __html: parsearFormatoWhatsApp(mensaje),
+                                        }}
+                                    />
+                                    <Box sx={{
+                                        fontSize: '0.75rem', color: theme.palette.mode === 'dark' ? '#ccd' : '#555'
+                                        , textAlign: 'right', mt: 1
+                                    }}>
+                                        {obtenerHoraActual()}
+                                    </Box>
+                                </Box>
+                                <Tooltip title={copiado ? "¡Copiado!" : "Copiar"}>
+                                    <IconButton
+                                        onClick={copiarAlPortapapeles}
+                                        sx={{
+                                            ml: 1,
+                                            mt: 'auto',
+                                            color: theme.palette.mode === 'dark' ? '#fff' : '#555'
+                                        }}
+                                    >
+                                        <ContentCopyIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                            </Box>
+                        </Fade>
+                    </Box>
                 ) : error ? (
                     <Typography color="error">{error}</Typography>
                 ) : null}

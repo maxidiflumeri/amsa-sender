@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import api from '../api/axios';
+import InboxIcon from '@mui/icons-material/Inbox';
 
 export default function VerReportes() {
     const theme = useTheme();
@@ -143,10 +144,22 @@ export default function VerReportes() {
                             ))}
                             {reportesPaginados.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={5}>
-                                        <Typography variant="body2" color="text.secondary">
-                                            No hay reportes para esta campaña.
-                                        </Typography>
+                                    <TableCell colSpan={8}>
+                                        <Box
+                                            sx={{
+                                                textAlign: 'center',
+                                                py: 6,
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                color: 'text.secondary'
+                                            }}
+                                        >
+                                            <InboxIcon sx={{ fontSize: 60, mb: 2 }} />
+                                            <Typography variant="h6" gutterBottom>
+                                                No hay reportes para esta campaña.
+                                            </Typography>
+                                        </Box>
                                     </TableCell>
                                 </TableRow>
                             )}

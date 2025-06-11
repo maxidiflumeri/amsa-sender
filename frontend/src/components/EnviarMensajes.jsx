@@ -17,7 +17,8 @@ import {
     Accordion,
     AccordionSummary,
     AccordionDetails,
-    CircularProgress
+    CircularProgress,
+    Autocomplete
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -118,7 +119,7 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
     return (
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
             <DialogTitle>
-                {`${mostrarCalendario? 'Agendar campaña: ' : 'Enviar campaña: '} ${campaña?.nombre}`}
+                {`${mostrarCalendario ? 'Agendar campaña: ' : 'Enviar campaña: '} ${campaña?.nombre}`}
                 <IconButton
                     aria-label="cerrar"
                     onClick={onClose}
@@ -128,21 +129,19 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
                 </IconButton>
             </DialogTitle>
             <DialogContent dividers>
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Template</InputLabel>
-                    <Select
-                        value={selectedTemplateId}
-                        onChange={(e) => setSelectedTemplateId(e.target.value)}
-                        label="Template"
-                    >
-                        {templates.map((t) => (
-                            <MenuItem key={t.id} value={t.id}>
-                                {t.nombre}
-                            </MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
-
+                <Autocomplete
+                    fullWidth
+                    sx={{ mb: 2 }}
+                    options={templates}
+                    getOptionLabel={(option) => option.nombre}
+                    value={templates.find((t) => t.id === selectedTemplateId) || null}
+                    onChange={(event, newValue) => {
+                        setSelectedTemplateId(newValue ? newValue.id : '');
+                    }}
+                    renderInput={(params) => (
+                        <TextField {...params} label="Template" />
+                    )}
+                />
                 <FormControl fullWidth sx={{ mb: 2 }}>
                     <InputLabel>Sesiones</InputLabel>
                     <Select

@@ -14,7 +14,8 @@ import {
     InputLabel,
     FormControl,
     Alert,
-    CircularProgress
+    CircularProgress,
+    Autocomplete
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import api from '../api/axios';
@@ -50,7 +51,11 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
             }
 
             api.get('/campanias')
-                .then(res => setCampañas(res.data))
+                .then(res => {
+                    const ordenadas = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                    console.log('Campañas ordenadas:', ordenadas.map(c => `${c.nombre} - ${c.createdAt}`));
+                    setCampañas(ordenadas);
+                })
                 .catch(err => console.error('Error al obtener campañas:', err));
         }
     }, [open, templateToEdit]);
@@ -58,24 +63,24 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
     const insertarVariable = (variable) => {
         const textarea = document.querySelector('textarea');
         if (!textarea) return;
-    
+
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
-    
+
         const textoAntes = contenido.substring(0, start);
         const textoDespues = contenido.substring(end);
         const insertar = `{{${variable}}}`;
-    
+
         const nuevoContenido = textoAntes + insertar + textoDespues;
         setContenido(nuevoContenido);
-    
+
         // Volver a enfocar el textarea y ubicar el cursor después del texto insertado
         setTimeout(() => {
             textarea.focus();
             const nuevaPos = start + insertar.length;
             textarea.setSelectionRange(nuevaPos, nuevaPos);
         }, 0);
-    };    
+    };
 
     const handleSeleccionCampañaReferencia = async (id) => {
         setCampañaReferenciaId(id);
@@ -212,18 +217,25 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
                     onChange={(e) => setNombre(e.target.value)}
                 />
 
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Campaña de referencia</InputLabel>
-                    <Select
-                        value={campañaReferenciaId}
-                        onChange={(e) => handleSeleccionCampañaReferencia(e.target.value)}
-                        label="Campaña de referencia"
-                    >
-                        {campañas.map((c) => (
-                            <MenuItem key={c.id} value={c.id}>{c.nombre}</MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
+                <Autocomplete
+                    fullWidth
+                    sx={{ mb: 2 }}
+                    options={campañas.slice(0, 10)}// últimas 10 campañas
+                    getOptionLabel={(option) => option.nombre}
+                    value={campañas.find((c) => c.id === campañaReferenciaId) || null}
+                    onChange={(event, newValue) => {
+                        if (newValue) {
+                            handleSeleccionCampañaReferencia(newValue.id);
+                        } else {
+                            setCampañaReferenciaId('');
+                            setVariablesDisponibles([]);
+                            setDatosEjemplo({});
+                        }
+                    }}
+                    renderInput={(params) => (
+                        <TextField {...params} label="Campaña de referencia" />
+                    )}
+                />
 
                 <Box display="flex" gap={2} flexWrap="wrap" mb={2}>
                     {variablesDisponibles.map((variable) => (
