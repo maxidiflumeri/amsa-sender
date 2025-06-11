@@ -25,6 +25,7 @@ import {
     Snackbar,
     useMediaQuery,
     Box,
+    TextField
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
@@ -42,6 +43,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import CircularProgress from '@mui/material/CircularProgress';
 import EventIcon from '@mui/icons-material/Event';
 import { useTheme } from '@mui/material/styles';
+import InboxIcon from '@mui/icons-material/Inbox';
 
 export default function VerCampañas() {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -63,6 +65,7 @@ export default function VerCampañas() {
     const [progresos, setProgresos] = useState({});
     const [pausando, setPausando] = useState([]);
     const [mostrarCalendario, setMostrarCalendario] = useState(false);
+    const [filtroTexto, setFiltroTexto] = useState('');
 
     const theme = useTheme();
     const codeStyle = {
@@ -126,11 +129,22 @@ export default function VerCampañas() {
     const pendientes = campañas.filter(c => c.estado === 'pendiente');
     const procesando = campañas.filter(c => ['procesando', 'pausada'].includes(c.estado));
     const enviadas = campañas.filter(c => c.estado === 'finalizada');
-    const campañasMostradas =
+    const campañasPorTab =
         tab === 0 ? pendientes :
             tab === 1 ? agendadas :
                 tab === 2 ? procesando :
                     enviadas;
+
+    const campañasMostradas = campañasPorTab.filter((c) =>
+        c.nombre.toLowerCase().includes(filtroTexto.toLowerCase())
+    );
+
+    const mensajesPorTab = {
+        0: 'No hay campañas pendientes.',
+        1: 'No hay campañas agendadas.',
+        2: 'No hay campañas procesando.',
+        3: 'No hay campañas enviadas.'
+    };
 
     const descendingComparator = (a, b, orderBy) => {
         let aVal = a[orderBy], bVal = b[orderBy];
@@ -267,6 +281,17 @@ export default function VerCampañas() {
                     <Tab label={`Enviadas (${enviadas.length})`} />
                 </Tabs>
 
+                <Box mb={2}>
+                    <TextField
+                        fullWidth
+                        label="Buscar campañas"
+                        variant="outlined"
+                        value={filtroTexto}
+                        onChange={(e) => setFiltroTexto(e.target.value)}
+                        placeholder="Buscar por nombre..."
+                    />
+                </Box>
+
                 <Box overflow="auto">
                     <Table size={isMobile ? 'small' : 'medium'}>
                         <TableHead>
@@ -274,17 +299,57 @@ export default function VerCampañas() {
                                 <TableCell>
                                     <TableSortLabel
                                         active={orderBy === 'nombre'}
-                                        direction={order}
+                                        direction={orderBy === 'nombre' ? order : 'asc'}
                                         onClick={() => handleRequestSort('nombre')}
                                     >
                                         Nombre
                                     </TableSortLabel>
                                 </TableCell>
-                                <TableCell align="right">Contactos</TableCell>
-                                <TableCell>Creado</TableCell>
-                                <TableCell>Enviado</TableCell>
-                                <TableCell>Estado</TableCell>
-                                <TableCell>Agendada para</TableCell>
+                                <TableCell align="right">
+                                    <TableSortLabel
+                                        active={orderBy === 'contactos'}
+                                        direction={orderBy === 'contactos' ? order : 'asc'}
+                                        onClick={() => handleRequestSort('contactos')}
+                                    >
+                                        Contactos
+                                    </TableSortLabel>
+                                </TableCell>
+                                <TableCell>
+                                    <TableSortLabel
+                                        active={orderBy === 'createdAt'}
+                                        direction={orderBy === 'createdAt' ? order : 'asc'}
+                                        onClick={() => handleRequestSort('createdAt')}
+                                    >
+                                        Creado
+                                    </TableSortLabel>
+                                </TableCell>
+                                <TableCell>
+                                    <TableSortLabel
+                                        active={orderBy === 'enviadoAt'}
+                                        direction={orderBy === 'enviadoAt' ? order : 'asc'}
+                                        onClick={() => handleRequestSort('enviadoAt')}
+                                    >
+                                        Enviado
+                                    </TableSortLabel>
+                                </TableCell>
+                                <TableCell>
+                                    <TableSortLabel
+                                        active={orderBy === 'estado'}
+                                        direction={orderBy === 'estado' ? order : 'asc'}
+                                        onClick={() => handleRequestSort('estado')}
+                                    >
+                                        Estado
+                                    </TableSortLabel>
+                                </TableCell>
+                                <TableCell>
+                                    <TableSortLabel
+                                        active={orderBy === 'agendadoAt'}
+                                        direction={orderBy === 'agendadoAt' ? order : 'asc'}
+                                        onClick={() => handleRequestSort('agendadoAt')}
+                                    >
+                                        Agendada para
+                                    </TableSortLabel>
+                                </TableCell>
                                 <TableCell>Progreso</TableCell>
                                 <TableCell>Acciones</TableCell>
                             </TableRow>
@@ -373,6 +438,35 @@ export default function VerCampañas() {
                                     </TableRow>
                                 </React.Fragment>
                             ))}
+
+                            {campañasPaginadas.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={8}>
+                                        <Box
+                                            sx={{
+                                                textAlign: 'center',
+                                                py: 6,
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                color: 'text.secondary'
+                                            }}
+                                        >
+                                            <InboxIcon sx={{ fontSize: 60, mb: 2 }} />
+                                            <Typography variant="h6" gutterBottom>
+                                                {filtroTexto
+                                                    ? 'No se encontraron campañas con ese nombre.'
+                                                    : mensajesPorTab[tab]}
+                                            </Typography>
+                                            {filtroTexto && (
+                                                <Typography variant="body2">
+                                                    Probá con otro término de búsqueda.
+                                                </Typography>
+                                            )}
+                                        </Box>
+                                    </TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </Box>

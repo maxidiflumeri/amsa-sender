@@ -45,6 +45,7 @@ model Reporte {
   numero     String
   mensaje    String? @db.Text
   estado     String
+  aniEnvio   String?  // <--- este campo
   enviadoAt  DateTime?   // nuevo campo
   campaña   Campaña? @relation(fields: [campañaId], references: [id], onDelete: SetNull)
   campañaId Int?

@@ -171,13 +171,19 @@ const worker = new Worker('envios-whatsapp', async job => {
                         total
                     }));
 
+                    const sesion = await prisma.sesion.findUnique({
+                        where: { sessionId },
+                        select: { ani: true }
+                    });                    
+
                     await prisma.reporte.create({
                         data: {
                             numero: contacto.numero,
                             estado: 'enviado',
                             mensaje: contacto.mensaje,
                             campañaId: campaña,
-                            enviadoAt: new Date()
+                            enviadoAt: new Date(),
+                            aniEnvio: sesion?.ani || null
                         }
                     });
                     logger.info(`✅ [${sessionId}] Mensaje enviado a ${contacto.numero}`);

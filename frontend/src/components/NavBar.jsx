@@ -105,6 +105,38 @@ export default function Layout({ children, mode, toggleTheme }) {
 
     const drawerContent = (
         <Box height="100%" display="flex" flexDirection="column">
+            {/* Encabezado con botón de colapsar */}
+            <Box
+                display="flex"
+                justifyContent={collapsed ? 'center' : 'flex-end'}
+                alignItems="center"
+                px={1}
+                py={1}
+                sx={{
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    position: 'relative',
+                }}
+            >
+                <Tooltip title={collapsed ? 'Expandir menú' : 'Colapsar menú'}>
+                    <IconButton
+                        onClick={toggleCollapse}
+                        sx={{
+                            backgroundColor: theme.palette.background.paper,
+                            border: `1px solid ${theme.palette.divider}`,
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                            '&:hover': {
+                                backgroundColor: theme.palette.action.hover,
+                            },
+                            transition: 'transform 0.3s ease',
+                            transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)'
+                        }}
+                    >
+                        <FiChevronLeft />
+                    </IconButton>
+                </Tooltip>
+            </Box>
+
             <Box sx={{ flexGrow: 1 }}>
                 <List sx={{ paddingTop: 1 }}>
                     {navItems.map(({ label, path, icon }) => (
@@ -130,6 +162,7 @@ export default function Layout({ children, mode, toggleTheme }) {
             </Box>
 
             <Divider sx={{ my: 1 }} />
+
             <Box
                 px={2}
                 py={2}
@@ -186,6 +219,7 @@ export default function Layout({ children, mode, toggleTheme }) {
                     onClose={handleDrawerToggle}
                     ModalProps={{ keepMounted: true }}
                     sx={{
+                        transition: 'width 0.3s ease',
                         '& .MuiDrawer-paper': {
                             width: collapsed ? 72 : drawerWidth,
                             top: 64,
@@ -200,29 +234,6 @@ export default function Layout({ children, mode, toggleTheme }) {
                 >
                     {drawerContent}
                 </Drawer>
-
-                {/* Botón flotante para colapsar/expandir */}
-                {!isMobile && (
-                    <Box
-                        marginTop={50}
-                        position="absolute"
-                        top="50%"
-                        right={-16}
-                        sx={{
-                            transform: 'translateY(-50%)',
-                            backgroundColor: theme.palette.background.paper,
-                            borderRadius: '50%',
-                            boxShadow: 2,
-                            zIndex: theme.zIndex.drawer + 2,
-                        }}
-                    >
-                        <Tooltip title={collapsed ? 'Expandir menú' : 'Colapsar menú'}>
-                            <IconButton onClick={toggleCollapse} size="small">
-                                {collapsed ? <FiChevronRight /> : <FiChevronLeft />}
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
-                )}
             </Box>
 
             {/* Contenido principal */}
