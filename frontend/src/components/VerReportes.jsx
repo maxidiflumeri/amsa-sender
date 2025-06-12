@@ -114,7 +114,7 @@ export default function VerReportes() {
 
     return (
         <Box
-            sx={{                
+            sx={{
                 py: 3
             }}
         >
@@ -134,7 +134,19 @@ export default function VerReportes() {
                         variant="contained"
                         onClick={exportarCSV}
                         disabled={reportes.length === 0}
-                        sx={{ backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }}
+                        sx={{
+                            borderRadius: 2,
+                            fontFamily: commonFont,
+                            textTransform: 'none',
+                            fontSize: '0.9rem',
+                            backgroundColor: '#075E54',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                                backgroundColor: '#0b7b65',
+                                transform: 'scale(1.03)',
+                                boxShadow: 4,
+                            },
+                        }}
                     >
                         Exportar CSV
                     </Button>

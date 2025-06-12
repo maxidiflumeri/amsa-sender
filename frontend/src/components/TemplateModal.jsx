@@ -8,7 +8,7 @@ import {
     TextField,
     Typography,
     Box,
-    IconButton,    
+    IconButton,
     Alert,
     Autocomplete
 } from '@mui/material';
@@ -17,6 +17,7 @@ import api from '../api/axios';
 import { useTheme } from '@mui/material/styles';
 
 export default function TemplateModal({ open, onClose, onSave, templateToEdit }) {
+    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const theme = useTheme();
     const [nombre, setNombre] = useState('');
     const [contenido, setContenido] = useState('');
@@ -47,7 +48,7 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
 
             api.get('/campanias')
                 .then(res => {
-                    const ordenadas = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));                    
+                    const ordenadas = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                     setCampañas(ordenadas);
                 })
                 .catch(err => console.error('Error al obtener campañas:', err));
@@ -286,11 +287,23 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
                 />
             </DialogContent>
 
-            <DialogActions>                
+            <DialogActions>
                 <Button
                     variant="contained"
                     onClick={handleGuardar}
-                    sx={{ backgroundColor: '#075E54' }}
+                    sx={{
+                        borderRadius: 2,
+                        fontFamily: commonFont,
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#075E54',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                            backgroundColor: '#0b7b65',
+                            transform: 'scale(1.03)',
+                            boxShadow: 4,
+                        },
+                    }}
                     disabled={!camposCompletos}
                 >
                     Guardar

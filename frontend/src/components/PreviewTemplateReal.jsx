@@ -5,7 +5,7 @@ import {
     DialogContent,
     DialogActions,
     Button,
-    Typography,    
+    Typography,
     Box,
     CircularProgress,
     IconButton,
@@ -122,10 +122,17 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
                     onClick={generarPreview}
                     disabled={!campañaId}
                     sx={{
-                        mb: 3,
-                        backgroundColor: '#075E54',
+                        borderRadius: 2,
                         fontFamily: commonFont,
-                        textTransform: 'none'
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#075E54',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                            backgroundColor: '#0b7b65',
+                            transform: 'scale(1.03)',
+                            boxShadow: 4,
+                        },
                     }}
                 >
                     Generar vista previa
@@ -138,6 +145,7 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
                 ) : mensaje ? (
                     <Box
                         sx={{
+                            mt: 3,
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 2,
@@ -226,13 +234,18 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
                 <Button
                     onClick={onClose}
                     sx={{
-                        backgroundColor: '#075E54',
                         color: '#fff',
+                        borderRadius: 2,
                         fontFamily: commonFont,
                         textTransform: 'none',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#075E54',
+                        transition: 'all 0.3s ease',
                         '&:hover': {
-                            backgroundColor: '#064e45',
-                        }
+                            backgroundColor: '#0b7b65',
+                            transform: 'scale(1.03)',
+                            boxShadow: 4,
+                        },
                     }}
                 >
                     Cerrar

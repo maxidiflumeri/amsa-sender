@@ -7,12 +7,13 @@ import {
     Box,
     Button,
     CircularProgress,
-    Snackbar,
-    Alert,
+    Snackbar,    
     useTheme,
     useMediaQuery,
     IconButton
 } from '@mui/material';
+import MuiAlert from '@mui/material/Alert';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import api from '../api/axios';
 import { io } from 'socket.io-client';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -20,8 +21,10 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
+import { useNavigate } from 'react-router-dom';
 
 export default function EstadoSesiones() {
+    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const [sesiones, setSesiones] = useState([]);
@@ -29,6 +32,7 @@ export default function EstadoSesiones() {
     const [feedback, setFeedback] = useState({ open: false, type: 'success', message: '' });
     const [sesionAEliminar, setSesionAEliminar] = useState(null);
     const [confirmarLimpiar, setConfirmarLimpiar] = useState(false);
+    const navigate = useNavigate();
 
     const cargarSesiones = async () => {
         const res = await api.get('/status');
@@ -93,7 +97,19 @@ export default function EstadoSesiones() {
                     Sesiones activas
                 </Typography>
                 <Button
-                    sx={{ fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textTransform: 'none' }}
+                    sx={{
+
+                        borderRadius: 2,
+                        fontFamily: commonFont,
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                            backgroundColor: theme.palette.error.dark, // más integrado al tema
+                            transform: 'scale(1.03)',
+                            boxShadow: 4,
+                        },
+                    }}
                     variant="contained"
                     color="error"
                     onClick={() => setConfirmarLimpiar(true)}
@@ -105,6 +121,62 @@ export default function EstadoSesiones() {
 
             {/* Tarjetas */}
             <Grid container spacing={2}>
+                {sesiones.length === 0 && !loading && (
+                    <Box
+                        minHeight="25vh"
+                        textAlign="center"
+                        display="flex"
+                        flexDirection="column"
+                        alignItems="center"
+                        justifyContent="center"
+                        sx={{
+                            border: '2px dashed',
+                            borderColor: theme.palette.mode === 'dark' ? '#555' : '#ccc',
+                            borderRadius: 4,
+                            py: 5,
+                            px: 3,
+                            backgroundColor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#f9f9f9',
+                            color: theme.palette.text.secondary,
+                            mx: 'auto',
+                        }}
+                    >
+                        <img
+                            src="https://cdn-icons-png.flaticon.com/512/4076/4076500.png"
+                            alt="Sin sesiones"
+                            width={100}
+                            style={{ marginBottom: 16, opacity: 0.6 }}
+                        />
+                        <Typography variant="h6" gutterBottom>
+                            No hay ninguna sesión conectada
+                        </Typography>
+                        <Typography variant="body2">
+                            Conectá una sesión para comenzar a gestionar tus campañas de WhatsApp.
+                        </Typography>
+                        <Button
+                            variant="contained"
+                            onClick={() => navigate('/conectar')}
+                            sx={{
+                                mt: 3,
+                                px: 4,
+                                py: 1.3,
+                                borderRadius: 2,
+                                fontFamily: commonFont,
+                                textTransform: 'none',
+                                fontSize: '0.9rem',
+                                backgroundColor: '#075E54',
+                                transition: 'all 0.3s ease',
+                                '&:hover': {
+                                    backgroundColor: '#0b7b65',
+                                    transform: 'scale(1.03)',
+                                    boxShadow: 4,
+                                },
+                            }}
+                        >
+                            Conectar sesión
+                        </Button>
+                    </Box>
+                )}
+
                 {sesiones.map((s) => (
                     <Grid item xs={12} sm={6} md={4} key={s.id}>
                         <Card
@@ -221,13 +293,15 @@ export default function EstadoSesiones() {
                 onClose={() => setFeedback({ ...feedback, open: false })}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
             >
-                <Alert
+                <MuiAlert
+                    elevation={6}
+                    variant="filled"
                     severity={feedback.type}
-                    sx={{ width: '100%' }}
                     onClose={() => setFeedback({ ...feedback, open: false })}
+                    icon={<CheckCircleIcon fontSize="inherit" />}
                 >
                     {feedback.message}
-                </Alert>
+                </MuiAlert>                
             </Snackbar>
         </Box>
     );

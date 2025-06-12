@@ -119,7 +119,19 @@ export default function VerTemplates() {
                         setSelectedTemplate(null);
                         setOpenDialog(true);
                     }}
-                    sx={{ backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }}
+                    sx={{                        
+                        borderRadius: 2,
+                        fontFamily: commonFont,
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#075E54',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                            backgroundColor: '#0b7b65',
+                            transform: 'scale(1.03)',
+                            boxShadow: 4,
+                        },
+                    }}
                 >
                     Crear nuevo
                 </Button>

@@ -78,10 +78,22 @@ export default function SubirCampaña({ onUploadSuccess, setMensaje }) {
                 <Box textAlign="center">
                     <Button
                         variant="contained"
-                        disabled={subiendo}
+                        disabled={subiendo || !nombreCampaña || !archivo}
                         onClick={handleUpload}
                         startIcon={subiendo ? <CircularProgress size={20} /> : null}
-                        sx={{ mb: 2, backgroundColor: '#075E54', fontFamily: commonFont, textTransform: 'none' }}
+                        sx={{
+                            borderRadius: 2,
+                            fontFamily: commonFont,
+                            textTransform: 'none',
+                            fontSize: '0.9rem',
+                            backgroundColor: '#075E54',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                                backgroundColor: '#0b7b65',
+                                transform: 'scale(1.03)',
+                                boxShadow: 4,
+                            },
+                        }}
                     >
                         {subiendo ? 'Subiendo...' : 'Subir'}
                     </Button>
