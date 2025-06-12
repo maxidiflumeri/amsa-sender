@@ -8,13 +8,8 @@ import {
     TextField,
     Typography,
     Box,
-    IconButton,
-    Select,
-    MenuItem,
-    InputLabel,
-    FormControl,
+    IconButton,    
     Alert,
-    CircularProgress,
     Autocomplete
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
@@ -52,8 +47,7 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
 
             api.get('/campanias')
                 .then(res => {
-                    const ordenadas = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-                    console.log('Campañas ordenadas:', ordenadas.map(c => `${c.nombre} - ${c.createdAt}`));
+                    const ordenadas = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));                    
                     setCampañas(ordenadas);
                 })
                 .catch(err => console.error('Error al obtener campañas:', err));
@@ -220,7 +214,7 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
                 <Autocomplete
                     fullWidth
                     sx={{ mb: 2 }}
-                    options={campañas.slice(0, 10)}// últimas 10 campañas
+                    options={campañas.slice(0, 15)}// últimas 10 campañas
                     getOptionLabel={(option) => option.nombre}
                     value={campañas.find((c) => c.id === campañaReferenciaId) || null}
                     onChange={(event, newValue) => {

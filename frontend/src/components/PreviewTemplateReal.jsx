@@ -5,17 +5,15 @@ import {
     DialogContent,
     DialogActions,
     Button,
-    Typography,
-    MenuItem,
-    Select,
-    InputLabel,
-    FormControl,
+    Typography,    
     Box,
     CircularProgress,
     IconButton,
     Tooltip,
     useTheme,
-    Fade
+    Fade,
+    Autocomplete,
+    TextField
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import api from '../api/axios';
@@ -33,7 +31,8 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
     const obtenerCampañas = async () => {
         try {
             const res = await api.get('/campanias');
-            setCampañas(res.data);
+            const ordenadas = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            setCampañas(ordenadas);
         } catch (err) {
             console.error('Error cargando campañas:', err);
         }
@@ -99,21 +98,24 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
             <DialogTitle>Vista previa tipo WhatsApp</DialogTitle>
             <DialogContent dividers>
-                <FormControl fullWidth sx={{ mb: 3 }}>
-                    <InputLabel>Seleccioná una campaña</InputLabel>
-                    <Select
-                        value={campañaId}
-                        label="Seleccioná una campaña"
-                        onChange={(e) => setCampañaId(e.target.value)}
-                    >
-                        {campañas.map((c) => (
-                            <MenuItem key={c.id} value={c.id}>
-                                {c.nombre}
-                            </MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
-
+                <Autocomplete
+                    fullWidth
+                    options={campañas.slice(0, 15)}// últimas 10 campañas
+                    getOptionLabel={(option) => option.nombre}
+                    value={campañas.find((c) => c.id === campañaId) || null}
+                    onChange={(event, newValue) => {
+                        setCampañaId(newValue ? newValue.id : '');
+                    }}
+                    renderInput={(params) => (
+                        <TextField
+                            {...params}
+                            label="Seleccioná una campaña"
+                            variant="outlined"
+                            sx={{ mb: 3 }}
+                        />
+                    )}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                />
                 <Button
                     variant="contained"
                     fullWidth
