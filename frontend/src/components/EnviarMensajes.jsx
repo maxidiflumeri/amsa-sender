@@ -49,7 +49,7 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
             setSelectedTemplateId('');
             setFechaAgendada(null);
 
-            api.get('/status')
+            api.get('/sesiones/status')
                 .then(res => setSesiones(res.data))
                 .catch(err => console.error('Error al obtener sesiones:', err));
 
@@ -95,7 +95,7 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
                 });
             } else {
                 // Envío inmediato
-                await api.post('/send-messages', {
+                await api.post('/mensajes/send-messages', {
                     sessionIds: selectedSesion,
                     campaña: campaña.id,
                     config

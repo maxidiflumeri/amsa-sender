@@ -30,7 +30,7 @@ export default function SubirCampaña({ onUploadSuccess, setMensaje }) {
 
         setSubiendo(true);
         try {
-            await api.post('/upload-csv', formData);
+            await api.post('/campanias/upload-csv', formData);
             setArchivo(null);
             setNombreCampaña('');
             inputFileRef.current.value = null;

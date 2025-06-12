@@ -2,9 +2,93 @@ const Handlebars = require('handlebars');
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
 const logger = require('../logger');
 const colaEnvios = require('../queues/colaEnvios');
+const multer = require('multer');
+const csv = require('csv-parser');
+const fs = require('fs');
+const fsPromises = require('fs').promises;
+const prisma = new PrismaClient();
+
+// ====================== CONFIGURAR MULTER ======================
+const storage = multer.diskStorage({
+    destination: '../uploads',
+    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+});
+const upload = multer({ storage });
+
+// Subida de CSV
+router.post('/upload-csv', upload.single('file'), async (req, res) => {
+    if (!req.file) {
+        logger.warn('Intento de subir sin archivo CSV.');
+        return res.status(400).json({ error: 'Archivo CSV requerido.' });
+    }
+
+    const { campaña } = req.body;
+    const nombreCampaña = campaña || 'Campaña sin nombre';
+    const contactos = [];
+    const filePath = req.file.path;
+    let nuevaCampaña;
+
+    try {
+        nuevaCampaña = await prisma.campaña.create({ data: { nombre: nombreCampaña } });
+
+        fs.createReadStream(filePath)
+            .pipe(csv())
+            .on('data', (data) => {
+                const numero = data['numero']?.trim();
+                if (!numero) return;
+
+                // Separar mensaje si viene como columna, y quitarlo de los datos
+                const mensaje = data['mensaje']?.trim();
+                const { mensaje: _, numero: __, ...otrosCampos } = data;
+
+                contactos.push({
+                    numero,
+                    mensaje: mensaje || null,
+                    datos: otrosCampos
+                });
+            })
+            .on('end', async () => {
+                try {
+                    for (const c of contactos) {
+                        await prisma.contacto.create({
+                            data: {
+                                numero: c.numero,
+                                mensaje: c.mensaje,
+                                datos: c.datos,
+                                campañaId: nuevaCampaña.id
+                            }
+                        });
+                    }
+
+                    logger.info(`CSV procesado: ${contactos.length} contactos guardados.`);
+
+                    try {
+                        await fsPromises.unlink(filePath);
+                        logger.info(`Archivo CSV eliminado: ${filePath}`);
+                    } catch (unlinkErr) {
+                        logger.warn(`No se pudo eliminar el archivo ${filePath}: ${unlinkErr.message}`);
+                    }
+
+                    res.json({ total: contactos.length, campaña: nombreCampaña });
+                } catch (err) {
+                    logger.error(`Error guardando contactos del CSV: ${err.message}`);
+                    res.status(500).json({ error: 'Error al guardar contactos.' });
+                }
+            });
+
+    } catch (err) {
+        logger.error(`Error creando campaña: ${err.message}`);
+        try {
+            await fsPromises.unlink(filePath);
+            logger.info(`Archivo CSV eliminado tras error: ${filePath}`);
+        } catch (unlinkErr) {
+            logger.warn(`No se pudo eliminar el archivo tras error: ${unlinkErr.message}`);
+        }
+        res.status(500).json({ error: 'Error al crear campaña.' });
+    }
+});
 
 router.get('/:id/primer-contacto', async (req, res) => {
     const { id } = req.params;
@@ -184,7 +268,7 @@ router.delete('/:id', async (req, res) => {
         if (!campaña) return res.status(404).json({ error: 'Campaña no encontrada' });
         if (campaña.estado === 'procesando') return res.status(400).json({ error: 'No se puede eliminar una campaña en proceso de envío' });
         if (campaña?.jobId) {
-            const job = await colaEnvios.getJob(campaña.jobId);            
+            const job = await colaEnvios.getJob(campaña.jobId);
             if (job) {
                 await job.remove();
                 logger.info(`🗑️ Job ${campaña.jobId} eliminado de la cola.`);

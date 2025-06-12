@@ -27,7 +27,7 @@ export default function ConectarCuenta() {
     const conectar = async () => {
         setLoading(true);
         try {
-            await api.post('/conectar');
+            await api.post('/sesiones/conectar');
         } catch (err) {
             console.error('Error al conectar:', err);
             setLoading(false);

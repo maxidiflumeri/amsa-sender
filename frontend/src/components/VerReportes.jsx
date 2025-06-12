@@ -30,7 +30,7 @@ export default function VerReportes() {
     const [rowsPerPage, setRowsPerPage] = useState(10);
 
     useEffect(() => {
-        api.get('/campanias-con-reportes')
+        api.get('/reportes/campanias-con-reportes')
             .then(res => setCampañas(res.data))
             .catch(err => console.error('Error cargando campañas', err));
     }, []);
@@ -41,7 +41,7 @@ export default function VerReportes() {
             return;
         }
 
-        api.get(`/reports?campañaId=${campañaSeleccionada.id}`)
+        api.get(`/reportes?campañaId=${campañaSeleccionada.id}`)
             .then(res => setReportes(res.data))
             .catch(err => console.error('Error cargando reportes', err));
     }, [campañaSeleccionada]);

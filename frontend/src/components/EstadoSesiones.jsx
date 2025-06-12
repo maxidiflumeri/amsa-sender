@@ -35,7 +35,7 @@ export default function EstadoSesiones() {
     const navigate = useNavigate();
 
     const cargarSesiones = async () => {
-        const res = await api.get('/status');
+        const res = await api.get('/sesiones/status');
         setSesiones(res.data);
     };
 
