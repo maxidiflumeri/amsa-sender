@@ -91,17 +91,25 @@ const ThemedSwitch = styled(Switch)(({ theme }) => ({
 
 export default function Layout({ children, mode, toggleTheme }) {
     const [mobileOpen, setMobileOpen] = useState(false);
-    const [collapsed, setCollapsed] = useState(false);
+    const [collapsed, setCollapsed] = useState(true);
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     const location = useLocation();
-
+    const [delayedDrawerWidth, setDelayedDrawerWidth] = useState(drawerWidth);
     const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
     const toggleCollapse = () => setCollapsed(prev => !prev);
 
     useEffect(() => {
         if (isMobile) setCollapsed(false);
     }, [isMobile]);
+
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            setDelayedDrawerWidth(collapsed ? 72 : drawerWidth);
+        }, 300); // el mismo delay de la transición del Drawer
+
+        return () => clearTimeout(timeout);
+    }, [collapsed]);
 
     const drawerContent = (
         <Box height="100%" display="flex" flexDirection="column">
@@ -141,21 +149,23 @@ export default function Layout({ children, mode, toggleTheme }) {
                 <List sx={{ paddingTop: 1 }}>
                     {navItems.map(({ label, path, icon }) => (
                         <ListItem key={path} disablePadding>
-                            <ListItemButton
-                                component={RouterLink}
-                                to={path}
-                                selected={location.pathname === path}
-                                onClick={isMobile ? handleDrawerToggle : undefined}
-                                sx={{
-                                    '&.Mui-selected': {
-                                        backgroundColor: theme.palette.action.selected,
-                                        fontWeight: 'bold',
-                                    }
-                                }}
-                            >
-                                <ListItemIcon>{icon}</ListItemIcon>
-                                {!collapsed && <ListItemText primary={label} />}
-                            </ListItemButton>
+                            <Tooltip title={collapsed ? label : ''} placement="right">
+                                <ListItemButton
+                                    component={RouterLink}
+                                    to={path}
+                                    selected={location.pathname === path}
+                                    onClick={isMobile ? handleDrawerToggle : undefined}
+                                    sx={{
+                                        '&.Mui-selected': {
+                                            backgroundColor: theme.palette.action.selected,
+                                            fontWeight: 'bold',
+                                        }
+                                    }}
+                                >
+                                    <ListItemIcon>{icon}</ListItemIcon>
+                                    {!collapsed && <ListItemText primary={label} />}
+                                </ListItemButton>
+                            </Tooltip>
                         </ListItem>
                     ))}
                 </List>
@@ -173,11 +183,7 @@ export default function Layout({ children, mode, toggleTheme }) {
                 {!collapsed ? (
                     <ThemedSwitch checked={mode === 'dark'} onChange={toggleTheme} />
                 ) : (
-                    <Tooltip title={mode === 'dark' ? 'Modo claro' : 'Modo oscuro'}>
-                        <IconButton onClick={toggleTheme}>
-                            {mode === 'dark' ? <FaSun /> : <FaMoon />}
-                        </IconButton>
-                    </Tooltip>
+                    <ThemedSwitch checked={mode === 'dark'} onChange={toggleTheme} sx={{ transform: 'scale(0.7)' }} />
                 )}
             </Box>
         </Box>
@@ -208,7 +214,7 @@ export default function Layout({ children, mode, toggleTheme }) {
             <Box
                 position="relative"
                 sx={{
-                    width: { md: collapsed ? 72 : drawerWidth },
+                    width: { md: collapsed ? 60 : drawerWidth },
                     flexShrink: 0,
                     height: 'calc(100% - 64px)',
                 }}
@@ -221,7 +227,7 @@ export default function Layout({ children, mode, toggleTheme }) {
                     sx={{
                         transition: 'width 0.3s ease',
                         '& .MuiDrawer-paper': {
-                            width: collapsed ? 72 : drawerWidth,
+                            width: collapsed ? 60 : drawerWidth,
                             top: 64,
                             height: 'calc(100% - 64px)',
                             boxSizing: 'border-box',
@@ -241,22 +247,16 @@ export default function Layout({ children, mode, toggleTheme }) {
                 component="main"
                 sx={{
                     flexGrow: 1,
-                    padding: 1,
-                    marginTop: '64px',
-                    width: {
-                        xs: '100%',
-                        md: `calc(100% - ${collapsed ? 72 : drawerWidth}px)`
-                    },
-                    marginLeft: {
-                        md: collapsed ? '72px' : `${drawerWidth}px`
-                    },
-                    transition: 'all 0.3s ease',
-                    maxWidth: '100vw',
-                    overflowX: 'hidden',
-                    position: 'absolute'
+                    mt: '64px',
+                    width: { md: `calc(100% - ${delayedDrawerWidth}px)` },
+                    transition: 'width 0.3s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
                 }}
             >
-                {children}
+                <Box sx={{ flex: 1, px: { xs: 2, md: 3, lg: 4 }, width: '100%', transition: 'width 0.3s ease' }}>
+                    {children}
+                </Box>
             </Box>
         </Box>
     );

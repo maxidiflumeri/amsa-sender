@@ -292,15 +292,7 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
                 />
             </DialogContent>
 
-            <DialogActions>
-                <Button
-                    sx={{ backgroundColor: '#075E54' }}
-                    variant="contained"
-                    onClick={generarVistaPrevia}
-                    disabled={!camposCompletos || loadingPreview}
-                >
-                    Generar vista previa
-                </Button>
+            <DialogActions>                
                 <Button
                     variant="contained"
                     onClick={handleGuardar}

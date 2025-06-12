@@ -254,8 +254,22 @@ export default function VerCampañas() {
     };
 
     return (
-        <Box px={isMobile ? 1 : 3}>
-            <Paper sx={{ p: isMobile ? 1 : 2 }}>
+        <Box
+            sx={{
+                py: 3,
+                transition: 'all 0.1s ease'
+            }}
+        >
+            <Paper
+                elevation={1}
+                sx={{
+                    width: '100%',
+                    overflowX: 'auto',
+                    maxWidth: 'none',
+                    p: isMobile ? 1 : 3,
+                    boxShadow: 'none',
+                }}
+            >
                 <Box display="flex" flexDirection={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'flex-start' : 'center'} gap={2}>
                     <Typography variant="h6">Campañas</Typography>
                     <Button
@@ -358,8 +372,19 @@ export default function VerCampañas() {
                             {campañasPaginadas.map((c) => (
                                 <React.Fragment key={c.id}>
                                     <TableRow hover onClick={() => setCampañaSeleccionada(c)} sx={{ cursor: 'pointer' }}>
-                                        <TableCell>{c.nombre}</TableCell>
-                                        <TableCell align="right">{c.contactos.length}</TableCell>
+                                        <TableCell
+                                            sx={{
+                                                maxWidth: 200,
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis'
+                                            }}
+                                        >
+                                            <Tooltip title={c.nombre}>
+                                                <span>{c.nombre}</span>
+                                            </Tooltip>
+                                        </TableCell>
+                                        <TableCell align="right" sx={{ maxWidth: 5 }}>{c.contactos.length}</TableCell>
                                         <TableCell>{c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}</TableCell>
                                         <TableCell>{c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–'}</TableCell>
                                         <TableCell>
@@ -388,7 +413,7 @@ export default function VerCampañas() {
                                                 </Box>
                                             )}
                                         </TableCell>
-                                        <TableCell onClick={(e) => e.stopPropagation()}>
+                                        <TableCell onClick={(e) => e.stopPropagation()} sx={{ whiteSpace: 'nowrap', minWidth: 120 }}>
                                             {c.estado === 'pendiente' && (
                                                 <>
                                                     <Tooltip title="Enviar campaña">

@@ -11,9 +11,15 @@ import {
     Alert,
     useTheme,
     useMediaQuery,
+    IconButton
 } from '@mui/material';
 import api from '../api/axios';
 import { io } from 'socket.io-client';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 
 export default function EstadoSesiones() {
     const theme = useTheme();
@@ -21,6 +27,8 @@ export default function EstadoSesiones() {
     const [sesiones, setSesiones] = useState([]);
     const [loading, setLoading] = useState(false);
     const [feedback, setFeedback] = useState({ open: false, type: 'success', message: '' });
+    const [sesionAEliminar, setSesionAEliminar] = useState(null);
+    const [confirmarLimpiar, setConfirmarLimpiar] = useState(false);
 
     const cargarSesiones = async () => {
         const res = await api.get('/status');
@@ -39,7 +47,7 @@ export default function EstadoSesiones() {
                 cargarSesiones();
             }
             if (estado == 'conectado') {
-                cargarSesiones();                
+                cargarSesiones();
             }
         });
 
@@ -53,7 +61,7 @@ export default function EstadoSesiones() {
     const limpiarSesiones = async () => {
         setLoading(true);
         try {
-            await api.delete('/sessions/clear');
+            await api.delete('/sesiones/clear');
             await cargarSesiones();
             setFeedback({ open: true, type: 'success', message: 'Sesiones limpiadas correctamente' });
         } catch (err) {
@@ -64,7 +72,14 @@ export default function EstadoSesiones() {
     };
 
     return (
-        <Box sx={{ p: { xs: 2, md: 3 }, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
+        <Box
+            sx={{
+                maxWidth: '1400px',
+                mx: 'auto',
+                px: { xs: 2, md: 3, lg: 4 },
+                py: 3
+            }}
+        >
             {/* Header y botón */}
             <Box
                 display="flex"
@@ -81,7 +96,7 @@ export default function EstadoSesiones() {
                     sx={{ fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textTransform: 'none' }}
                     variant="contained"
                     color="error"
-                    onClick={limpiarSesiones}
+                    onClick={() => setConfirmarLimpiar(true)}
                     disabled={loading}
                 >
                     {loading ? <CircularProgress size={20} /> : 'Limpiar Sesiones'}
@@ -95,8 +110,7 @@ export default function EstadoSesiones() {
                         <Card
                             variant="outlined"
                             sx={{
-                                display: 'flex',
-                                alignItems: 'center',
+                                position: 'relative',
                                 p: 2,
                                 borderRadius: 2,
                                 boxShadow: 1,
@@ -108,26 +122,97 @@ export default function EstadoSesiones() {
                                 '&:hover': { boxShadow: 6 },
                             }}
                         >
-                            <Box
+                            {/* Botón eliminar */}
+                            <IconButton
+                                size="small"
+                                onClick={() => setSesionAEliminar(s)}
                                 sx={{
-                                    width: 12,
-                                    height: 12,
-                                    borderRadius: '50%',
-                                    bgcolor: getColor(s.estado),
-                                    mr: 2,
+                                    position: 'absolute',
+                                    top: 6,
+                                    right: 6,
+                                    color: theme.palette.error.main,
+                                    zIndex: 1,
                                 }}
-                            />
-                            <CardContent sx={{ p: 0 }}>
-                                <Typography variant="subtitle1" noWrap>{`Id: ${s.id}`}</Typography>
-                                <Typography variant="subtitle2" noWrap>{`Ani: ${s.ani}`}</Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    Estado: {s.estado}
-                                </Typography>
-                            </CardContent>
+                            >
+                                <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+
+                            {/* Estado */}
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <Box
+                                    sx={{
+                                        width: 12,
+                                        height: 12,
+                                        borderRadius: '50%',
+                                        bgcolor: getColor(s.estado),
+                                        mr: 2,
+                                    }}
+                                />
+                                <CardContent sx={{ pl: 0, pt: 0, pr: 3 }}>
+                                    <Typography variant="subtitle1" noWrap>{`Id: ${s.id}`}</Typography>
+                                    <Typography variant="subtitle2" noWrap>{`Ani: ${s.ani}`}</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Estado: {s.estado}
+                                    </Typography>
+                                </CardContent>
+                            </Box>
                         </Card>
                     </Grid>
                 ))}
             </Grid>
+
+            {/* Modal de confirmación */}
+            <Dialog open={!!sesionAEliminar} onClose={() => setSesionAEliminar(null)}>
+                <DialogTitle>¿Eliminar esta sesión?</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2">
+                        ¿Estás seguro de que querés eliminar la sesión{' '}
+                        <strong>{sesionAEliminar?.id}</strong>? Esta acción no se puede deshacer.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setSesionAEliminar(null)}>Cancelar</Button>
+                    <Button
+                        onClick={async () => {
+                            try {
+                                await api.delete(`/sesiones/${sesionAEliminar.id}`);
+                                setFeedback({ open: true, type: 'success', message: 'Sesión eliminada exitosamente' });
+                                cargarSesiones();
+                            } catch (error) {
+                                setFeedback({ open: true, type: 'error', message: 'Error al eliminar sesión' });
+                            } finally {
+                                setSesionAEliminar(null);
+                            }
+                        }}
+                        color="error"
+                        variant="contained"
+                    >
+                        Eliminar
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={confirmarLimpiar} onClose={() => setConfirmarLimpiar(false)}>
+                <DialogTitle>¿Limpiar todas las sesiones?</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2">
+                        Esta acción eliminará todas las sesiones activas y en memoria. ¿Deseás continuar?
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setConfirmarLimpiar(false)}>Cancelar</Button>
+                    <Button
+                        onClick={async () => {
+                            setConfirmarLimpiar(false);
+                            await limpiarSesiones();
+                        }}
+                        color="error"
+                        variant="contained"
+                    >
+                        Confirmar
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Feedback */}
             <Snackbar

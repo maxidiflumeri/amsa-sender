@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { Container, CssBaseline, ThemeProvider, createTheme } from '@mui/material';
+import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import Navbar from './components/NavBar';
 import ConectarSesion from './components/ConectarSesion';
 import EstadoSesiones from './components/EstadoSesiones';
@@ -175,8 +175,7 @@ export default function App() {
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
-            <Navbar mode={mode} toggleTheme={toggleTheme} />
-            <Container sx={{ mt: 10 }}>
+            <Navbar mode={mode} toggleTheme={toggleTheme}>
                 <Routes>
                     <Route path="/" element={<EstadoSesiones />} />
                     <Route path="/conectar" element={<ConectarSesion />} />
@@ -186,7 +185,7 @@ export default function App() {
                     <Route path="/reportes" element={<VerReportes />} />
                     <Route path="/templates" element={<VerTemplates />} />
                 </Routes>
-            </Container>
+            </Navbar>
         </ThemeProvider>
     );
 }

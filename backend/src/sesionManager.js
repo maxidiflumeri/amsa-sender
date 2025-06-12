@@ -195,11 +195,43 @@ async function limpiarSesiones() {
     logger.info('🧹 Todas las sesiones en memoria fueron limpiadas.');
 }
 
+async function eliminarSesionPorId(sessionId) {
+    const sesion = sesiones[sessionId];
+    const estado = sesion?.estado || 'desconocido';
+
+    try {
+        if (estado !== 'desconectado' && sesion?.client) {
+            logger.info(`🧼 Cerrando sesión activa ${sessionId}...`);
+
+            if (sesion.client.pupBrowser?.isConnected()) {
+                await sesion.client.pupBrowser.close().catch(err => {
+                    logger.warn(`⚠️ Error cerrando browser Puppeteer en sesión ${sessionId}: ${err.message}`);
+                });
+            }
+
+            await sesion.client.destroy();
+            logger.info(`✅ Sesión ${sessionId} destruida correctamente.`);
+        } else {
+            logger.info(`ℹ️ Sesión ${sessionId} ya estaba desconectada, no se ejecuta destroy().`);
+        }
+    } catch (err) {
+        if (err.code === 'EBUSY') {
+            logger.warn(`⚠️ Archivo bloqueado al destruir sesión ${sessionId}: ${err.message}`);
+        } else {
+            logger.error(`💥 Error inesperado al destruir sesión ${sessionId}: ${err.message}`);
+        }
+    }
+
+    delete sesiones[sessionId];
+    logger.info(`🗑️ Sesión ${sessionId} eliminada de memoria.`);
+}
+
 module.exports = {
     conectarNuevaSesion,
     cargarSesionesActivas,
     reconectarSesion,
     getSesion,
     getSesionesActivas,
-    limpiarSesiones
+    limpiarSesiones,
+    eliminarSesionPorId
 };

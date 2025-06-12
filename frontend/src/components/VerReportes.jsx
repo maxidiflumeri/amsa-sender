@@ -113,8 +113,21 @@ export default function VerReportes() {
     const reportesPaginados = reportes.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
     return (
-        <Box px={isMobile ? 1 : 3}>
-            <Paper sx={{ p: isMobile ? 1 : 2 }}>
+        <Box
+            sx={{                
+                py: 3
+            }}
+        >
+            <Paper
+                elevation={1}
+                sx={{
+                    width: '100%',
+                    overflowX: 'auto',
+                    maxWidth: 'none',
+                    p: isMobile ? 1 : 3,
+                    boxShadow: 'none',
+                }}
+            >
                 <Box display="flex" flexDirection={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'flex-start' : 'center'} gap={2}>
                     <Typography variant="h6">Reportes de Envío</Typography>
                     <Button
