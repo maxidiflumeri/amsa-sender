@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach backend",
+            "type": "node",
+            "request": "attach",
+            "port": 9229,
+            "restart": false,
+            "protocol": "inspector",
+            "skipFiles": [
+                "<node_internals>/**"
+            ]
+        },
+        {
+            "name": "Attach worker",
+            "type": "node",
+            "request": "attach",
+            "port": 9230,
+            "restart": false,
+            "protocol": "inspector",
+            "skipFiles": [
+                "<node_internals>/**"
+            ]
+        }
+    ]
+}

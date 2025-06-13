@@ -115,7 +115,7 @@ router.get('/', async (req, res) => {
 });
 
 // Eliminar un template por ID
-router.delete('/:id', async (req, res) => {
+router.delete('/:id(\\d+)', async (req, res) => {
     const { id } = req.params;
 
     try {
@@ -130,7 +130,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Editar un template por ID
-router.put('/:id', async (req, res) => {
+router.put('/:id(\\d+)', async (req, res) => {
     const { id } = req.params;
     const { nombre, contenido } = req.body;
 

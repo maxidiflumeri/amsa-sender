@@ -90,6 +90,21 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
     }
 });
 
+// Obtener campañas
+router.get('/', async (req, res) => {
+    try {
+        const camp = await prisma.campaña.findMany({
+            where: { archivada: false },
+            include: { contactos: true },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(camp);
+    } catch (err) {
+        logger.error(`Error al obtener campañas: ${err.message}`);
+        res.status(500).json({ error: 'Error al obtener campañas' });
+    }
+});
+
 router.get('/:id/primer-contacto', async (req, res) => {
     const { id } = req.params;
 
@@ -232,67 +247,34 @@ router.post('/:id/agendar', async (req, res) => {
     }
 });
 
-// Obtener campañas
-router.get('/', async (req, res) => {
-    try {
-        const camp = await prisma.campaña.findMany({
-            where: { archivada: false },
-            include: { contactos: true },
-            orderBy: { createdAt: 'desc' },
-        });
-        res.json(camp);
-    } catch (err) {
-        logger.error(`Error al obtener campañas: ${err.message}`);
-        res.status(500).json({ error: 'Error al obtener campañas' });
-    }
-});
-
-// Obtener campaña por ID
-router.get('/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const campaña = await prisma.campaña.findUnique({ where: { id: parseInt(id) } });
-        if (!campaña) return res.status(404).json({ error: 'Campaña no encontrada' });
-        res.json(campaña);
-    } catch (err) {
-        logger.error(`Error al obtener campañas: ${err.message}`);
-        res.status(500).json({ error: 'Error al obtener campañas' });
-    }
-});
-
-// Eliminar campaña por ID
-router.delete('/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const campaña = await prisma.campaña.findUnique({ where: { id: parseInt(id) } });
-        if (!campaña) return res.status(404).json({ error: 'Campaña no encontrada' });
-        if (campaña.estado === 'procesando') return res.status(400).json({ error: 'No se puede eliminar una campaña en proceso de envío' });
-        if (campaña?.jobId) {
-            const job = await colaEnvios.getJob(campaña.jobId);
-            if (job) {
-                await job.remove();
-                logger.info(`🗑️ Job ${campaña.jobId} eliminado de la cola.`);
-            }
-        }
-        await prisma.contacto.deleteMany({ where: { campañaId: campaña.id } });
-        await prisma.campaña.update({ where: { id: campaña.id }, data: { archivada: true } });
-        res.json({ message: 'Campaña eliminada con contactos. Reportes conservados.' });
-    } catch (error) {
-        logger.error('Error al eliminar campaña:', error);
-        res.status(500).json({ error: 'Error interno al eliminar campaña' });
-    }
-});
-
 // Pausar campaña
 router.post('/:id/pausar', async (req, res) => {
     const { id } = req.params;
+
     try {
-        await prisma.campaña.update({
+        const campaña = await prisma.campaña.findUnique({
             where: { id: parseInt(id) },
-            data: { pausada: true }
+            select: { estado: true }
         });
 
-        res.json({ message: 'Campaña pausada correctamente' });
+        if (!campaña) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+
+        logger.info(`Estado actual de campaña ${id} antes de pausar: ${campaña.estado}`);
+        let nuevoEstado;
+        if (campaña.estado === 'procesando') {
+            nuevoEstado = 'pausada';
+        } else {
+            nuevoEstado = 'pausa_pendiente';
+        }
+
+        await prisma.campaña.update({
+            where: { id: parseInt(id) },
+            data: { estado: nuevoEstado }
+        });
+
+        res.json({ message: `Campaña marcada como ${nuevoEstado} correctamente` });
     } catch (err) {
         res.status(500).json({ error: 'Error al pausar campaña' });
     }
@@ -326,6 +308,42 @@ router.post('/:id/reanudar', async (req, res) => {
     } catch (err) {
         logger.error('Error al reanudar campaña:', err);
         res.status(500).json({ error: 'Error interno al reanudar' });
+    }
+});
+
+// Eliminar campaña por ID
+router.delete('/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const campaña = await prisma.campaña.findUnique({ where: { id: parseInt(id) } });
+        if (!campaña) return res.status(404).json({ error: 'Campaña no encontrada' });
+        if (campaña.estado === 'procesando') return res.status(400).json({ error: 'No se puede eliminar una campaña en proceso de envío' });
+        if (campaña?.jobId) {
+            const job = await colaEnvios.getJob(campaña.jobId);
+            if (job) {
+                await job.remove();
+                logger.info(`🗑️ Job ${campaña.jobId} eliminado de la cola.`);
+            }
+        }
+        await prisma.contacto.deleteMany({ where: { campañaId: campaña.id } });
+        await prisma.campaña.update({ where: { id: campaña.id }, data: { archivada: true } });
+        res.json({ message: 'Campaña eliminada con contactos. Reportes conservados.' });
+    } catch (error) {
+        logger.error('Error al eliminar campaña:', error);
+        res.status(500).json({ error: 'Error interno al eliminar campaña' });
+    }
+});
+
+// Obtener campaña por ID
+router.get('/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const campaña = await prisma.campaña.findUnique({ where: { id: parseInt(id) } });
+        if (!campaña) return res.status(404).json({ error: 'Campaña no encontrada' });
+        res.json(campaña);
+    } catch (err) {
+        logger.error(`Error al obtener campañas: ${err.message}`);
+        res.status(500).json({ error: 'Error al obtener campañas' });
     }
 });
 

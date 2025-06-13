@@ -127,7 +127,7 @@ export default function VerCampañas() {
 
     const agendadas = campañas.filter(c => c.estado === 'programada');
     const pendientes = campañas.filter(c => c.estado === 'pendiente');
-    const procesando = campañas.filter(c => ['procesando', 'pausada'].includes(c.estado));
+    const procesando = campañas.filter(c => ['procesando', 'pausada', 'pausa_pendiente'].includes(c.estado));
     const enviadas = campañas.filter(c => c.estado === 'finalizada');
     const campañasPorTab =
         tab === 0 ? pendientes :
@@ -276,7 +276,7 @@ export default function VerCampañas() {
                         variant="contained"
                         startIcon={<AddIcon />}
                         onClick={() => setModalNueva(true)}
-                        sx={{                            
+                        sx={{
                             borderRadius: 2,
                             fontFamily: commonFont,
                             textTransform: 'none',
@@ -405,6 +405,7 @@ export default function VerCampañas() {
                                             {c.estado === 'pendiente' && <Chip label="Pendiente" />}
                                             {c.estado === 'finalizada' && <Chip label="Finalizada" color="success" />}
                                             {c.estado === 'programada' && <Chip label="Programada" color="info" />}
+                                            {c.estado === 'pausa_pendiente' && <Chip label="Pausa en cola" color="warning" />}
                                         </TableCell>
                                         <TableCell>
                                             {c.agendadoAt
@@ -442,11 +443,11 @@ export default function VerCampañas() {
                                                 </>
                                             )}
 
-                                            {c.estado === 'procesando' && (
-                                                pausando.includes(c.id) ? (
-                                                    <Tooltip title="Pausando...">
+                                            {c.estado === 'procesando' || c.estado === 'pausa_pendiente' ? (
+                                                pausando.includes(c.id) || c.estado === 'pausa_pendiente' ? (
+                                                    <Tooltip title={c.estado === 'pausa_pendiente' ? "Pausa ya solicitada" : "Pausando..."}>
                                                         <IconButton disabled>
-                                                            <CircularProgress size={20} />
+                                                            {c.estado === 'pausa_pendiente' ? <PauseIcon /> : <CircularProgress size={20} />}
                                                         </IconButton>
                                                     </Tooltip>
                                                 ) : (
@@ -456,7 +457,7 @@ export default function VerCampañas() {
                                                         </IconButton>
                                                     </Tooltip>
                                                 )
-                                            )}
+                                            ) : null}
                                             {c.estado === 'pausada' && (
                                                 <Tooltip title="Reanudar campaña">
                                                     <IconButton color="info" onClick={() => reanudarCampaña(c)}>

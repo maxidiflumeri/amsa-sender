@@ -35,6 +35,20 @@ const worker = new Worker('envios-whatsapp', async job => {
         select: { estado: true }
     });
 
+    if (campañaActual?.estado === 'pausa_pendiente') {
+        await prisma.campaña.update({
+            where: { id: campaña },
+            data: { estado: 'pausada' }
+        });
+
+        await redis.publish('campania-pausada', JSON.stringify({
+            campañaId: campaña
+        }));
+
+        logger.warn(`⏸️ Campaña ${campaña} fue marcada para pausar antes de comenzar. No se enviará.`);
+        return;
+    }
+
     if (campañaActual?.estado === 'programada') {
         // Cambiar a "procesando" en BD
         await prisma.campaña.update({
@@ -84,7 +98,7 @@ const worker = new Worker('envios-whatsapp', async job => {
     for (const sessionId of sessionIds) {
         const contactosSesion = contactosPorSesion[sessionId];
         const campañaActual = await prisma.campaña.findUnique({ where: { id: campaña } });
-        if (campañaActual.pausada) {
+        if (campañaActual.estado === 'pausada') {
             await prisma.campaña.update({
                 where: { id: parseInt(campaña) },
                 data: { estado: 'pausada' }
@@ -100,7 +114,7 @@ const worker = new Worker('envios-whatsapp', async job => {
 
         for (let i = 0; i < contactosSesion.length; i += batchSize) {
             const campañaActual = await prisma.campaña.findUnique({ where: { id: campaña } });
-            if (campañaActual.pausada) {
+            if (campañaActual.estado === 'pausada') {
                 await prisma.campaña.update({
                     where: { id: parseInt(campaña) },
                     data: { estado: 'pausada' }
@@ -117,7 +131,7 @@ const worker = new Worker('envios-whatsapp', async job => {
             const lote = contactosSesion.slice(i, i + batchSize);
 
             for (const contacto of lote) {
-                if (campañaActual.pausada) {
+                if (campañaActual.estado === 'pausada') {
                     await prisma.campaña.update({
                         where: { id: parseInt(campaña) },
                         data: { estado: 'pausada' }
@@ -174,7 +188,7 @@ const worker = new Worker('envios-whatsapp', async job => {
                     const sesion = await prisma.sesion.findUnique({
                         where: { sessionId },
                         select: { ani: true }
-                    });                    
+                    });
 
                     await prisma.reporte.create({
                         data: {

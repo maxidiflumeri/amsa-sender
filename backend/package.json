@@ -5,6 +5,7 @@
     "main": "index.js",
     "scripts": {
         "dev": "concurrently \"nodemon src/index.js\" \"nodemon src/workers/workerEnvios.js\"",
+        "dev:debug": "concurrently \"nodemon --inspect=9229 src/index.js\" \"nodemon --inspect=9230 src/workers/workerEnvios.js\"",
         "backend": "node ./src/index.js",
         "worker": "node ./src/workers/workerEnvios.js",
         "start": "concurrently \"npm run backend\" \"npm run worker\""
