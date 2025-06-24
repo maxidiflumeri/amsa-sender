@@ -14,7 +14,7 @@ services:
       - PORT=3001
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - DATABASE_URL=mysql://root:123456@172.23.64.1:3306/whatsapp_automation
+      - DATABASE_URL=mysql://prisma:oblongo750@localhost:3306/whatsapp_automation      
 
   frontend:
     build:
