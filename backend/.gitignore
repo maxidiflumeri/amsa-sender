@@ -5,3 +5,4 @@ node_modules
 .wwebjs_cache
 /src/generated/prisma
 logs
+docker-compose.yml
