@@ -168,6 +168,28 @@ export default function App() {
                         },
                     },
                 },
+                MuiCssBaseline: {
+                    styleOverrides: {
+                        body: {
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: mode === 'dark' ? '#555 #1e1e1e' : '#c1c1c1 #f5f5f5',
+                        },
+                        '*::-webkit-scrollbar': {
+                            width: '8px',
+                            height: '8px',
+                        },
+                        '*::-webkit-scrollbar-track': {
+                            backgroundColor: mode === 'dark' ? '#1e1e1e' : '#f5f5f5',
+                        },
+                        '*::-webkit-scrollbar-thumb': {
+                            backgroundColor: mode === 'dark' ? '#555' : '#aaa',
+                            borderRadius: '8px',
+                        },
+                        '*::-webkit-scrollbar-thumb:hover': {
+                            backgroundColor: mode === 'dark' ? '#888' : '#888',
+                        },
+                    },
+                }                
             },
         }), [mode]);
 
