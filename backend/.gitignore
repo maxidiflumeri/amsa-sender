@@ -4,6 +4,6 @@ node_modules
 .wwebjs_auth
 .wwebjs_cache
 /src/generated/prisma
-logs
+/logs
 docker-compose.yml
 /prisma/migrations
