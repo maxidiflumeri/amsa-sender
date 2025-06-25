@@ -70,45 +70,60 @@ export default function VerReportes() {
 
     const exportarCSV = () => {
         if (!reportes.length) return;
-
+    
+        // 1. Reunir todas las claves únicas del campo "datos"
+        const clavesDatos = new Set();
+        reportes.forEach(r => {
+            if (r.datos) {
+                Object.keys(r.datos).forEach(k => clavesDatos.add(k));
+            }
+        });
+        const columnasDatos = Array.from(clavesDatos);
+    
+        // 2. Armar encabezados
         const headers = [
             'Número',
             'Mensaje',
             'Estado',
             'Campaña',
             'Línea Móvil Origen',
-            'Fecha de Envío'
+            'Fecha de Envío',
+            ...columnasDatos
         ];
-
-        const filas = reportes.map(r => [
-            r.numero,
-            r.mensaje,
-            r.estado,
-            r.campaña?.nombre || '',
-            r.aniEnvio || '',
-            r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : ''
-        ]);
-
+    
+        // 3. Armar filas
+        const filas = reportes.map(r => {
+            const base = [
+                r.numero,
+                r.mensaje,
+                r.estado,
+                r.campaña?.nombre || '',
+                r.aniEnvio || '',
+                r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : ''
+            ];
+            const extras = columnasDatos.map(k => r.datos?.[k] ?? '');
+            return [...base, ...extras];
+        });
+    
         const escapeCSV = (valor) =>
             `"${String(valor).replace(/\r?\n/g, '\\n').replace(/"/g, '""')}"`;
-
-
+    
         const contenidoCSV = [
             headers.map(escapeCSV).join(','),
             ...filas.map(fila => fila.map(escapeCSV).join(','))
         ].join('\r\n');
-
+    
         const blob = new Blob(["\uFEFF" + contenidoCSV], {
             type: 'text/csv;charset=utf-8;'
         });
-
+    
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.setAttribute('download', `reporte_campaña_${campañaSeleccionada?.id}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-    };
+    };    
 
     const reportesPaginados = reportes.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
@@ -180,6 +195,7 @@ export default function VerReportes() {
                                 <TableCell>Campaña</TableCell>
                                 <TableCell>Línea Movil Origen</TableCell>
                                 <TableCell>Fecha de Envío</TableCell>
+                                <TableCell>Datos Adicionales</TableCell> {/* 👈 NUEVO */}
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -190,8 +206,26 @@ export default function VerReportes() {
                                     <TableCell>{getEstadoChip(r.estado)}</TableCell>
                                     <TableCell>{r.campaña?.nombre || '–'}</TableCell>
                                     <TableCell>{r.aniEnvio || '–'}</TableCell>
+                                    <TableCell>{r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : '–'}</TableCell>
                                     <TableCell>
-                                        {r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : '–'}
+                                        {r.datos ? (
+                                            <Box
+                                                sx={{
+                                                    backgroundColor: theme.palette.mode === 'dark' ? '#263238' : '#f5f5f5',
+                                                    borderRadius: 2,
+                                                    px: 2,
+                                                    py: 1,
+                                                    fontSize: '0.85rem',
+                                                    fontFamily: 'monospace',
+                                                    maxHeight: 120,
+                                                    overflowY: 'auto',
+                                                }}
+                                            >
+                                                {Object.entries(r.datos).map(([key, val]) => (
+                                                    <div key={key}><strong>{key}:</strong> {String(val)}</div>
+                                                ))}
+                                            </Box>
+                                        ) : '–'}
                                     </TableCell>
                                 </TableRow>
                             ))}

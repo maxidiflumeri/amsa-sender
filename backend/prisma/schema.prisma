@@ -47,8 +47,9 @@ model Reporte {
   estado     String
   aniEnvio   String?  // <--- este campo
   enviadoAt  DateTime?   // nuevo campo
-  campaña   Campaña? @relation(fields: [campañaId], references: [id], onDelete: SetNull)
-  campañaId Int?
+  datos      Json?     // ← Nuevo campo para almacenar los datos del contacto (del CSV)
+  campaña    Campaña? @relation(fields: [campañaId], references: [id], onDelete: SetNull)
+  campañaId  Int?
 }
 
 model Sesion {

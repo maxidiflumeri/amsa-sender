@@ -197,7 +197,8 @@ const worker = new Worker('envios-whatsapp', async job => {
                             mensaje: contacto.mensaje,
                             campañaId: campaña,
                             enviadoAt: new Date(),
-                            aniEnvio: sesion?.ani || null
+                            aniEnvio: sesion?.ani || null,
+                            datos: contacto.datos || null
                         }
                     });
                     logger.info(`✅ [${sessionId}] Mensaje enviado a ${contacto.numero}`);
@@ -208,7 +209,8 @@ const worker = new Worker('envios-whatsapp', async job => {
                             estado: 'fallo',
                             mensaje: contacto.mensaje,
                             campañaId: campaña,
-                            enviadoAt: new Date()
+                            enviadoAt: new Date(),
+                            datos: contacto.datos || null
                         }
                     });
                     logger.warn(`⚠️ [${sessionId}] Fallo al enviar a ${contacto.numero}: ${respuesta.error || 'desconocido'}`);
