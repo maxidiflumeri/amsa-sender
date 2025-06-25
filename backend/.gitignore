@@ -6,4 +6,3 @@ node_modules
 /src/generated/prisma
 /logs
 docker-compose.yml
-/prisma/migrations
