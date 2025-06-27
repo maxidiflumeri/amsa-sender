@@ -65,6 +65,10 @@ function conectarNuevaSesion(sessionId) {
         logger.info(`Sesión ${sessionId} conectada como ${client.info.wid.user}`);
     });
 
+    client.on('message', async (msg) => {
+        await registrarMensaje({ msg, client, sessionId });
+    });
+
     client.on('auth_failure', (msg) => {
         logger.warn(`Fallo de autenticación en ${sessionId}: ${msg}`);
         redis.publish('estado-sesion', JSON.stringify({
@@ -132,6 +136,10 @@ async function reconectarSesion(sessionId) {
             sessionId
         }));
         logger.info(`🔁 Sesión ${sessionId} reconectada (${ani})`);
+    });
+
+    client.on('message', async (msg) => {
+        await registrarMensaje({ msg, client, sessionId });
     });
 
     client.on('auth_failure', (msg) => {
@@ -248,6 +256,68 @@ async function borrarTodasLasCarpetasSesion() {
         await fs.promises.rm(ruta, { recursive: true, force: true });
     }
 };
+
+function normalizarNumero(numeroRaw) {
+    return numeroRaw.replace('@c.us', '').replace('@s.whatsapp.net', '');
+}
+
+async function registrarMensaje({ msg, client, sessionId }) {
+    try {
+        const fromMe = msg.fromMe;
+        const numeroRaw = msg.fromMe ? msg.to : msg.from;
+        const numero = normalizarNumero(numeroRaw);
+        const ani = `${client.info.wid.user}-${client.info.pushname}`;
+        const mensaje = msg.body;
+        const fecha = msg.timestamp ? new Date(msg.timestamp * 1000) : new Date();
+        const tipo = msg.type;
+
+        let campañaId = null;
+
+        if (!fromMe) {
+            // Buscar el último mensaje enviado a este número, con campaña
+            const ultimoEnviado = await prisma.mensaje.findFirst({
+                where: {
+                    numero,
+                    fromMe: true,
+                    campañaId: { not: null }
+                },
+                orderBy: { fecha: 'desc' }
+            });
+
+            if (ultimoEnviado) {
+                // Verificamos si ya hay una respuesta posterior
+                const yaRespondido = await prisma.mensaje.findFirst({
+                    where: {
+                        numero,
+                        fromMe: false,
+                        campañaId: ultimoEnviado.campañaId,
+                        fecha: { gt: ultimoEnviado.fecha }
+                    }
+                });
+
+                if (!yaRespondido) {
+                    campañaId = ultimoEnviado.campañaId;
+                }
+            }
+        }
+
+        await prisma.mensaje.create({
+            data: {
+                numero,
+                mensaje,
+                fromMe,
+                fecha,
+                tipo,
+                ani,
+                campañaId
+            }
+        });
+
+        logger.info(`💬 [${fromMe ? 'ENVIADO' : 'RECIBIDO'}] ${numero}: ${mensaje} ${campañaId ? `(Campaña ${campañaId})` : ''}`);
+    } catch (err) {
+        logger.error(`❌ Error registrando mensaje: ${err.message}`);
+    }
+}
 
 module.exports = {
     conectarNuevaSesion,

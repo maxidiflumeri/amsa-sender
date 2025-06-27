@@ -201,6 +201,19 @@ const worker = new Worker('envios-whatsapp', async job => {
                             datos: contacto.datos || null
                         }
                     });
+
+                    await prisma.mensaje.create({
+                        data: {
+                            numero: contacto.numero,
+                            campañaId: campaña,
+                            ani: sesion?.ani || '',
+                            mensaje: contacto.mensaje,
+                            fromMe: true,
+                            fecha: new Date(),
+                            tipo: 'texto'
+                        }
+                    });
+
                     logger.info(`✅ [${sessionId}] Mensaje enviado a ${contacto.numero}`);
                 } else {
                     await prisma.reporte.create({

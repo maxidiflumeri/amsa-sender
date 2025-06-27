@@ -66,3 +66,14 @@ model Template {
   createdAt DateTime @default(now())
   campañas  Campaña[] // Relación con campañas
 }
+
+model Mensaje {
+  id         Int      @id @default(autoincrement())
+  numero     String
+  campañaId  Int?     // Puede estar o no vinculado a una campaña
+  ani        String
+  mensaje    String @db.Text
+  fromMe     Boolean  // true = enviado, false = recibido
+  fecha      DateTime
+  tipo       String?  // "texto", "imagen", etc.
+}

@@ -28,6 +28,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import ArticleIcon from '@mui/icons-material/Article';
+import InsightsIcon from '@mui/icons-material/Insights';
 
 const drawerWidth = 200;
 
@@ -35,8 +36,9 @@ const navItems = [
     { label: 'Sesiones', path: '/', icon: <DashboardIcon /> },
     { label: 'Conectar', path: '/conectar', icon: <LinkIcon /> },
     { label: 'Campañas', path: '/campanias', icon: <CampaignIcon /> },
+    { label: 'Templates', path: '/templates', icon: <ArticleIcon /> },    
     { label: 'Reportes', path: '/reportes', icon: <BarChartIcon /> },
-    { label: 'Templates', path: '/templates', icon: <ArticleIcon /> }
+    { label: 'Métricas', path: '/metricas', icon: <InsightsIcon /> }
 ];
 
 // Switch estilo iOS con íconos dentro del track
