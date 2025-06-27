@@ -50,12 +50,22 @@ redis.on('message', async (channel, message) => {
             }));
         }
 
-        await client.sendMessage(jid, mensaje);
+        try {
+            await client.sendMessage(jid, mensaje);
 
-        redisPub.publish('respuesta-envio', JSON.stringify({
-            estado: 'enviado',
-            messageId
-        }));
+            redisPub.publish('respuesta-envio', JSON.stringify({
+                estado: 'enviado',
+                messageId
+            }));
+        } catch (err) {
+            logger.warn(`⚠️ [${sessionId}] Fallo al enviar a ${numero}: ${err.message}`);
+
+            redisPub.publish('respuesta-envio', JSON.stringify({
+                estado: 'fallo',
+                error: err.message || 'error inesperado',
+                messageId
+            }));
+        }
     } catch (err) {
         logger.error('❌ Error al procesar mensaje PubSub:', err);
         redisPub.publish('respuesta-envio', JSON.stringify({
