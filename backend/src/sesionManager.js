@@ -3,6 +3,8 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const { PrismaClient } = require('@prisma/client');
 const logger = require('./logger');
 const Redis = require('ioredis');
+const fs = require('fs');
+const path = require('path');
 
 const prisma = new PrismaClient();
 const sesiones = {}; // Mapa en memoria de sesiones activas
@@ -85,7 +87,7 @@ function conectarNuevaSesion(sessionId) {
             ani: '',
             sessionId
         }));
-        
+
         logger.info(`🔌 Sesión ${sessionId} desconectada.`);
     });
 
@@ -226,6 +228,27 @@ async function eliminarSesionPorId(sessionId) {
     logger.info(`🗑️ Sesión ${sessionId} eliminada de memoria.`);
 }
 
+async function borrarCarpetaSesion(sessionId) {
+    const nombreCarpeta = `session-${sessionId}`;
+    const ruta = path.join(__dirname, '..', '.wwebjs_auth', nombreCarpeta);
+
+    if (fs.existsSync(ruta)) {
+        await fs.promises.rm(ruta, { recursive: true, force: true });
+    }
+};
+
+async function borrarTodasLasCarpetasSesion() {
+    const basePath = path.join(__dirname, '..', '.wwebjs_auth');
+    const archivos = await fs.promises.readdir(basePath);
+
+    const carpetasSesion = archivos.filter(nombre => nombre.startsWith('session-'));
+
+    for (const carpeta of carpetasSesion) {
+        const ruta = path.join(basePath, carpeta);
+        await fs.promises.rm(ruta, { recursive: true, force: true });
+    }
+};
+
 module.exports = {
     conectarNuevaSesion,
     cargarSesionesActivas,
@@ -233,5 +256,7 @@ module.exports = {
     getSesion,
     getSesionesActivas,
     limpiarSesiones,
-    eliminarSesionPorId
+    eliminarSesionPorId,
+    borrarCarpetaSesion,
+    borrarTodasLasCarpetasSesion
 };

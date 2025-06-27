@@ -6,6 +6,8 @@ const {
     getSesionesActivas,
     limpiarSesiones,
     eliminarSesionPorId,
+    borrarCarpetaSesion,
+    borrarTodasLasCarpetasSesion,
     getSesion
 } = require('../sesionManager');
 const { PrismaClient } = require('@prisma/client');
@@ -16,6 +18,7 @@ router.delete('/clear', async (req, res) => {
     try {
         await prisma.sesion.deleteMany();
         await limpiarSesiones();
+        await borrarTodasLasCarpetasSesion();
         logger.info('Todas las sesiones eliminadas.');
         res.json({ message: 'Todas las sesiones han sido eliminadas.' });
     } catch (error) {
@@ -40,6 +43,7 @@ router.delete('/:id', async (req, res) => {
         }
 
         await eliminarSesionPorId(id);
+        await borrarCarpetaSesion(id);
 
         logger.info(`Sesión ${id} eliminada correctamente.`);
         res.json({ message: `Sesión ${id} eliminada correctamente.` });
