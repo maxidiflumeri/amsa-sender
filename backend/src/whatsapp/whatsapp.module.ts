@@ -6,6 +6,12 @@ import { CampaniasModule } from './campanias/campanias.module';
 import { SesionesModule } from './sesiones/sesiones.module';
 
 @Module({
-  imports: [ReportesModule, MensajesModule, TemplatesModule, CampaniasModule, SesionesModule]
+    imports: [
+        ReportesModule,
+        MensajesModule,
+        TemplatesModule,
+        CampaniasModule,
+        SesionesModule,
+    ],
 })
-export class WhatsappModule {}
+export class WhatsappModule { }
