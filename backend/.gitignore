@@ -1,0 +1,34 @@
+# Node
+node_modules/
+dist/
+.cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env
+.env
+.env.*
+
+# Prisma
+prisma/*.db
+prisma/migrations/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Redis (si llegás a usar dump local)
+dump.rdb
+
+# PM2 logs (si los llegás a usar)
+*.pid
+*.seed
+
+# Coverage
+coverage/
+.nyc_output/
