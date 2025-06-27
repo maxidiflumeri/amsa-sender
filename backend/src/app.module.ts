@@ -4,10 +4,13 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { ConfigModule } from '@nestjs/config';
+import { SocketGateway } from './websocket/socket.gateway';
+import { PubSubService } from './websocket/pubsub.service';
+import { SesionesModule } from './whatsapp/sesiones/sesiones.module';
 
 @Module({
-  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true })],
+  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, SocketGateway, PubSubService],
 })
 export class AppModule { }

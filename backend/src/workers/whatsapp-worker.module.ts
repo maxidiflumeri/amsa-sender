@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from 'src/prisma/prisma.module';
+import { PrismaModule } from '../prisma/prisma.module';
 import { WhatsappWorkerService } from './whatsapp-worker.service';
-import { RedisProvider } from './whatsapp-worker.redis';
+import { RedisProviders } from './whatsapp-worker.redis';
 
 @Module({
     imports: [PrismaModule],
-    providers: [WhatsappWorkerService, RedisProvider],
+    providers: [WhatsappWorkerService, ...RedisProviders],
 })
 export class WhatsappWorkerModule { }

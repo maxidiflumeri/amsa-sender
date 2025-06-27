@@ -8,7 +8,8 @@ import {
     UseInterceptors,
     Body,
     BadRequestException,
-    Delete
+    Delete,
+    Logger
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -18,6 +19,8 @@ import { AgendarCampañaDto } from './dtos/agendar-campaña.dto';
 
 @Controller('whatsapp/campanias')
 export class CampaniasController {
+    private readonly logger = new Logger(CampaniasService.name);
+
     constructor(private readonly campaniasService: CampaniasService) { }
 
     @Post('upload-csv')
@@ -33,11 +36,12 @@ export class CampaniasController {
         }),
     )
     async uploadCsv(@UploadedFile() file: Express.Multer.File, @Body() body: any) {
+        this.logger.log(`📥 Archivo CSV recibido: ${file.originalname} // body: ${JSON.stringify(body)}`);
         if (!file) {
             throw new BadRequestException('Archivo CSV requerido.');
         }
 
-        const nombreCampaña = body.campaña || 'Campaña sin nombre';
+        const nombreCampaña = body.campania || 'Campaña sin nombre';
         const filePath = file.path;
 
         return this.campaniasService.procesarCsv(filePath, nombreCampaña);

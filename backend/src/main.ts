@@ -6,6 +6,7 @@ import * as dotenv from 'dotenv';
 import { json } from 'express';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 
 dotenv.config();
 
@@ -17,6 +18,8 @@ async function bootstrap() {
     app.use(json());
     app.useGlobalInterceptors(new LoggingInterceptor());
     app.useGlobalFilters(new AllExceptionsFilter());
+    app.setGlobalPrefix('api');
+    app.useWebSocketAdapter(new IoAdapter(app));
 
     const port = process.env.PORT || 3001;
     await app.listen(port);

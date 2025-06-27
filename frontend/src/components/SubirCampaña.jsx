@@ -26,7 +26,7 @@ export default function SubirCampaña({ onUploadSuccess, setMensaje }) {
 
         const formData = new FormData();
         formData.append('file', archivo);
-        formData.append('campaña', nombreCampaña);
+        formData.append('campania', nombreCampaña);
 
         setSubiendo(true);
         try {

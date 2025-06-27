@@ -1,5 +1,5 @@
-import fs from 'fs';
-import csv from 'csv-parser';
+import * as fs from 'fs';
+const csv = require('csv-parser');
 
 export interface ContactoCsv {
     numero: string;

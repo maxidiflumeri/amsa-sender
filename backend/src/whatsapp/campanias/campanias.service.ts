@@ -4,15 +4,15 @@ import { parseCsv } from './utils/csv-parser';
 import * as fs from 'fs/promises';
 import { Prisma } from '@prisma/client';
 import * as Handlebars from 'handlebars';
-import { colaEnvios } from 'src/queues/bullmq.config';
 import { AgendarCampañaDto } from './dtos/agendar-campaña.dto';
 import { Job, Queue } from 'bullmq';
+import { InjectQueue } from '@nestjs/bullmq';
 
 @Injectable()
 export class CampaniasService {
     private readonly logger = new Logger(CampaniasService.name);
 
-    constructor(private prisma: PrismaService) { }
+    constructor(private prisma: PrismaService, @InjectQueue('colaEnvios') private readonly colaEnvios: Queue) { }
 
     async procesarCsv(filePath: string, nombreCampaña: string) {
         try {
@@ -138,7 +138,7 @@ export class CampaniasService {
     async agendarCampaña(id: number, dto: AgendarCampañaDto) {
         const delay = Math.max(new Date(dto.fechaAgenda).getTime() - Date.now(), 0);
 
-        const job = await colaEnvios.add('enviar', {
+        const job = await this.colaEnvios.add('enviar', {
             sessionIds: dto.sessionIds,
             campaña: id,
             config: dto.config,
@@ -193,7 +193,7 @@ export class CampaniasService {
             throw new BadRequestException('Faltan datos para reanudar la campaña');
         }
 
-        await colaEnvios.add('enviar', {
+        await this.colaEnvios.add('enviar', {
             sessionIds,
             campaña: id,
             config,
@@ -217,7 +217,7 @@ export class CampaniasService {
 
         if (campaña.jobId) {
             try {
-                const job: Job | undefined = await colaEnvios.getJob(campaña.jobId);
+                const job: Job | undefined = await this.colaEnvios.getJob(campaña.jobId);
                 if (job) {
                     await job.remove();
                     this.logger.log(`🗑️ Job ${campaña.jobId} eliminado de la cola.`);

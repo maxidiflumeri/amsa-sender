@@ -28,6 +28,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     emitirEvento(evento: string, data: any, sala?: string) {
+        this.logger.log(`📤 [SOCKET] Emitiendo '${evento}' con data: ${JSON.stringify(data)}`);
         if (sala) {
             this.server.to(sala).emit(evento, data);
         } else {

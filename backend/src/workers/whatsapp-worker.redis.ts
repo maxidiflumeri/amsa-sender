@@ -1,6 +1,6 @@
 import { createClient } from 'redis';
 
-export const RedisProvider = {
+const RedisProvider = {
     provide: 'REDIS_CLIENT',
     useFactory: async () => {
         const client = createClient({
@@ -11,7 +11,7 @@ export const RedisProvider = {
     },
 };
 
-export const RedisSubProvider = {
+const RedisSubProvider = {
     provide: 'REDIS_SUB',
     useFactory: async () => {
         const client = createClient({
@@ -21,3 +21,5 @@ export const RedisSubProvider = {
         return client;
     },
 };
+
+export const RedisProviders = [RedisProvider, RedisSubProvider];
