@@ -9,7 +9,7 @@ import EnviarMensajes from './components/EnviarMensajes';
 import VerReportes from './components/VerReportes';
 import VerCampañas from './components/VerCampañas';
 import VerTemplates from './components/VerTemplates';
-import VerMetricas from './components/verMetricas';
+import VerMetricas from './components/VerMetricas';
 
 export default function App() {
     const [mode, setMode] = useState('light');
