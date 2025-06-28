@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
 import { SocketGateway } from './socket.gateway';
-import { SesionesService } from 'src/whatsapp/sesiones/sesiones.service';
+import { SesionesService } from 'src/modules/whatsapp/sesiones/sesiones.service';
 
 @Injectable()
 export class PubSubService implements OnModuleInit {
