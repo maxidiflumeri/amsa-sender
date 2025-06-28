@@ -46,7 +46,7 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
                 setContenido('');
             }
 
-            api.get('/campanias')
+            api.get('/whatsapp/campanias')
                 .then(res => {
                     const ordenadas = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                     setCampañas(ordenadas);
@@ -81,8 +81,8 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
         setCampañaReferenciaId(id);
         try {
             const [varsRes, contactoRes] = await Promise.all([
-                api.get(`/campanias/${id}/variables`),
-                api.get(`/campanias/${id}/primer-contacto`)
+                api.get(`/whatsapp/campanias/${id}/variables`),
+                api.get(`/whatsapp/campanias/${id}/primer-contacto`)
             ]);
             setVariablesDisponibles(varsRes.data);
             setDatosEjemplo(contactoRes.data?.datos || {});
@@ -95,7 +95,7 @@ export default function TemplateModal({ open, onClose, onSave, templateToEdit })
         if (!contenido.trim() || !campañaReferenciaId) return;
         setLoadingPreview(true);
         try {
-            const res = await api.post('/templates/preview', {
+            const res = await api.post('/whatsapp/templates/preview', {
                 templateId: templateToEdit?.id,
                 ejemplo: datosEjemplo,
                 contenido: contenido

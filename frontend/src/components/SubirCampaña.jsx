@@ -30,7 +30,7 @@ export default function SubirCampaña({ onUploadSuccess, setMensaje }) {
 
         setSubiendo(true);
         try {
-            await api.post('/campanias/upload-csv', formData);
+            await api.post('/whatsapp/campanias/upload-csv', formData);
             setArchivo(null);
             setNombreCampaña('');
             inputFileRef.current.value = null;

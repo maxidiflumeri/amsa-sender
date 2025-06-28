@@ -49,11 +49,11 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
             setSelectedTemplateId('');
             setFechaAgendada(null);
 
-            api.get('/sesiones/status')
+            api.get('/whatsapp/sesiones/status')
                 .then(res => setSesiones(res.data))
                 .catch(err => console.error('Error al obtener sesiones:', err));
 
-            api.get('/templates')
+            api.get('/whatsapp/templates')
                 .then(res => setTemplates(res.data))
                 .catch(err => console.error('Error al obtener templates:', err));
         }
@@ -81,21 +81,21 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
         try {
             // Aplicar template si corresponde
             if (selectedTemplateId) {
-                await api.post(`/campanias/${campaña.id}/aplicar-template`, {
+                await api.post(`/whatsapp/campanias/${campaña.id}/aplicar-template`, {
                     templateId: selectedTemplateId
                 });
             }
 
             if (fechaAgendada) {
                 // Envío agendado
-                await api.post(`/campanias/${campaña.id}/agendar`, {
+                await api.post(`/whatsapp/campanias/${campaña.id}/agendar`, {
                     sessionIds: selectedSesion,
                     fechaAgenda: fechaAgendada,
                     config
                 });
             } else {
                 // Envío inmediato
-                await api.post('/mensajes/send-messages', {
+                await api.post('/whatsapp/mensajes/send-messages', {
                     sessionIds: selectedSesion,
                     campaña: campaña.id,
                     config

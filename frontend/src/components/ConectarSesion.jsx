@@ -27,7 +27,7 @@ export default function ConectarCuenta() {
     const conectar = async () => {
         setLoading(true);
         try {
-            await api.post('/sesiones/conectar');
+            await api.post('/whatsapp/sesiones/conectar');
         } catch (err) {
             console.error('Error al conectar:', err);
             setLoading(false);

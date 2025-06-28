@@ -43,7 +43,7 @@ export default function VerReportes() {
     const [numeroActual, setNumeroActual] = useState(null);
 
     useEffect(() => {
-        api.get('/reportes/campanias-con-reportes')
+        api.get('/whatsapp/reportes/campanias-con-reportes')
             .then(res => setCampañas(res.data))
             .catch(err => console.error('Error cargando campañas', err));
     }, []);
@@ -55,14 +55,14 @@ export default function VerReportes() {
             return;
         }
 
-        api.get(`/reportes?campañaId=${campañaSeleccionada.id}`)
+        api.get(`/whatsapp/reportes?campañaId=${campañaSeleccionada.id}`)
             .then(res => setReportes(res.data))
             .catch(err => console.error('Error cargando reportes', err));        
     }, [campañaSeleccionada]);
 
     const abrirModalMensajes = async (numero) => {
         try {
-            const res = await api.get('/mensajes/por-campania', {
+            const res = await api.get('/whatsapp/mensajes/por-campania', {
                 params: {
                     campaniaId: campañaSeleccionada.id,
                     numero,

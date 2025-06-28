@@ -35,7 +35,7 @@ export default function EstadoSesiones() {
     const navigate = useNavigate();
 
     const cargarSesiones = async () => {
-        const res = await api.get('/sesiones/status');
+        const res = await api.get('/whatsapp/sesiones/status');
         setSesiones(res.data);
     };
 
@@ -65,7 +65,7 @@ export default function EstadoSesiones() {
     const limpiarSesiones = async () => {
         setLoading(true);
         try {
-            await api.delete('/sesiones/clear');
+            await api.delete('/whatsapp/sesiones/clear');
             await cargarSesiones();
             setFeedback({ open: true, type: 'success', message: 'Sesiones limpiadas correctamente' });
         } catch (err) {
@@ -247,7 +247,7 @@ export default function EstadoSesiones() {
                     <Button
                         onClick={async () => {
                             try {
-                                await api.delete(`/sesiones/${sesionAEliminar.id}`);
+                                await api.delete(`/whatsapp/sesiones/${sesionAEliminar.id}`);
                                 setFeedback({ open: true, type: 'success', message: 'Sesión eliminada exitosamente' });
                                 cargarSesiones();
                             } catch (error) {

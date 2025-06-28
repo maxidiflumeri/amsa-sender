@@ -30,7 +30,7 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
 
     const obtenerCampañas = async () => {
         try {
-            const res = await api.get('/campanias');
+            const res = await api.get('/whatsapp/campanias');
             const ordenadas = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
             setCampañas(ordenadas);
         } catch (err) {
@@ -44,7 +44,7 @@ const PreviewTemplateReal = ({ open, onClose, templateId }) => {
         setMensaje('');
         setError('');
         try {
-            const res = await api.post('/templates/preview-real', {
+            const res = await api.post('/whatsapp/templates/preview-real', {
                 templateId,
                 campañaId
             });
