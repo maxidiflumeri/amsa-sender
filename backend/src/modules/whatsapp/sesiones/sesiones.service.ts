@@ -224,54 +224,135 @@ export class SesionesService implements OnModuleInit {
             const numeroRaw = msg.fromMe ? msg.to : msg.from;
             const numero = this.normalizarNumero(numeroRaw);
             const ani = `${client.info.wid.user}-${client.info.pushname}`;
-            const mensaje = msg.body;
             const fecha = msg.timestamp ? new Date(msg.timestamp * 1000) : new Date();
             const tipo = msg.type;
             let campañaId: number | null = null;
 
-            if (!fromMe) {
-                const ultimoEnviado = await this.prisma.mensaje.findFirst({
-                    where: {
-                        numero,
-                        fromMe: true,
-                        campañaId: { not: null },
-                    },
-                    orderBy: { fecha: 'desc' },
-                });
-
-                if (ultimoEnviado) {
-                    const yaRespondido = await this.prisma.mensaje.findFirst({
+            const asignarCampaña = async () => {
+                if (!fromMe) {
+                    const ultimoEnviado = await this.prisma.mensaje.findFirst({
                         where: {
                             numero,
-                            fromMe: false,
-                            campañaId: ultimoEnviado.campañaId,
-                            fecha: { gt: ultimoEnviado.fecha },
+                            fromMe: true,
+                            campañaId: { not: null },
+                        },
+                        orderBy: { fecha: 'desc' },
+                    });
+
+                    if (ultimoEnviado) {
+                        const yaRespondido = await this.prisma.mensaje.findFirst({
+                            where: {
+                                numero,
+                                fromMe: false,
+                                campañaId: ultimoEnviado.campañaId,
+                                fecha: { gt: ultimoEnviado.fecha },
+                            },
+                        });
+
+                        if (!yaRespondido) {
+                            return ultimoEnviado.campañaId;
+                        }
+                    }
+                }
+                return null;
+            };
+
+            if (msg.hasMedia) {
+                const mediaMsg = msg as Message & { caption?: string };
+                const media = await msg.downloadMedia();               
+
+                let mimetype = media?.mimetype?.toLowerCase() || '';
+                const filename = media?.filename ? ` (${media.filename})` : '';
+
+                let mensaje = '📁 Archivo' + filename;
+
+                if (mimetype.startsWith('image/')) {
+                    mensaje = `📷 Imagen${filename}`;
+                } else if (mimetype.startsWith('video/')) {
+                    mensaje = `🎥 Video${filename}`;
+                } else if (mimetype.startsWith('audio/')) {
+                    mensaje = `🎧 Audio${filename}`;
+                } else if (mimetype === 'application/pdf') {
+                    mensaje = `📄 Documento PDF${filename}`;
+                } else if (mimetype.includes('word')) {
+                    mensaje = `📄 Documento Word${filename}`;
+                } else if (mimetype.includes('excel')) {
+                    mensaje = `📊 Documento Excel${filename}`;
+                }
+
+                campañaId = await asignarCampaña();
+
+                await this.prisma.mensaje.create({
+                    data: {
+                        numero,
+                        mensaje,
+                        fromMe,
+                        fecha,
+                        tipo,
+                        ani,
+                        campañaId,
+                    },
+                });
+
+                this.logger.log(`[${fromMe ? 'ENVIADO' : 'RECIBIDO'}] ${numero}: ${mensaje}`);
+
+                // Guardar caption si vino
+                if (mediaMsg.caption?.trim()) {
+                    await this.prisma.mensaje.create({
+                        data: {
+                            numero,
+                            mensaje: mediaMsg.caption.trim(),
+                            fromMe,
+                            fecha,
+                            tipo: 'texto',
+                            ani,
+                            campañaId,
                         },
                     });
 
-                    if (!yaRespondido) {
-                        campañaId = ultimoEnviado.campañaId;
-                    }
+                    this.logger.log(`[${fromMe ? 'ENVIADO' : 'RECIBIDO'}] ${numero}: ${mediaMsg.caption.trim()}`);
                 }
+                // 📝 Guardar caption si viene
+                const caption = this.obtenerCaption(msg);
+                if (caption) {
+                    await this.prisma.mensaje.create({
+                        data: {
+                            numero,
+                            mensaje: caption,
+                            fromMe,
+                            fecha,
+                            tipo: 'texto',
+                            ani,
+                            campañaId,
+                        },
+                    });
+
+                    this.logger.log(`[${fromMe ? 'ENVIADO' : 'RECIBIDO'}] ${numero}: ${caption}`);
+                }
+            } else {
+                const mensaje = msg.body;
+                campañaId = await asignarCampaña();
+
+                await this.prisma.mensaje.create({
+                    data: {
+                        numero,
+                        mensaje,
+                        fromMe,
+                        fecha,
+                        tipo,
+                        ani,
+                        campañaId,
+                    },
+                });
+
+                this.logger.log(`[${fromMe ? 'ENVIADO' : 'RECIBIDO'}] ${numero}: ${mensaje}`);
             }
-
-            await this.prisma.mensaje.create({
-                data: {
-                    numero,
-                    mensaje,
-                    fromMe,
-                    fecha,
-                    tipo,
-                    ani,
-                    campañaId,
-                },
-            });
-
-            this.logger.log(
-                `[${fromMe ? 'ENVIADO' : 'RECIBIDO'}] ${numero}: ${mensaje} ${campañaId ? `(Campaña ${campañaId})` : ''}`,
-            );
         } catch (err) {
             this.logger.error(`❌ Error registrando mensaje: ${err.message}`, err.stack);
         }
+    }
+
+    private obtenerCaption(msg: Message): string | null {
+        return (msg as any)._data?.caption?.trim() || null;
     }
 }
