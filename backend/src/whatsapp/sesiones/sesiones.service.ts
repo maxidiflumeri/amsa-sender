@@ -85,6 +85,12 @@ export class SesionesService implements OnModuleInit {
             await this.registrarMensaje({ msg, client, sessionId });
         });
 
+        client.on('message_create', async (msg) => {
+            if (msg.fromMe) {
+                await this.registrarMensaje({ msg, client, sessionId });
+            }
+        });
+
         await client.initialize().catch(error => {
             this.logger.error(`Error al inicializar sesión ${sessionId}: ${error.message}`);
         });
@@ -119,6 +125,12 @@ export class SesionesService implements OnModuleInit {
 
         client.on('message', async (msg) => {
             await this.registrarMensaje({ msg, client, sessionId });
+        });
+
+        client.on('message_create', async (msg) => {
+            if (msg.fromMe) {
+                await this.registrarMensaje({ msg, client, sessionId });
+            }
         });
 
         client.on('auth_failure', (msg) => {

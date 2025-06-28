@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Query, Param } from '@nestjs/common';
 import { MensajesService } from './mensajes.service';
 import { InternalServerErrorException } from '@nestjs/common';
+import { Mensaje } from '@prisma/client';
 
 @Controller('whatsapp/mensajes')
 export class MensajesController {
@@ -40,5 +41,13 @@ export class MensajesController {
         } catch (error) {
             throw new InternalServerErrorException('No se pudo obtener mensajes.');
         }
+    }
+
+    @Get('por-campania')
+    async obtenerMensajesPorCampaña(
+        @Query('campaniaId') campaniaId: string,
+        @Query('numero') numero: string,
+    ): Promise<Mensaje[]> {
+        return this.mensajesService.obtenerMensajesEntreEnvios(Number(campaniaId), numero);
     }
 }

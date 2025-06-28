@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { Mensaje } from '@prisma/client';
 
 @Injectable()
 export class MensajesService {
@@ -110,6 +111,52 @@ export class MensajesService {
             orderBy: {
                 fecha: 'asc'
             }
+        });
+    }
+
+    async obtenerMensajesEntreEnvios(campañaId: number, numero: string): Promise<Mensaje[]> {
+        // Paso 1: obtener la fecha de envío de esta campaña a este número
+        const reporteActual = await this.prisma.reporte.findFirst({
+            where: {
+                campañaId,
+                numero,
+                enviadoAt: { not: null },
+            },
+            orderBy: { enviadoAt: 'asc' },
+            select: {
+                enviadoAt: true,
+            },
+        });
+
+        if (!reporteActual?.enviadoAt) {
+            throw new Error('No se encontró fecha de envío para este número en la campaña');
+        }
+
+        const desde = reporteActual.enviadoAt;
+
+        // Paso 2: buscar la siguiente fecha de envío a este número en otra campaña
+        const siguienteReporte = await this.prisma.reporte.findFirst({
+            where: {
+                numero,
+                campañaId: { not: campañaId },
+                enviadoAt: { gt: desde },
+            },
+            orderBy: { enviadoAt: 'asc' },
+            select: { enviadoAt: true },
+        });
+
+        const hasta = siguienteReporte?.enviadoAt || new Date();
+
+        // Paso 3: traer los mensajes de ese número en ese rango
+        return this.prisma.mensaje.findMany({
+            where: {
+                numero,
+                fecha: {
+                    gte: desde,
+                    lt: hasta,
+                },
+            },
+            orderBy: { fecha: 'asc' },
         });
     }
 }
