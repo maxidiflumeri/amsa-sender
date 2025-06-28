@@ -1,10 +1,8 @@
-import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
+import { Injectable, Inject, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { delay, Worker } from 'bullmq';
+import { delay, Worker, Job } from 'bullmq';
 import { connection } from 'src/queues/bullmq.config';
-import { Job } from 'bullmq';
 import { RedisClientType } from 'redis';
-import { Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -27,7 +25,7 @@ export class WhatsappWorkerService implements OnModuleInit {
             this.logger.error(`❌ Job ${job?.id ?? 'unknown'} falló: ${err.message}`);
         });
 
-        this.logger.log('👷 Worker iniciado y escuchando jobs...');
+        this.logger.log('👷 Worker de WhatsApp iniciado y escuchando jobs en "colaEnvios"...');
 
         await this.redisSub.subscribe('respuesta-envio', (message: string) => {
             try {
@@ -40,16 +38,18 @@ export class WhatsappWorkerService implements OnModuleInit {
                     this.pendientes.delete(messageId);
                 }
             } catch (err) {
-                this.logger.error('❌ Error parseando mensaje de respuesta-envio:', err.message);
+                this.logger.error(`❌ Error parseando mensaje de "respuesta-envio": ${err.message}`);
             }
         });
 
-        this.logger.log('📡 Suscripción a canal "respuesta-envio" activa.');
+        this.logger.log('📡 Suscripción a canal Redis "respuesta-envio" activa.');
     }
 
     async procesarJob(job: Job) {
         const { sessionIds, campaña, config } = job.data;
         const { batchSize, delayEntreMensajes, delayEntreLotes } = config;
+
+        this.logger.log(`📨 Procesando campaña ${campaña} con ${sessionIds.length} sesiones.`);
 
         const estado = await this.prisma.campaña.findUnique({ where: { id: campaña } });
         if (!estado) throw new Error('Campaña no encontrada');
@@ -64,7 +64,7 @@ export class WhatsappWorkerService implements OnModuleInit {
         if (estado.estado === 'programada') {
             await this.prisma.campaña.update({ where: { id: campaña }, data: { estado: 'procesando' } });
             await this.redis.publish('campania-estado', JSON.stringify({ campaña, estado: 'procesando' }));
-            this.logger.log(`▶️ Campaña ${campaña} marcada como procesando.`);
+            this.logger.log(`▶️ Campaña ${campaña} marcada como "procesando".`);
         }
 
         const enviadosPrevios = await this.prisma.reporte.findMany({
@@ -81,7 +81,7 @@ export class WhatsappWorkerService implements OnModuleInit {
         const total = contactos.length;
         let enviados = 0;
 
-        this.logger.log(`📦 Campaña ${campaña}: ${total} contactos a enviar con ${sessionIds.length} sesiones.`);
+        this.logger.log(`📦 ${total} contactos a enviar para campaña ${campaña}.`);
 
         const porSesion: Record<string, typeof contactos> = {};
         sessionIds.forEach(id => porSesion[id] = []);
@@ -153,7 +153,7 @@ export class WhatsappWorkerService implements OnModuleInit {
                             },
                         });
 
-                        this.logger.log(`✅ [${sessionId}] Mensaje enviado a ${contacto.numero}`);
+                        this.logger.log(`✅ [${sessionId}] Enviado a ${contacto.numero}`);
                     } else {
                         await this.prisma.reporte.create({
                             data: {
@@ -188,14 +188,14 @@ export class WhatsappWorkerService implements OnModuleInit {
                 where: { id: campaña },
                 data: { estado: 'pendiente' },
             });
-            this.logger.warn(`🔁 Campaña ${campaña} no pudo ser enviada. Estado: pendiente.`);
+            this.logger.warn(`🔁 Campaña ${campaña} sin mensajes enviados. Se marca como pendiente.`);
         } else {
             await this.prisma.campaña.update({
                 where: { id: campaña },
                 data: { estado: 'finalizada', enviadoAt: new Date() },
             });
             await this.redis.publish('campania-finalizada', JSON.stringify({ campañaId: campaña }));
-            this.logger.log(`🏁 Campaña ${campaña} finalizada con ${enviados} enviados.`);
+            this.logger.log(`🏁 Campaña ${campaña} finalizada. Total enviados: ${enviados}/${total}.`);
         }
     }
 

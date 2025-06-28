@@ -1,60 +1,84 @@
-import { Controller, Delete, Get, Param, Post, Res } from '@nestjs/common';
+import {
+    Controller,
+    Delete,
+    Get,
+    Param,
+    Post,
+    Logger,
+    NotFoundException,
+    InternalServerErrorException,
+} from '@nestjs/common';
 import { SesionesService } from './sesiones.service';
-import { Response } from 'express';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Controller('whatsapp/sesiones')
 export class SesionesController {
+    private readonly logger = new Logger(SesionesController.name);
+
     constructor(
         private readonly sesionesService: SesionesService,
         private readonly prisma: PrismaService,
     ) { }
 
     @Delete('clear')
-    async clearAll(@Res() res: Response) {
+    async clearAll() {
+        this.logger.log('🧹 DELETE /clear - Eliminando todas las sesiones');
         try {
             await this.prisma.sesion.deleteMany();
             await this.sesionesService.limpiarSesiones();
             await this.sesionesService.borrarTodasLasCarpetasSesion();
-            return res.json({ message: 'Todas las sesiones han sido eliminadas.' });
+            this.logger.log('✅ Todas las sesiones eliminadas correctamente');
+            return { message: 'Todas las sesiones han sido eliminadas.' };
         } catch (error) {
-            return res.status(500).json({ error: 'Error al eliminar sesiones.' });
+            this.logger.error('❌ Error al eliminar todas las sesiones', error.stack);
+            throw new InternalServerErrorException('Error al eliminar sesiones.');
         }
     }
 
     @Delete(':id')
-    async deleteById(@Param('id') id: string, @Res() res: Response) {
+    async deleteById(@Param('id') id: string) {
+        this.logger.log(`🗑️ DELETE /${id} - Eliminando sesión`);
         try {
-            const sesion = await this.prisma.sesion.findUnique({ where: { sessionId: id } });
+            const sesion = await this.prisma.sesion.findUnique({
+                where: { sessionId: id },
+            });
             if (sesion) {
                 await this.prisma.sesion.delete({ where: { sessionId: id } });
             }
             await this.sesionesService.eliminarSesionPorId(id);
             await this.sesionesService.borrarCarpetaSesion(id);
-            return res.json({ message: `Sesión ${id} eliminada correctamente.` });
+            this.logger.log(`✅ Sesión ${id} eliminada correctamente`);
+            return { message: `Sesión ${id} eliminada correctamente.` };
         } catch (error) {
-            return res.status(500).json({ error: 'Error al eliminar la sesión.' });
+            this.logger.error(`❌ Error al eliminar sesión ${id}`, error.stack);
+            throw new InternalServerErrorException('Error al eliminar la sesión.');
         }
     }
 
     @Get('status')
     getStatus() {
+        this.logger.log('📥 GET /status - Solicitando estado de todas las sesiones');
         return this.sesionesService.getSesionesActivas();
     }
 
     @Get('status/:id')
-    getStatusById(@Param('id') id: string, @Res() res: Response) {
+    getStatusById(@Param('id') id: string) {
+        this.logger.log(`📥 GET /status/${id} - Solicitando estado de sesión`);
         const sesion = this.sesionesService.getSesion(id);
         if (!sesion) {
-            return res.status(404).json({ error: 'Sesión no encontrada' });
+            this.logger.warn(`⚠️ Sesión ${id} no encontrada`);
+            throw new NotFoundException('Sesión no encontrada');
         }
-        return res.json({ id, estado: sesion.estado, ani: sesion.ani });
+        this.logger.log(`✅ Estado de sesión ${id}: ${sesion.estado}`);
+        return { id, estado: sesion.estado, ani: sesion.ani };
     }
 
     @Post('conectar')
-    async conectarNueva(@Res() res: Response) {
+    async conectarNueva() {
         const sessionId = 'session-' + Date.now();
+        this.logger.log(`🔌 POST /conectar - Conectando nueva sesión: ${sessionId}`);
         this.sesionesService.conectarNuevaSesion(sessionId);
-        return res.status(200).json({ sessionId });
+        this.logger.log(`✅ Sesión ${sessionId} en proceso de conexión`);
+        return { sessionId };
     }
-}
+}  

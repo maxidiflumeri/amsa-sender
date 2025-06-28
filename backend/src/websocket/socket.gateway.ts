@@ -15,24 +15,30 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly logger = new Logger(SocketGateway.name);
 
     handleConnection(client: Socket) {
-        this.logger.log('🔌 Cliente conectado');
+        this.logger.log(`🔌 Cliente conectado: ${client.id}`);
 
         client.on('join_campaña', (campañaId: number) => {
-            client.join(`campaña_${campañaId}`);
-            this.logger.log(`🧩 Cliente se unió a sala campaña_${campañaId}`);
+            const sala = `campaña_${campañaId}`;
+            client.join(sala);
+            this.logger.log(`🧩 Cliente ${client.id} se unió a sala ${sala}`);
         });
     }
 
     handleDisconnect(client: Socket) {
-        this.logger.log('❌ Cliente desconectado');
+        this.logger.log(`❌ Cliente desconectado: ${client.id}`);
     }
 
     emitirEvento(evento: string, data: any, sala?: string) {
-        this.logger.log(`📤 [SOCKET] Emitiendo '${evento}' con data: ${JSON.stringify(data)}`);
+        const logMsg = sala
+            ? `📤 [SOCKET] Emitiendo '${evento}' a sala '${sala}' con data: ${JSON.stringify(data)}`
+            : `📤 [SOCKET] Emitiendo '${evento}' a todos los clientes con data: ${JSON.stringify(data)}`;
+
+        this.logger.log(logMsg);
+
         if (sala) {
             this.server.to(sala).emit(evento, data);
         } else {
             this.server.emit(evento, data);
         }
     }
-}  
+}

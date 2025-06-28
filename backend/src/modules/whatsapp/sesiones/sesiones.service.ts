@@ -14,6 +14,7 @@ export class SesionesService implements OnModuleInit {
     constructor(private readonly prisma: PrismaService) { }
 
     async onModuleInit() {
+        this.logger.log('🚀 Inicializando SesionesService y conectando a Redis...');
         this.redis = new Redis({
             host: process.env.REDIS_HOST,
             port: parseInt(process.env.REDIS_PORT || '6379'),
@@ -35,6 +36,7 @@ export class SesionesService implements OnModuleInit {
     }
 
     async conectarNuevaSesion(sessionId: string) {
+        this.logger.log(`🔌 Iniciando nueva sesión: ${sessionId}`);
         const client = new Client({
             authStrategy: new LocalAuth({ clientId: sessionId }),
             puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] },
@@ -43,12 +45,14 @@ export class SesionesService implements OnModuleInit {
         this.sesiones[sessionId] = { client, estado: 'inicializando' };
 
         client.on('qr', (qr) => {
+            this.logger.log(`📲 QR generado para sesión ${sessionId}`);
             this.sesiones[sessionId].qr = qr;
             this.sesiones[sessionId].estado = 'esperando escaneo';
             this.redis.publish('estado-sesion', JSON.stringify({ estado: 'qr', qr, ani: '', sessionId }));
         });
 
         client.on('authenticated', async () => {
+            this.logger.log(`🔐 Sesión ${sessionId} autenticada`);
             this.sesiones[sessionId].estado = 'iniciando_sesion';
             await this.redis.publish('estado-sesion', JSON.stringify({ estado: 'iniciando_sesion', qr: '', ani: '', sessionId }));
         });
@@ -66,19 +70,19 @@ export class SesionesService implements OnModuleInit {
                 create: { sessionId, estado: 'conectado', ani },
             });
 
-            this.logger.log(`Sesión ${sessionId} conectada como ${ani}`);
+            this.logger.log(`✅ Sesión ${sessionId} conectada como ${ani}`);
         });
 
         client.on('auth_failure', (msg) => {
-            this.logger.warn(`Fallo de autenticación en ${sessionId}: ${msg}`);
+            this.logger.warn(`❌ Fallo de autenticación en sesión ${sessionId}: ${msg}`);
             this.redis.publish('estado-sesion', JSON.stringify({ estado: 'fallo_autenticacion', sessionId, mensaje: msg }));
         });
 
         client.on('disconnected', async () => {
+            this.logger.log(`⚠️ Sesión ${sessionId} desconectada`);
             this.sesiones[sessionId].estado = 'desconectado';
             await this.prisma.sesion.update({ where: { sessionId }, data: { estado: 'desconectado' } });
             await this.redis.publish('estado-sesion', JSON.stringify({ estado: 'desconectado', qr: '', ani: '', sessionId }));
-            this.logger.log(`Sesión ${sessionId} desconectada.`);
         });
 
         client.on('message', async (msg) => {
@@ -91,23 +95,25 @@ export class SesionesService implements OnModuleInit {
             }
         });
 
-        await client.initialize().catch(error => {
-            this.logger.error(`Error al inicializar sesión ${sessionId}: ${error.message}`);
+        await client.initialize().catch((error) => {
+            this.logger.error(`❌ Error al inicializar sesión ${sessionId}: ${error.message}`, error.stack);
         });
     }
 
     async cargarSesionesActivas() {
+        this.logger.log('🔄 Cargando sesiones activas desde la base de datos...');
         const sesionesDB = await this.prisma.sesion.findMany({ where: { estado: 'conectado' } });
         for (const { sessionId } of sesionesDB) {
             try {
                 await this.reconectarSesion(sessionId);
             } catch (err) {
-                this.logger.error(`Error reconectando ${sessionId}: ${err.message}`);
+                this.logger.error(`❌ Error reconectando sesión ${sessionId}: ${err.message}`, err.stack);
             }
         }
     }
 
     async reconectarSesion(sessionId: string) {
+        this.logger.log(`🔁 Reintentando conexión de sesión ${sessionId}...`);
         const client = new Client({
             authStrategy: new LocalAuth({ clientId: sessionId }),
             puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] },
@@ -120,7 +126,7 @@ export class SesionesService implements OnModuleInit {
             this.sesiones[sessionId] = { client, estado: 'conectado', ani };
             await this.prisma.sesion.update({ where: { sessionId }, data: { estado: 'conectado', ani } });
             await this.redis.publish('estado-sesion', JSON.stringify({ estado: 'conectado', qr: '', ani, sessionId }));
-            this.logger.log(`Sesión ${sessionId} reconectada (${ani})`);
+            this.logger.log(`✅ Sesión ${sessionId} reconectada como ${ani}`);
         });
 
         client.on('message', async (msg) => {
@@ -135,13 +141,13 @@ export class SesionesService implements OnModuleInit {
 
         client.on('auth_failure', (msg) => {
             this.sesiones[sessionId].estado = 'fallo de autenticación';
-            this.logger.warn(`Auth failure ${sessionId}: ${msg}`);
+            this.logger.warn(`❌ Auth failure en sesión ${sessionId}: ${msg}`);
         });
 
         client.on('disconnected', async () => {
             this.sesiones[sessionId].estado = 'desconectado';
             await this.prisma.sesion.update({ where: { sessionId }, data: { estado: 'desconectado' } });
-            this.logger.log(`Sesión ${sessionId} desconectada.`);
+            this.logger.log(`⚠️ Sesión ${sessionId} desconectada`);
         });
 
         await client.initialize();
@@ -152,29 +158,32 @@ export class SesionesService implements OnModuleInit {
         for (const id of Object.keys(this.sesiones)) {
             await this.eliminarSesionPorId(id);
         }
-        this.logger.log('Todas las sesiones en memoria fueron limpiadas.');
+        this.logger.log('🧹 Todas las sesiones en memoria fueron limpiadas.');
     }
 
     async eliminarSesionPorId(sessionId: string) {
         const sesion = this.sesiones[sessionId];
-        if (!sesion) return;
-        const estado = sesion.estado;
+        if (!sesion) {
+            this.logger.warn(`⚠️ Intento de eliminar sesión no existente: ${sessionId}`);
+            return;
+        }
 
+        const estado = sesion.estado;
         try {
             if (estado !== 'desconectado' && sesion?.client) {
                 if (sesion.client.pupBrowser?.isConnected()) {
-                    await sesion.client.pupBrowser.close().catch(err => {
-                        this.logger.warn(`Error cerrando browser Puppeteer en sesión ${sessionId}: ${err.message}`);
+                    await sesion.client.pupBrowser.close().catch((err) => {
+                        this.logger.warn(`⚠️ Error cerrando Puppeteer en sesión ${sessionId}: ${err.message}`);
                     });
                 }
                 await sesion.client.destroy();
             }
         } catch (err) {
-            this.logger.error(`Error al destruir sesión ${sessionId}: ${err.message}`);
+            this.logger.error(`❌ Error al destruir sesión ${sessionId}: ${err.message}`, err.stack);
         }
 
         delete this.sesiones[sessionId];
-        this.logger.log(`Sesión ${sessionId} eliminada de memoria.`);
+        this.logger.log(`🗑️ Sesión ${sessionId} eliminada de memoria.`);
     }
 
     async borrarCarpetaSesion(sessionId: string) {
@@ -182,16 +191,18 @@ export class SesionesService implements OnModuleInit {
         const ruta = path.join(__dirname, '..', '..', '..', '.wwebjs_auth', nombreCarpeta);
         if (fs.existsSync(ruta)) {
             await fs.promises.rm(ruta, { recursive: true, force: true });
+            this.logger.log(`🗂️ Carpeta de sesión eliminada: ${nombreCarpeta}`);
         }
     }
 
     async borrarTodasLasCarpetasSesion() {
         const basePath = path.join(__dirname, '..', '..', '..', '.wwebjs_auth');
         const archivos = await fs.promises.readdir(basePath);
-        const carpetasSesion = archivos.filter(nombre => nombre.startsWith('session-'));
+        const carpetasSesion = archivos.filter((nombre) => nombre.startsWith('session-'));
         for (const carpeta of carpetasSesion) {
             const ruta = path.join(basePath, carpeta);
             await fs.promises.rm(ruta, { recursive: true, force: true });
+            this.logger.log(`🗂️ Carpeta eliminada: ${carpeta}`);
         }
     }
 
@@ -199,7 +210,15 @@ export class SesionesService implements OnModuleInit {
         return numeroRaw.replace('@c.us', '').replace('@s.whatsapp.net', '');
     }
 
-    private async registrarMensaje({ msg, client, sessionId }: { msg: Message, client: Client, sessionId: string }) {
+    private async registrarMensaje({
+        msg,
+        client,
+        sessionId,
+    }: {
+        msg: Message;
+        client: Client;
+        sessionId: string;
+    }) {
         try {
             const fromMe = msg.fromMe;
             const numeroRaw = msg.fromMe ? msg.to : msg.from;
@@ -248,9 +267,11 @@ export class SesionesService implements OnModuleInit {
                 },
             });
 
-            this.logger.log(`[${fromMe ? 'ENVIADO' : 'RECIBIDO'}] ${numero}: ${mensaje} ${campañaId ? `(Campaña ${campañaId})` : ''}`);
+            this.logger.log(
+                `[${fromMe ? 'ENVIADO' : 'RECIBIDO'}] ${numero}: ${mensaje} ${campañaId ? `(Campaña ${campañaId})` : ''}`,
+            );
         } catch (err) {
-            this.logger.error(`Error registrando mensaje: ${err.message}`);
+            this.logger.error(`❌ Error registrando mensaje: ${err.message}`, err.stack);
         }
     }
 }
