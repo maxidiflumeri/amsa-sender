@@ -7,9 +7,10 @@ import { ConfigModule } from '@nestjs/config';
 import { SocketGateway } from './websocket/socket.gateway';
 import { PubSubService } from './websocket/pubsub.service';
 import { SesionesModule } from './modules/whatsapp/sesiones/sesiones.module';
+import { QueueModule } from './queues/queue.module';
 
 @Module({
-  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule],
+  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule],
   controllers: [AppController],
   providers: [AppService, SocketGateway, PubSubService],
 })
