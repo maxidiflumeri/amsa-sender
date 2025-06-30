@@ -4,6 +4,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { Redis } from 'ioredis';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getAuthBasePath, getSessionFolder } from 'src/common/auth-path.common';
 
 @Injectable()
 export class SesionesService implements OnModuleInit {
@@ -38,7 +39,7 @@ export class SesionesService implements OnModuleInit {
     async conectarNuevaSesion(sessionId: string) {
         this.logger.log(`🔌 Iniciando nueva sesión: ${sessionId}`);
         const client = new Client({
-            authStrategy: new LocalAuth({ clientId: sessionId }),
+            authStrategy: new LocalAuth({ clientId: sessionId, dataPath: getAuthBasePath() }),
             puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] },
         });
 
@@ -115,7 +116,7 @@ export class SesionesService implements OnModuleInit {
     async reconectarSesion(sessionId: string) {
         this.logger.log(`🔁 Reintentando conexión de sesión ${sessionId}...`);
         const client = new Client({
-            authStrategy: new LocalAuth({ clientId: sessionId }),
+            authStrategy: new LocalAuth({ clientId: sessionId, dataPath: getAuthBasePath() }),
             puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] },
         });
 
@@ -150,7 +151,28 @@ export class SesionesService implements OnModuleInit {
             this.logger.log(`⚠️ Sesión ${sessionId} desconectada`);
         });
 
-        await client.initialize();
+        client.on('error', (err) => {
+            this.logger.error(`❌ Error en sesión ${sessionId}: ${err}`);
+        });
+
+        client.on('change_state', (state) => {
+            this.logger.log(`📶 Estado de sesión ${sessionId}: ${state}`);
+        });
+
+        client.on('qr', (qr) => {
+            this.logger.log(`📸 QR generado para sesión ${sessionId}`);
+        });
+
+        client.on('authenticated', () => {
+            this.logger.log(`🔐 Sesión ${sessionId} autenticada`);
+        });
+
+        try {
+            await client.initialize();
+        } catch (error) {
+            this.logger.error(`❌ Error al inicializar sesión ${sessionId}: ${error}`);
+        }
+
         return this.sesiones[sessionId];
     }
 
@@ -187,18 +209,17 @@ export class SesionesService implements OnModuleInit {
     }
 
     async borrarCarpetaSesion(sessionId: string) {
-        const nombreCarpeta = `session-${sessionId}`;
-        const ruta = path.join(__dirname, '..', '..', '..', '.wwebjs_auth', nombreCarpeta);
+        const ruta = getSessionFolder(sessionId);
         if (fs.existsSync(ruta)) {
             await fs.promises.rm(ruta, { recursive: true, force: true });
-            this.logger.log(`🗂️ Carpeta de sesión eliminada: ${nombreCarpeta}`);
+            this.logger.log(`🗂️ Carpeta de sesión eliminada: ${ruta}`);
         }
     }
 
     async borrarTodasLasCarpetasSesion() {
-        const basePath = path.join(__dirname, '..', '..', '..', '.wwebjs_auth');
+        const basePath = getAuthBasePath();
         const archivos = await fs.promises.readdir(basePath);
-        const carpetasSesion = archivos.filter((nombre) => nombre.startsWith('session-'));
+        const carpetasSesion = archivos.filter(nombre => nombre.startsWith('session-'));
         for (const carpeta of carpetasSesion) {
             const ruta = path.join(basePath, carpeta);
             await fs.promises.rm(ruta, { recursive: true, force: true });
@@ -259,7 +280,7 @@ export class SesionesService implements OnModuleInit {
 
             if (msg.hasMedia) {
                 const mediaMsg = msg as Message & { caption?: string };
-                const media = await msg.downloadMedia();               
+                const media = await msg.downloadMedia();
 
                 let mimetype = media?.mimetype?.toLowerCase() || '';
                 const filename = media?.filename ? ` (${media.filename})` : '';
