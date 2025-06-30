@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
     Paper,
     Typography,
@@ -84,9 +84,12 @@ export default function VerReportes() {
 
     const handleCloseModal = () => setModalAbierto(false);
 
-    const datosFiltrados = (tab === 0 ? reportes : mensajes).filter((item) =>
-        item.numero.toLowerCase().includes(busquedaNumero.toLowerCase())
-    );
+    const datosFiltrados = useMemo(() => {
+        const fuente = tab === 0 ? reportes : mensajes;
+        return fuente.filter((item) =>
+            item.numero.toLowerCase().includes(busquedaNumero.toLowerCase())
+        );
+    }, [reportes, mensajes, tab, busquedaNumero]);
 
     const datosPaginados = datosFiltrados.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
