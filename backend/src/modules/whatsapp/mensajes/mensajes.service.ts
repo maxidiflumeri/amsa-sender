@@ -123,19 +123,71 @@ export class MensajesService {
         }
     }
 
-    async obtenerMensajes(campañaId?: number) {
-        this.logger.log(
-            `📚 Obteniendo mensajes ${campañaId ? 'para campaña ' + campañaId : ''}`,
-        );
-        return this.prisma.mensaje.findMany({
-            where: {
-                campañaId: campañaId ? campañaId : undefined,
-            },
-            orderBy: {
-                fecha: 'asc',
-            },
+    async obtenerMensajes(campañaId: number): Promise<Mensaje[]> {
+        this.logger.log(`🔍 Obteniendo mensajes para todos los números de la campaña ${campañaId}`);
+
+        // 1. Obtener todos los números únicos de la campaña
+        const contactos = await this.prisma.contacto.findMany({
+            where: { campañaId },
+            select: { numero: true },
         });
+
+        const numeros = [...new Set(contactos.map(c => c.numero))];
+
+        // 2. Para cada número, buscar su rango de fechas
+        const mensajesPorNumero = await Promise.all(
+            numeros.map(async (numero) => {
+                const reporteActual = await this.prisma.reporte.findFirst({
+                    where: {
+                        campañaId,
+                        numero,
+                        enviadoAt: { not: null },
+                    },
+                    orderBy: { enviadoAt: 'asc' },
+                    select: { enviadoAt: true },
+                });
+
+                if (!reporteActual?.enviadoAt) {
+                    this.logger.warn(`⚠️ No se encontró enviadoAt para número ${numero} en campaña ${campañaId}`);
+                    return []; // O podrías ignorarlo
+                }
+
+                const desde = reporteActual.enviadoAt;
+
+                const siguienteReporte = await this.prisma.reporte.findFirst({
+                    where: {
+                        numero,
+                        campañaId: { not: campañaId },
+                        enviadoAt: { gt: desde },
+                    },
+                    orderBy: { enviadoAt: 'asc' },
+                    select: { enviadoAt: true },
+                });
+
+                const hasta = siguienteReporte?.enviadoAt || undefined;
+
+                this.logger.debug(`📆 ${numero}: desde ${desde.toISOString()} hasta ${hasta?.toISOString() || '∞'}`);
+
+                // 3. Buscar los mensajes de ese número en ese rango
+                const mensajes = await this.prisma.mensaje.findMany({
+                    where: {
+                        numero,
+                        fecha: {
+                            gte: desde,
+                            ...(hasta ? { lt: hasta } : {}),
+                        },
+                    },
+                    orderBy: { fecha: 'asc' },
+                });
+
+                return mensajes;
+            })
+        );
+
+        // 4. Aplanar el array de arrays
+        return mensajesPorNumero.flat();
     }
+
 
     async obtenerMensajesEntreEnvios(
         campañaId: number,

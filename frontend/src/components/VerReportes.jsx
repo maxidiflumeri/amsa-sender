@@ -23,9 +23,10 @@ import {
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import api from '../api/axios';
-import InboxIcon from '@mui/icons-material/Inbox';
 import ChatIcon from '@mui/icons-material/Chat';
 import CloseIcon from '@mui/icons-material/Close';
+import InputAdornment from '@mui/material/InputAdornment';
+import SearchIcon from '@mui/icons-material/Search';
 
 export default function VerReportes() {
     const theme = useTheme();
@@ -41,6 +42,7 @@ export default function VerReportes() {
     const [modalAbierto, setModalAbierto] = useState(false);
     const [mensajesContacto, setMensajesContacto] = useState([]);
     const [numeroActual, setNumeroActual] = useState(null);
+    const [busquedaNumero, setBusquedaNumero] = useState('');
 
     useEffect(() => {
         api.get('/whatsapp/reportes/campanias-con-reportes')
@@ -57,7 +59,10 @@ export default function VerReportes() {
 
         api.get(`/whatsapp/reportes?campañaId=${campañaSeleccionada.id}`)
             .then(res => setReportes(res.data))
-            .catch(err => console.error('Error cargando reportes', err));        
+            .catch(err => console.error('Error cargando reportes', err));
+        api.get(`/whatsapp/mensajes?campañaId=${campañaSeleccionada.id}`)
+            .then(res => setMensajes(res.data))
+            .catch(err => console.error('Error cargando reportes', err));
     }, [campañaSeleccionada]);
 
     const abrirModalMensajes = async (numero) => {
@@ -79,8 +84,11 @@ export default function VerReportes() {
 
     const handleCloseModal = () => setModalAbierto(false);
 
-    const reportesPaginados = reportes.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
-    const mensajesPaginados = mensajes.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+    const datosFiltrados = (tab === 0 ? reportes : mensajes).filter((item) =>
+        item.numero.toLowerCase().includes(busquedaNumero.toLowerCase())
+    );
+
+    const datosPaginados = datosFiltrados.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
     const getEstadoChip = (estado) => {
         switch (estado) {
@@ -246,6 +254,24 @@ export default function VerReportes() {
                     isOptionEqualToValue={(option, value) => option.id === value.id}
                 />
 
+                <Box sx={{ mb: 3 }}>
+                    <TextField
+                        label="Buscar número"
+                        variant="outlined"
+                        size="small"
+                        value={busquedaNumero}
+                        onChange={(e) => setBusquedaNumero(e.target.value)}
+                        InputProps={{
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <SearchIcon />
+                                </InputAdornment>
+                            ),
+                        }}
+                        sx={{ width: { xs: '100%', sm: 250 } }}
+                    />
+                </Box>
+
                 {tab === 0 && (
                     <>
                         <Table size={isMobile ? 'small' : 'medium'}>
@@ -261,7 +287,7 @@ export default function VerReportes() {
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {reportesPaginados.map((r, i) => (
+                                {datosPaginados.map((r, i) => (
                                     <TableRow key={i}>
                                         <TableCell>{r.numero}</TableCell>
                                         <TableCell>{r.mensaje}</TableCell>
@@ -300,7 +326,7 @@ export default function VerReportes() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {mensajesPaginados.map((m, i) => (
+                            {datosPaginados.map((m, i) => (
                                 <TableRow key={i}>
                                     <TableCell>
                                         <Chip
@@ -320,7 +346,7 @@ export default function VerReportes() {
 
                 <TablePagination
                     component="div"
-                    count={tab === 0 ? reportes.length : mensajes.length}
+                    count={datosFiltrados.length}
                     page={page}
                     onPageChange={(_, newPage) => setPage(newPage)}
                     rowsPerPage={rowsPerPage}
