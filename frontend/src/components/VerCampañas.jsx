@@ -78,7 +78,7 @@ export default function VerCampañas() {
 
     const cargarCampañas = async () => {
         try {
-            const res = await api.get('/campanias');
+            const res = await api.get('/whatsapp/campanias');
             setCampañas(res.data);
         } catch (err) {
             console.error('Error al obtener campañas:', err);
@@ -200,7 +200,7 @@ export default function VerCampañas() {
     const eliminarCampaña = async () => {
         if (!campañaAEliminar) return;
         try {
-            await api.delete(`/campanias/${campañaAEliminar.id}`);
+            await api.delete(`/whatsapp/campanias/${campañaAEliminar.id}`);
             setMensaje({ tipo: 'success', texto: 'Campaña eliminada correctamente' });
             setSnackbarOpen(true);
             cargarCampañas();
@@ -229,7 +229,7 @@ export default function VerCampañas() {
     const pausarCampaña = async (campaña) => {
         setPausando((prev) => [...prev, campaña.id]);
         try {
-            await api.post(`/campanias/${campaña.id}/pausar`);
+            await api.post(`/whatsapp/campanias/${campaña.id}/pausar`);
             // setMensaje({ tipo: 'success', texto: 'Campaña pausada' });
             // setSnackbarOpen(true);
             // cargarCampañas();
@@ -242,7 +242,7 @@ export default function VerCampañas() {
 
     const reanudarCampaña = async (campaña) => {
         try {
-            await api.post(`/campanias/${campaña.id}/reanudar`);
+            await api.post(`/whatsapp/campanias/${campaña.id}/reanudar`);
             setMensaje({ tipo: 'success', texto: 'Campaña reanudada' });
             setSnackbarOpen(true);
             cargarCampañas();

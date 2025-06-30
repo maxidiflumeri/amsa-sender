@@ -23,14 +23,14 @@ export default function VerMetricas() {
     const [tipoGrafico, setTipoGrafico] = useState('torta');
 
     useEffect(() => {
-        api.get('/reportes/campanias-con-reportes')
+        api.get('/whatsapp/reportes/campanias-con-reportes')
             .then(res => setCampanias(res.data))
             .catch(err => console.error('Error cargando campañas', err));
     }, []);
 
     useEffect(() => {
         if (campaniaSeleccionada?.id) {
-            api.get(`/mensajes/campania/${campaniaSeleccionada.id}/metricas`)
+            api.get(`/whatsapp/mensajes/campania/${campaniaSeleccionada.id}/metricas`)
                 .then(res => setMetricas(res.data))
                 .catch(err => console.error('Error cargando métricas', err));
         }

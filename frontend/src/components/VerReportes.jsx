@@ -43,7 +43,7 @@ export default function VerReportes() {
     const [numeroActual, setNumeroActual] = useState(null);
 
     useEffect(() => {
-        api.get('/reportes/campanias-con-reportes')
+        api.get('/whatsapp/reportes/campanias-con-reportes')
             .then(res => setCampañas(res.data))
             .catch(err => console.error('Error cargando campañas', err));
     }, []);
@@ -55,20 +55,26 @@ export default function VerReportes() {
             return;
         }
 
-        api.get(`/reportes?campañaId=${campañaSeleccionada.id}`)
+        api.get(`/whatsapp/reportes?campañaId=${campañaSeleccionada.id}`)
             .then(res => setReportes(res.data))
-            .catch(err => console.error('Error cargando reportes', err));
-
-        api.get(`/mensajes/?campañaId=${campañaSeleccionada.id}`)
-            .then(res => setMensajes(res.data))
-            .catch(err => console.error('Error cargando mensajes', err));
+            .catch(err => console.error('Error cargando reportes', err));        
     }, [campañaSeleccionada]);
 
-    const abrirModalMensajes = (numero) => {
-        const mensajesFiltrados = mensajes.filter(m => m.numero === numero);
-        setMensajesContacto(mensajesFiltrados);
-        setNumeroActual(numero);
-        setModalAbierto(true);
+    const abrirModalMensajes = async (numero) => {
+        try {
+            const res = await api.get('/whatsapp/mensajes/por-campania', {
+                params: {
+                    campaniaId: campañaSeleccionada.id,
+                    numero,
+                },
+            });
+
+            setMensajesContacto(res.data);
+            setNumeroActual(numero);
+            setModalAbierto(true);
+        } catch (error) {
+            console.error('Error al obtener mensajes del contacto:', error);
+        }
     };
 
     const handleCloseModal = () => setModalAbierto(false);
@@ -84,8 +90,8 @@ export default function VerReportes() {
             default: return <Chip label={estado} />;
         }
     };
-    
-    const   exportarCSV = () => {
+
+    const exportarCSV = () => {
         if (!reportes.length) return;
 
         // 1. Reunir todas las claves únicas del campo "datos"

@@ -1,7 +1,7 @@
 # backend/Dockerfile.backend
 FROM node:18
 
-# Instalá dependencias del sistema necesarias para puppeteer
+# Instalá dependencias necesarias para puppeteer
 RUN apt-get update && apt-get install -y \
     wget \
     ca-certificates \
@@ -24,16 +24,27 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     && apt-get clean
 
+# Setea el directorio de trabajo
 WORKDIR /app
 
+# Copiá los archivos de dependencias
 COPY backend/package*.json ./
+COPY backend/prisma ./prisma
+
+# Instalá dependencias
 RUN npm install
 
+# Copiá el resto del código fuente
 COPY backend .
 
-# Compilar Prisma si es necesario
+# Generar Prisma Client
 RUN npx prisma generate
 
+# Compilar el proyecto NestJS
+RUN npm run build
+
+# Expone el puerto de la app
 EXPOSE 3001
 
-CMD ["npm", "run", "start"]
+# Comando de inicio en producción
+CMD ["npm", "run", "prod"]

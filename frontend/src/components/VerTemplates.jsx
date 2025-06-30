@@ -54,7 +54,7 @@ export default function VerTemplates() {
 
     const cargarTemplates = async () => {
         try {
-            const res = await api.get('/templates');
+            const res = await api.get('/whatsapp/templates');
             setTemplates(res.data);
         } catch (err) {
             console.error('Error al cargar templates', err);
@@ -70,7 +70,7 @@ export default function VerTemplates() {
 
     const eliminarTemplate = async () => {
         try {
-            await api.delete(`/templates/${templateAEliminar.id}`);
+            await api.delete(`/whatsapp/templates/${templateAEliminar.id}`);
             setTemplateAEliminar(null);
             setConfirmDialogOpen(false);
             setMensaje({ tipo: 'success', texto: 'Template eliminado correctamente' });
@@ -258,10 +258,10 @@ export default function VerTemplates() {
                 onSave={async (data) => {
                     try {
                         if (selectedTemplate) {
-                            await api.put(`/templates/${selectedTemplate.id}`, data);
+                            await api.put(`/whatsapp/templates/${selectedTemplate.id}`, data);
                             setMensaje({ tipo: 'success', texto: 'Template actualizado correctamente' });
                         } else {
-                            await api.post('/templates', data);
+                            await api.post('/whatsapp/templates', data);
                             setMensaje({ tipo: 'success', texto: 'Template creado correctamente' });
                         }
                         await cargarTemplates();

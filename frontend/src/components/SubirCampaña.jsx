@@ -26,11 +26,11 @@ export default function SubirCampaña({ onUploadSuccess, setMensaje }) {
 
         const formData = new FormData();
         formData.append('file', archivo);
-        formData.append('campaña', nombreCampaña);
+        formData.append('campania', nombreCampaña);
 
         setSubiendo(true);
         try {
-            await api.post('/campanias/upload-csv', formData);
+            await api.post('/whatsapp/campanias/upload-csv', formData);
             setArchivo(null);
             setNombreCampaña('');
             inputFileRef.current.value = null;

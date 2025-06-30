@@ -1,8 +1,36 @@
-node_modules
-# Keep environment variables out of version control
-.env
+# Node
+node_modules/
+dist/
+.cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 .wwebjs_auth
 .wwebjs_cache
-/src/generated/prisma
-/logs
-docker-compose.yml
+
+# Env
+.env
+.env.*
+
+# Prisma
+prisma/*.db
+prisma/migrations/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Redis (si llegás a usar dump local)
+dump.rdb
+
+# PM2 logs (si los llegás a usar)
+*.pid
+*.seed
+
+# Coverage
+coverage/
+.nyc_output/
