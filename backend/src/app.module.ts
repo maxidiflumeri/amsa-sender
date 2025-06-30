@@ -8,9 +8,10 @@ import { SocketGateway } from './websocket/socket.gateway';
 import { PubSubService } from './websocket/pubsub.service';
 import { SesionesModule } from './modules/whatsapp/sesiones/sesiones.module';
 import { QueueModule } from './queues/queue.module';
+import { SmtpModule } from './modules/email/smtp/smtp.module';
 
 @Module({
-  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule],
+  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule, SmtpModule],
   controllers: [AppController],
   providers: [AppService, SocketGateway, PubSubService],
 })
