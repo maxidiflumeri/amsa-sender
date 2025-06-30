@@ -10,6 +10,7 @@ import VerReportes from './components/VerReportes';
 import VerCampañas from './components/VerCampañas';
 import VerTemplates from './components/VerTemplates';
 import VerMetricas from './components/VerMetricas';
+import CuentasSMTP from './components/email/CuentasSMTP';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -208,6 +209,7 @@ export default function App() {
                     <Route path="/reportes" element={<VerReportes />} />
                     <Route path="/templates" element={<VerTemplates />} />
                     <Route path="/metricas" element={<VerMetricas />} />
+                    <Route path="/email/cuentas" element={<CuentasSMTP />} />
                 </Routes>
             </Navbar>
         </ThemeProvider>
