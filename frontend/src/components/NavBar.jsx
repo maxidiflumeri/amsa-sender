@@ -33,6 +33,7 @@ import { Collapse } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import UnsubscribeIcon from '@mui/icons-material/Unsubscribe';
+import logo from '../assets/amsasender.png'; // Asegúrate de que la ruta sea correcta
 
 const drawerWidth = 220;
 
@@ -106,14 +107,14 @@ const ThemedSwitch = styled(Switch)(({ theme }) => ({
 
 export default function Layout({ children, mode, toggleTheme }) {
     const [mobileOpen, setMobileOpen] = useState(false);
-    const [collapsed, setCollapsed] = useState(true);
+    const [collapsed, setCollapsed] = useState(false);
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     const location = useLocation();
     const [delayedDrawerWidth, setDelayedDrawerWidth] = useState(drawerWidth);
     const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
     const toggleCollapse = () => setCollapsed(prev => !prev);
-    const [openWhatsapp, setOpenWhatsapp] = useState(true);
+    const [openWhatsapp, setOpenWhatsapp] = useState(false);
     const [openEmail, setOpenEmail] = useState(false);
 
     useEffect(() => {
@@ -334,9 +335,9 @@ export default function Layout({ children, mode, toggleTheme }) {
             <AppBar position="fixed" sx={{ zIndex: theme.zIndex.drawer + 1, backgroundColor: '#075E54' }}>
                 <Toolbar sx={{ justifyContent: 'space-between' }}>
                     <Box display="flex" alignItems="center" gap={1}>
-                        <WhatsAppIcon />
+                        <img src={logo} alt="amsasender logo" style={{ height: '60px' }} />
                         <Typography variant="h6" fontWeight="bold" color="#fff">
-                            WhatsApp Manager
+                            AMSA Sender
                         </Typography>
                     </Box>
                     {isMobile && (
