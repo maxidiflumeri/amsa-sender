@@ -9,9 +9,21 @@ import api from '../../api/axios';
 import MuiAlert from '@mui/material/Alert';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import Tooltip from '@mui/material/Tooltip';
+import InputAdornment from '@mui/material/InputAdornment';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 
 export default function CuentasSMTP() {
+    const [validacionesDominio, setValidacionesDominio] = useState({});
+    const [verificandoDominioMap, setVerificandoDominioMap] = useState({});
+    const [resultadoVerificacion, setResultadoVerificacion] = useState(null);
+    const [modalVerificacionOpen, setModalVerificacionOpen] = useState(false);
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+    const [showPassword, setShowPassword] = useState(false);
+    const togglePasswordVisibility = () => setShowPassword((prev) => !prev);
+    const [testResultados, setTestResultados] = useState(getStoredTestResultados);
+    const [probandoId, setProbandoId] = useState(null);
     const theme = useTheme();
     const [cuentas, setCuentas] = useState([]);
     const [modalOpen, setModalOpen] = useState(false);
@@ -41,13 +53,66 @@ export default function CuentasSMTP() {
         try {
             const res = await api.get('/email/cuentas');
             setCuentas(res.data);
+            res.data.forEach((cuenta) => verificarDominio(cuenta.id));
         } catch (err) {
             console.error('Error al obtener cuentas SMTP', err);
         }
     };
 
+    function getStoredTestResultados() {
+        try {
+            const saved = localStorage.getItem('smtpTestResultados');
+            const parsed = saved ? JSON.parse(saved) : {};
+            if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+                return parsed;
+            }
+        } catch (e) {
+            console.warn('Error leyendo o parseando localStorage:', e);
+        }
+
+        localStorage.removeItem('smtpTestResultados'); // Limpieza
+        return {};
+    }
+
+    const abrirModalVerificacion = (id) => {
+        setResultadoVerificacion(validacionesDominio[id]);
+        setModalVerificacionOpen(true);
+    };
+
+    const verificarDominio = async (id) => {
+        setVerificandoDominioMap((prev) => ({ ...prev, [id]: true }));
+        try {
+            const res = await api.get(`/email/cuentas/${id}/verificar-dominio`);
+            setValidacionesDominio((prev) => ({
+                ...prev,
+                [id]: res.data
+            }));
+            console.log(validacionesDominio[id])
+        } catch (error) {
+            setValidacionesDominio((prev) => ({
+                ...prev,
+                [id]: {
+                    spf: false,
+                    dkim: false,
+                    dmarc: false,
+                    error: true
+                }
+            }));
+        } finally {
+            setVerificandoDominioMap((prev) => ({ ...prev, [id]: false }));
+        }
+    };
+
     const handleChange = e => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const actualizarResultado = (id, resultado) => {
+        setTestResultados((prev) => {
+            const nuevo = { ...prev, [id]: resultado };
+            localStorage.setItem('smtpTestResultados', JSON.stringify(nuevo));
+            return nuevo;
+        });
     };
 
     const handleSubmit = async () => {
@@ -79,6 +144,19 @@ export default function CuentasSMTP() {
             });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const getLabelTitle = (key) => {
+        switch (key) {
+            case 'spf':
+                return 'SPF (Sender Policy Framework)';
+            case 'dkim':
+                return 'DKIM (DomainKeys Identified Mail)';
+            case 'dmarc':
+                return 'DMARC (Domain-based Message Authentication, Reporting & Conformance)';
+            default:
+                return key.toUpperCase();
         }
     };
 
@@ -173,7 +251,8 @@ export default function CuentasSMTP() {
                             variant="outlined"
                             sx={{
                                 position: 'relative',
-                                p: 2,
+                                display: 'flex',
+                                alignItems: 'center',
                                 borderRadius: 2,
                                 boxShadow: 1,
                                 transition: 'box-shadow 0.3s ease',
@@ -182,27 +261,55 @@ export default function CuentasSMTP() {
                                     : '#2c2c2c',
                                 color: theme.palette.text.primary,
                                 '&:hover': { boxShadow: 6 },
+                                px: 1.5,
+                                py: 1,
                             }}
                         >
-                            {/* Ícono eliminar (opcional) */}
-                            <IconButton
-                                size="small"
-                                onClick={() => handleDelete(cuenta.id)}
-                                sx={{
-                                    position: 'absolute',
-                                    top: 6,
-                                    right: 6,
-                                    color: theme.palette.error.main,
-                                    zIndex: 1,
-                                }}
-                            >
-                                <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
 
-                            <CardContent sx={{ pl: 0, pt: 0, pr: 1 }}>
-                                <Typography variant="subtitle1" noWrap fontWeight="bold">
-                                    {cuenta.nombre}
-                                </Typography>
+                            <Tooltip
+                                title={
+                                    testResultados[cuenta.id] === 'ok'
+                                        ? 'Conexión exitosa'
+                                        : testResultados[cuenta.id] === 'error'
+                                            ? 'Error de conexión'
+                                            : 'Nunca probado'
+                                }
+                                arrow
+                                placement="left"
+                            >
+                                <Box
+                                    sx={{
+                                        width: 12,
+                                        height: 12,
+                                        borderRadius: '50%',
+                                        bgcolor:
+                                            testResultados[cuenta.id] === 'ok'
+                                                ? 'green'
+                                                : testResultados[cuenta.id] === 'error'
+                                                    ? 'red'
+                                                    : 'gray',
+                                        mx: 1,
+                                        flexShrink: 0,
+                                        cursor: 'default',
+                                    }}
+                                />
+                            </Tooltip>
+
+
+                            <CardContent sx={{ pl: 1, pr: 2, py: 1.5, width: '100%' }}>
+                                <Box display="flex" justifyContent="space-between" alignItems="start">
+                                    <Typography variant="subtitle1" fontWeight="bold" noWrap>
+                                        {cuenta.nombre}
+                                    </Typography>
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => handleDelete(cuenta.id)}
+                                        sx={{ color: theme.palette.error.main }}
+                                    >
+                                        <DeleteOutlineIcon fontSize="small" />
+                                    </IconButton>
+                                </Box>
+
                                 <Typography variant="subtitle2" noWrap>
                                     Host: {cuenta.host}:{cuenta.puerto}
                                 </Typography>
@@ -213,32 +320,81 @@ export default function CuentasSMTP() {
                                     Remitente: {cuenta.remitente} ({cuenta.emailFrom})
                                 </Typography>
 
+                                {verificandoDominioMap[cuenta.id] ? (
+                                    <Box display="flex" alignItems="center" gap={1} mt={1}>
+                                        <CircularProgress size={16} />
+                                        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                                            Verificando dominio...
+                                        </Typography>
+                                    </Box>
+                                ) : validacionesDominio[cuenta.id] && (
+                                    <Box display="flex" alignItems="center" gap={1} mt={1}>
+                                        {['spf', 'dkim', 'dmarc'].map((tipo) => (
+                                            <Box key={tipo} display="flex" alignItems="center" gap={0.5}>
+                                                <CheckCircleIcon
+                                                    fontSize="small"
+                                                    sx={{
+                                                        color: validacionesDominio[cuenta.id][tipo]?.valido === true ? '#28a745' : 'gray'
+                                                    }}
+                                                />
+                                                <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                                                    {tipo.toUpperCase()}
+                                                </Typography>
+                                            </Box>
+                                        ))}
+                                        <Button
+                                            onClick={() => abrirModalVerificacion(cuenta.id)}
+                                            size="small"
+                                            sx={{
+                                                ml: 1,
+                                                fontSize: '0.85rem',
+                                                textTransform: 'none',
+                                                color: '#1a73e8',
+                                                '&:hover': { textDecoration: 'underline' }
+                                            }}
+                                        >
+                                            Ver detalle
+                                        </Button>
+                                    </Box>
+                                )}
                                 <Button
                                     variant="outlined"
                                     size="small"
-                                    sx={{ mt: 2, textTransform: 'none' }}
+                                    sx={{ mt: 2, textTransform: 'none', minWidth: 140 }}
                                     onClick={async () => {
+                                        setProbandoId(cuenta.id);
+                                        actualizarResultado(cuenta.id, null);
+
                                         try {
                                             await api.get(`/email/cuentas/${cuenta.id}/test`);
+                                            actualizarResultado(cuenta.id, 'ok');
                                             setFeedback({
                                                 open: true,
                                                 type: 'success',
-                                                message: 'Conexión SMTP exitosa.'
+                                                message: 'Conexión SMTP exitosa.',
                                             });
                                         } catch (error) {
                                             const msg =
                                                 typeof error?.response?.data?.message === 'string'
                                                     ? error.response.data.message
                                                     : 'Error al probar la conexión SMTP';
+                                            actualizarResultado(cuenta.id, 'error');
                                             setFeedback({
                                                 open: true,
                                                 type: 'error',
-                                                message: msg
+                                                message: msg,
                                             });
+                                        } finally {
+                                            setProbandoId(null);
                                         }
                                     }}
+                                    disabled={probandoId === cuenta.id}
                                 >
-                                    Probar conexión
+                                    {probandoId === cuenta.id ? (
+                                        <CircularProgress size={16} />
+                                    ) : (
+                                        'Probar conexión'
+                                    )}
                                 </Button>
                             </CardContent>
                         </Card>
@@ -246,43 +402,268 @@ export default function CuentasSMTP() {
                 ))}
             </Grid>
 
-
-
             <Dialog open={modalOpen} onClose={() => setModalOpen(false)} fullWidth maxWidth="sm">
-                <DialogTitle>Nueva cuenta SMTP</DialogTitle>
+                <DialogTitle sx={{ fontWeight: 'bold', fontSize: '1.3rem', px: 3, py: 2 }}>
+                    Nueva cuenta SMTP
+                </DialogTitle>
+
                 <DialogContent dividers>
-                    <Grid container spacing={2}>
-                        {[
-                            { label: 'Nombre', name: 'nombre' },
-                            { label: 'Host', name: 'host' },
-                            { label: 'Puerto', name: 'puerto', type: 'number' },
-                            { label: 'Usuario', name: 'usuario' },
-                            { label: 'Contraseña', name: 'password', type: 'password' },
-                            { label: 'Nombre del remitente', name: 'remitente' },
-                            { label: 'Email del remitente', name: 'emailFrom', type: 'email' }
-                        ].map(field => (
-                            <Grid item xs={12} sm={field.full ? 12 : 6} key={field.name}>
+                    <Box component="form" noValidate autoComplete="off">
+                        <Grid container direction="column" spacing={2}>
+                            {/* Nombre */}
+                            <Grid item>
                                 <TextField
-                                    label={field.label}
-                                    name={field.name}
-                                    type={field.type || 'text'}
                                     fullWidth
-                                    value={formData[field.name]}
+                                    size="small"
+                                    label="Nombre"
+                                    name="nombre"
+                                    value={formData.nombre}
                                     onChange={handleChange}
+                                    InputProps={{
+                                        sx: { py: 0.5 }, // altura más baja aún
+                                    }}
                                 />
                             </Grid>
-                        ))}
-                        {error && (
-                            <Grid item xs={12}>
-                                <Typography color="error">{error}</Typography>
+
+                            {/* Puerto y Host */}
+                            <Grid item>
+                                <Grid container spacing={2}>
+                                    <Grid item xs={6}>
+                                        <TextField
+                                            fullWidth
+                                            size="small"
+                                            label="Puerto"
+                                            name="puerto"
+                                            type="number"
+                                            value={formData.puerto}
+                                            onChange={handleChange}
+                                            InputProps={{ sx: { py: 0.5 } }}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={6}>
+                                        <TextField
+                                            fullWidth
+                                            size="small"
+                                            label="Host"
+                                            name="host"
+                                            value={formData.host}
+                                            onChange={handleChange}
+                                            InputProps={{ sx: { py: 0.5 } }}
+                                        />
+                                    </Grid>
+                                </Grid>
                             </Grid>
-                        )}
-                    </Grid>
+
+                            {/* Usuario */}
+                            <Grid item>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Usuario"
+                                    name="usuario"
+                                    value={formData.usuario}
+                                    onChange={handleChange}
+                                    InputProps={{ sx: { py: 0.5 } }}
+                                />
+                            </Grid>
+
+                            {/* Contraseña */}
+                            <Grid item>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Contraseña"
+                                    name="password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    InputProps={{
+                                        sx: { py: 0.5 },
+                                        endAdornment: (
+                                            <InputAdornment position="end">
+                                                <IconButton onClick={togglePasswordVisibility} edge="end">
+                                                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                                                </IconButton>
+                                            </InputAdornment>
+                                        )
+                                    }}
+                                />
+                            </Grid>
+
+                            {/* Nombre remitente */}
+                            <Grid item>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Nombre del remitente"
+                                    name="remitente"
+                                    value={formData.remitente}
+                                    onChange={handleChange}
+                                    InputProps={{ sx: { py: 0.5 } }}
+                                />
+                            </Grid>
+
+                            {/* Email remitente */}
+                            <Grid item>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Email del remitente"
+                                    name="emailFrom"
+                                    type="email"
+                                    value={formData.emailFrom}
+                                    onChange={handleChange}
+                                    InputProps={{ sx: { py: 0.5 } }}
+                                />
+                            </Grid>
+
+                            {/* Error */}
+                            {error && (
+                                <Grid item>
+                                    <Typography color="error">{error}</Typography>
+                                </Grid>
+                            )}
+                        </Grid>
+                    </Box>
+                </DialogContent>
+                <DialogActions sx={{ px: 3, py: 2 }}>
+                    <Button
+                        onClick={() => setModalOpen(false)}
+                        sx={{
+                            textTransform: 'none',
+                            fontFamily: commonFont,
+                            borderRadius: 2,
+                            px: 3,
+                            py: 1.3,
+                            color: '#555'
+                        }}
+                    >
+                        Cancelar
+                    </Button>
+                    <Button
+                        onClick={handleSubmit}
+                        disabled={loading}
+                        variant="contained"
+                        sx={{
+                            fontFamily: commonFont,
+                            backgroundColor: '#075E54',
+                            textTransform: 'none',
+                            borderRadius: 2,
+                            px: 4,
+                            py: 1.3,
+                            fontWeight: 'bold',
+                            '&:hover': {
+                                backgroundColor: '#0b7b65',
+                                transform: 'scale(1.03)',
+                                boxShadow: 4
+                            }
+                        }}
+                    >
+                        {loading ? <CircularProgress size={20} color="inherit" /> : 'Guardar'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog
+                open={modalVerificacionOpen}
+                onClose={() => {
+                    setModalVerificacionOpen(false);
+                    setResultadoVerificacion(null); // Limpia al cerrar
+                }}
+                fullWidth
+                maxWidth="sm"
+            >
+                <DialogTitle sx={{ fontWeight: 'bold' }}>Detalles de validacion de dominio</DialogTitle>
+                <DialogContent dividers>
+                    {!resultadoVerificacion ? (
+                        <Box textAlign="center" py={3}>
+                            <CircularProgress />
+                            <Typography mt={2}>Verificando registros DNS...</Typography>
+                        </Box>
+                    ) : resultadoVerificacion?.error ? (
+                        <Typography color="error">{resultadoVerificacion.error}</Typography>
+                    ) : (
+                        resultadoVerificacion && (
+                            <Box>
+                                {resultadoVerificacion.dominio && (
+                                    <Typography>
+                                        <b>Dominio:</b> {resultadoVerificacion.dominio}
+                                    </Typography>
+                                )}
+                                {['spf', 'dkim', 'dmarc'].map((key) => {
+                                    const val = resultadoVerificacion[key];
+                                    if (!val) return null;
+
+                                    const labels = {
+                                        spf: 'SPF (Sender Policy Framework)',
+                                        dkim: 'DKIM (DomainKeys Identified Mail)',
+                                        dmarc: 'DMARC (Domain-based Message Authentication, Reporting & Conformance)'
+                                    };
+
+                                    const valido = val.valido;
+                                    const texto = val.valor || val.sugerencia || 'Sin información';
+
+                                    return (
+                                        <Tooltip key={key} title={labels[key]} placement="top" arrow>
+                                            <Box
+                                                key={key}
+                                                display="flex"
+                                                alignItems="start"
+                                                mt={2}
+                                                p={2}
+                                                borderRadius={2}
+                                                sx={{
+                                                    bgcolor: (theme) =>
+                                                        valido
+                                                            ? theme.palette.mode === 'dark'
+                                                                ? '#1b5e20' // verde oscuro
+                                                                : '#e8f5e9' // verde claro
+                                                            : theme.palette.mode === 'dark'
+                                                                ? '#5c0000' // rojo oscuro
+                                                                : '#ffebee', // rojo claro
+                                                    color: (theme) =>
+                                                        valido
+                                                            ? theme.palette.mode === 'dark'
+                                                                ? '#c8e6c9'
+                                                                : 'inherit'
+                                                            : theme.palette.mode === 'dark'
+                                                                ? '#ffcdd2'
+                                                                : 'inherit'
+                                                }}
+                                            >
+                                                <Box
+                                                    component="span"
+                                                    fontSize="1.4rem"
+                                                    mr={2}
+                                                    color={valido ? 'lightgreen' : 'orange'}
+                                                >
+                                                    {valido ? '✅' : '⚠️'}
+                                                </Box>
+                                                <Box>
+                                                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                                                        {getLabelTitle(key)}
+                                                    </Typography>
+                                                    <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+                                                        {texto}
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+                                        </Tooltip>
+                                    );
+                                })}
+                            </Box>
+                        )
+                    )}
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setModalOpen(false)}>Cancelar</Button>
-                    <Button onClick={handleSubmit} disabled={loading} variant="contained">
-                        {loading ? <CircularProgress size={20} /> : 'Guardar'}
+                    <Button
+                        onClick={() => {
+                            setModalVerificacionOpen(false);
+                            setResultadoVerificacion(null);
+                        }}
+                        sx={{ textTransform: 'none' }}
+                    >
+                        Cerrar
                     </Button>
                 </DialogActions>
             </Dialog>

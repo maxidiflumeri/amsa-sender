@@ -20,4 +20,9 @@ export class SmtpController {
     async probarConexion(@Param('id') id: string) {
         return this.smtpService.probarConexion(Number(id));
     }
+
+    @Get(':id/verificar-dominio')
+    async verificarDominio(@Param('id') id: string) {
+        return this.smtpService.verificarDominio(Number(id));
+    }
 }
