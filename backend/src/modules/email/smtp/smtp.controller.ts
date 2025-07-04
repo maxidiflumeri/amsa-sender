@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { SmtpService } from './smtp.service';
 import { CreateCuentaDto } from './dtos/create-cuenta.dto';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('email/cuentas')
+@UseGuards(JwtAuthGuard)
 export class SmtpController {
     constructor(private readonly smtpService: SmtpService) { }
 
