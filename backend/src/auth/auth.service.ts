@@ -28,8 +28,10 @@ export class AuthService {
             throw new UnauthorizedException('No se pudo obtener el nombre del usuario');
         }
 
-        if (!email.endsWith('@anamayasa.com.ar')) {
-            throw new UnauthorizedException('Solo se permiten cuentas corporativas');
+        const emailPermitido = email.endsWith('@anamayasa.com.ar') || email === 'maxidiflumeri@gmail.com';
+
+        if (!emailPermitido) {
+            throw new UnauthorizedException('Solo se permiten cuentas autorizadas');
         }
 
         const usuario = await this.prisma.usuario.upsert({
