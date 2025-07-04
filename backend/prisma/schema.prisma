@@ -89,3 +89,12 @@ model CuentaSMTP {
   emailFrom   String   // dirección de email usada en el "From"
   creadoAt    DateTime @default(now())
 }
+
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  nombre    String
+  foto      String?
+  rol       String   @default("usuario")
+  creadoAt  DateTime @default(now())
+}

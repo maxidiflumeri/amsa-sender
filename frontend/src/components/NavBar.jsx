@@ -33,12 +33,13 @@ import { Collapse } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import UnsubscribeIcon from '@mui/icons-material/Unsubscribe';
+import { Avatar, Menu, MenuItem } from '@mui/material';
 import logo from '../assets/amsasender.png'; // Asegúrate de que la ruta sea correcta
 
 const drawerWidth = 220;
 
 const whatsappItems = [
-    { label: 'Sesiones', path: '/', icon: <DashboardIcon /> },
+    { label: 'Sesiones', path: '/sesiones', icon: <DashboardIcon /> },
     { label: 'Conectar', path: '/conectar', icon: <LinkIcon /> },
     { label: 'Campañas', path: '/campanias', icon: <CampaignIcon /> },
     { label: 'Templates', path: '/templates', icon: <ArticleIcon /> },
@@ -114,8 +115,50 @@ export default function Layout({ children, mode, toggleTheme }) {
     const [delayedDrawerWidth, setDelayedDrawerWidth] = useState(drawerWidth);
     const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
     const toggleCollapse = () => setCollapsed(prev => !prev);
+    const [anchorEl, setAnchorEl] = useState(null);
+    const open = Boolean(anchorEl);
     const [openWhatsapp, setOpenWhatsapp] = useState(false);
     const [openEmail, setOpenEmail] = useState(false);
+
+    const handleMenuOpen = (event) => {
+        setAnchorEl(event.currentTarget);
+    };
+
+    const handleMenuClose = () => {
+        setAnchorEl(null);
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+    };
+
+    const user = JSON.parse(localStorage.getItem('usuario') || '{}');
+    const avatarContent = user?.foto ? (
+        <Avatar
+            src={user.foto}
+            alt={user?.nombre}
+            sx={{
+                width: 40,
+                height: 40,
+                bgcolor: 'transparent',
+            }}
+        />
+    ) : (
+        <Avatar
+            alt={user?.nombre}
+            sx={{
+                bgcolor: '#4caf50',
+                color: '#fff',
+                fontWeight: 'bold',
+                width: 40,
+                height: 40,
+                textTransform: 'uppercase',
+            }}
+        >
+            {user?.nombre?.[0] || '?'}
+        </Avatar>
+    );
 
     useEffect(() => {
         if (isMobile) setCollapsed(false);
@@ -333,7 +376,18 @@ export default function Layout({ children, mode, toggleTheme }) {
 
             {/* AppBar */}
             <AppBar position="fixed" sx={{ zIndex: theme.zIndex.drawer + 1, backgroundColor: '#075E54' }}>
-                <Toolbar sx={{ justifyContent: 'space-between' }}>
+                <Toolbar
+                    sx={{
+                        px: 2,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        flexWrap: 'wrap',
+                        gap: 1,
+                    }}
+                >
                     <Box display="flex" alignItems="center" gap={1}>
                         <img src={logo} alt="amsasender logo" style={{ height: '60px' }} />
                         <Typography variant="h6" fontWeight="bold" color="#fff">
@@ -345,6 +399,22 @@ export default function Layout({ children, mode, toggleTheme }) {
                             <FiMenu size={24} />
                         </IconButton>
                     )}
+                    <Box display="flex" alignItems="center" gap={2}>
+                        <Tooltip title={user?.nombre || ''}>
+                            <IconButton onClick={handleMenuOpen} color="inherit">
+                                {avatarContent}
+                            </IconButton>
+                        </Tooltip>
+                        <Menu
+                            anchorEl={anchorEl}
+                            open={open}
+                            onClose={handleMenuClose}
+                            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                        >
+                            <MenuItem onClick={handleLogout}>Cerrar sesión</MenuItem>
+                        </Menu>
+                    </Box>
                 </Toolbar>
             </AppBar>
 
@@ -386,10 +456,10 @@ export default function Layout({ children, mode, toggleTheme }) {
                 sx={{
                     flexGrow: 1,
                     mt: '64px',
-                    width: { md: `calc(100% - ${delayedDrawerWidth}px)` },
-                    transition: 'width 0.3s ease',
+                    px: { xs: 2, sm: 3 },
+                    width: '100%',
                     display: 'flex',
-                    flexDirection: 'column',
+                    justifyContent: 'center',
                 }}
             >
                 <Box sx={{ flex: 1, px: { xs: 2, md: 3, lg: 4 }, width: '100%', transition: 'width 0.3s ease' }}>

@@ -7,11 +7,14 @@ import {
     Param,
     InternalServerErrorException,
     Logger,
+    UseGuards,
 } from '@nestjs/common';
 import { MensajesService } from './mensajes.service';
 import { Mensaje } from '@prisma/client';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('whatsapp/mensajes')
+@UseGuards(JwtAuthGuard)
 export class MensajesController {
     private readonly logger = new Logger(MensajesController.name);
 

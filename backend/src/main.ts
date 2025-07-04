@@ -1,7 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
-import * as cors from 'cors';
 import * as dotenv from 'dotenv';
 import { json } from 'express';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -14,7 +13,14 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
     // Middlewares globales
-    app.use(cors());
+    app.enableCors({
+        origin: [
+            'http://localhost:5173',
+            'http://localhost:3000', // por si usás React en ese puerto
+            'https://amsasender.anamayasa.com',
+        ],
+        credentials: true,
+    });
     app.use(json());
     app.useGlobalInterceptors(new LoggingInterceptor());
     app.useGlobalFilters(new AllExceptionsFilter());

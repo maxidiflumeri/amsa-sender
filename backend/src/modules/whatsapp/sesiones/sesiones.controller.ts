@@ -7,11 +7,14 @@ import {
     Logger,
     NotFoundException,
     InternalServerErrorException,
+    UseGuards,
 } from '@nestjs/common';
 import { SesionesService } from './sesiones.service';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('whatsapp/sesiones')
+@UseGuards(JwtAuthGuard)
 export class SesionesController {
     private readonly logger = new Logger(SesionesController.name);
 

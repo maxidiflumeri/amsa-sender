@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
-import Navbar from './components/NavBar';
 import ConectarSesion from './components/ConectarSesion';
 import EstadoSesiones from './components/EstadoSesiones';
 import SubirCampaña from './components/SubirCampaña';
@@ -11,9 +10,18 @@ import VerCampañas from './components/VerCampañas';
 import VerTemplates from './components/VerTemplates';
 import VerMetricas from './components/VerMetricas';
 import CuentasSMTP from './components/email/CuentasSMTP';
+import Login from './components/Login';
+import LayoutPrivado from './components/LayoutPrivado';
 
 export default function App() {
     const [mode, setMode] = useState('light');
+    const location = useLocation();
+    const isLoggedIn = !!localStorage.getItem('token');
+    const isLoginRoute = location.pathname === '/login';
+
+    if (!isLoggedIn && !isLoginRoute) {
+        return <Navigate to="/login" />;
+    }
 
     useEffect(() => {
         const savedMode = localStorage.getItem('themeMode');
@@ -191,17 +199,21 @@ export default function App() {
                             backgroundColor: mode === 'dark' ? '#888' : '#888',
                         },
                     },
-                }                
+                }
             },
         }), [mode]);
-
 
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
-            <Navbar mode={mode} toggleTheme={toggleTheme}>
-                <Routes>
-                    <Route path="/" element={<EstadoSesiones />} />
+            <Routes>
+                {/* Ruta pública */}
+                <Route path="/login" element={<Login />} />
+
+                {/* Rutas privadas con layout */}
+                <Route element={<LayoutPrivado mode={mode} toggleTheme={toggleTheme} />}>
+                    <Route path="/" element={<Navigate to="/campanias" />} />
+                    <Route path="/sesiones" element={<EstadoSesiones />} />
                     <Route path="/conectar" element={<ConectarSesion />} />
                     <Route path="/subir-campania" element={<SubirCampaña />} />
                     <Route path="/campanias" element={<VerCampañas />} />
@@ -210,8 +222,11 @@ export default function App() {
                     <Route path="/templates" element={<VerTemplates />} />
                     <Route path="/metricas" element={<VerMetricas />} />
                     <Route path="/email/cuentas" element={<CuentasSMTP />} />
-                </Routes>
-            </Navbar>
+                </Route>
+
+                {/* Catch-all */}
+                <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
         </ThemeProvider>
     );
 }
