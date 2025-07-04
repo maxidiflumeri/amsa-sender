@@ -4,10 +4,13 @@ import {
     Query,
     InternalServerErrorException,
     Logger,
+    UseGuards,
 } from '@nestjs/common';
 import { ReportesService } from './reportes.service';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('whatsapp/reportes')
+@UseGuards(JwtAuthGuard)
 export class ReportesController {
     private readonly logger = new Logger(ReportesController.name);
 

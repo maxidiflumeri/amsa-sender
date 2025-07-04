@@ -9,6 +9,7 @@ import {
     HttpException,
     HttpStatus,
     Logger,
+    UseGuards,
 } from '@nestjs/common';
 import { TemplatesService } from './templates.service';
 import {
@@ -19,6 +20,7 @@ import {
     IsString,
     validateOrReject,
 } from 'class-validator';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 class PreviewDto {
     @IsOptional()
@@ -55,6 +57,7 @@ class CrearEditarDto {
 }
 
 @Controller('whatsapp/templates')
+@UseGuards(JwtAuthGuard)
 export class TemplatesController {
     private readonly logger = new Logger(TemplatesController.name);
 

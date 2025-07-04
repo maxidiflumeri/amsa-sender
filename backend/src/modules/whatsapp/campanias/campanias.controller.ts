@@ -9,15 +9,18 @@ import {
     Body,
     BadRequestException,
     Delete,
-    Logger
+    Logger,
+    UseGuards
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { CampaniasService } from './campanias.service';
 import { AplicarTemplateDto } from './dtos/aplicar-template.dto';
 import { AgendarCampañaDto } from './dtos/agendar-campaña.dto';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('whatsapp/campanias')
+@UseGuards(JwtAuthGuard)
 export class CampaniasController {
     private readonly logger = new Logger(CampaniasController.name); // Corregido: antes usaba mal el nombre
 

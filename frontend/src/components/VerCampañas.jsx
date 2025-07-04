@@ -266,7 +266,7 @@ export default function VerCampañas() {
                     width: '100%',
                     overflowX: 'auto',
                     maxWidth: 'none',
-                    p: isMobile ? 1 : 3,
+                    p: isMobile ? 2 : 4,
                     boxShadow: 'none',
                 }}
             >
