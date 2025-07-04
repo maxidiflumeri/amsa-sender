@@ -77,3 +77,24 @@ model Mensaje {
   fecha      DateTime
   tipo       String?  // "texto", "imagen", etc.
 }
+
+model CuentaSMTP {
+  id          Int      @id @default(autoincrement())
+  nombre      String   // ej. "Cuenta corporativa"
+  host        String
+  puerto      Int
+  usuario     String
+  password    String   // se puede cifrar más adelante
+  remitente   String   // nombre del remitente que verá el destinatario
+  emailFrom   String   // dirección de email usada en el "From"
+  creadoAt    DateTime @default(now())
+}
+
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  nombre    String
+  foto      String?
+  rol       String   @default("usuario")
+  creadoAt  DateTime @default(now())
+}
