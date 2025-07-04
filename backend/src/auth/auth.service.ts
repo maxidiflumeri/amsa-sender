@@ -38,11 +38,16 @@ export class AuthService {
             create: { email, nombre: name, foto: picture },
         });
 
-        const token = this.jwtService.sign({
-            sub: usuario.id,
-            email: usuario.email,
-            rol: usuario.rol,
-        });
+        const token = this.jwtService.sign(
+            {
+                sub: usuario.id,
+                email: usuario.email,
+                rol: usuario.rol,
+            },
+            {
+                expiresIn: process.env.JWT_EXPIRES_IN || '1d', // acá le aplicás la duración del token
+            }
+        );
 
         return { access_token: token, usuario };
     }
