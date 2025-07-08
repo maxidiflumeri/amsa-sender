@@ -98,3 +98,12 @@ model Usuario {
   rol       String   @default("usuario")
   creadoAt  DateTime @default(now())
 }
+
+model TemplateEmail {
+  id        Int      @id @default(autoincrement())
+  nombre    String
+  asunto    String
+  html      String   @db.MediumText
+  design    Json
+  creadoAt  DateTime @default(now())
+}
