@@ -12,6 +12,8 @@ import VerMetricas from './components/VerMetricas';
 import CuentasSMTP from './components/email/CuentasSMTP';
 import Login from './components/Login';
 import LayoutPrivado from './components/LayoutPrivado';
+import CrearTemplate from './components/email/CrearTemplate';
+import VerTemplatesEmail from './components/email/VerTemplatesEmail';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -222,6 +224,8 @@ export default function App() {
                     <Route path="/templates" element={<VerTemplates />} />
                     <Route path="/metricas" element={<VerMetricas />} />
                     <Route path="/email/cuentas" element={<CuentasSMTP />} />
+                    <Route path="/email/crearTemplate" element={<CrearTemplate />} />
+                    <Route path="/email/templates" element={<VerTemplatesEmail />} />
                 </Route>
 
                 {/* Catch-all */}
