@@ -4,55 +4,30 @@ import { useTheme } from '@mui/material/styles';
 import {
     Box,
     Button,
-    MenuItem,
-    Select,
     Typography,
     Dialog,
     DialogTitle,
     DialogContent,
-    DialogActions,
-    useMediaQuery
+    DialogActions
 } from '@mui/material';
 
 const variablesDisponibles = [
-    'mail',
-    'nombre',
-    'id_contacto',
-    'Telefono_1',
-    'Telefono_2',
-    'direccion',
-    'ciudad',
-    'Empresa',
-    'deuhist',
-    'deuact',
-    'Filer',
-    'Nroemp',
-    'remesa',
-    'Cuitdoc',
-    'Codemp2',
-    'codpos',
-    'f_recepc',
-    'f_cierre',
-    'Usercode2',
-    'Usercode3',
-    'Usercode4',
-    'usernum0',
-    'usernum1',
-    'usernum2',
-    'codbar',
-    'codbar_2',
-    'Usercode1',
-    'co1',
-    'userfec5'
+    'mail', 'nombre', 'id_contacto', 'Telefono_1', 'Telefono_2', 'direccion',
+    'ciudad', 'Empresa', 'deuhist', 'deuact', 'Filer', 'Nroemp', 'remesa',
+    'Cuitdoc', 'Codemp2', 'codpos', 'f_recepc', 'f_cierre', 'Usercode2',
+    'Usercode3', 'Usercode4', 'usernum0', 'usernum1', 'usernum2', 'codbar',
+    'codbar_2', 'Usercode1', 'co1', 'userfec5'
 ];
 
 const EditorTemplate = ({ initialDesign, onGuardar }) => {
+    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const emailEditorRef = useRef();
     const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const [dialogOpen, setDialogOpen] = useState(false);
     const [exportedData, setExportedData] = useState(null);
+    const [editorReady, setEditorReady] = useState(false);
 
+    // Aplica tema cuando cambia
     useEffect(() => {
         if (emailEditorRef.current?.editor) {
             emailEditorRef.current.editor.setAppearance({
@@ -61,26 +36,64 @@ const EditorTemplate = ({ initialDesign, onGuardar }) => {
         }
     }, [theme.palette.mode]);
 
-    const handleLoad = () => {
+    // Cargar diseño y mergeTags cuando el editor esté listo Y haya diseño disponible
+    useEffect(() => {
         const editor = emailEditorRef.current?.editor;
 
-        if (!editor) return;
+        if (editorReady && editor) {
+            // ✅ Siempre setear mergeTags
+            const mergeTags = {};
+            variablesDisponibles.forEach((v) => {
+                mergeTags[v] = {
+                    name: v.charAt(0).toUpperCase() + v.slice(1),
+                    value: `{{${v}}}`
+                };
+            });
 
-        if (initialDesign) {
+            editor.setMergeTags(mergeTags);
+            //editor.loadDesign(designInicial);
+        }
+    }, [editorReady]);
+
+    useEffect(() => {
+        const editor = emailEditorRef.current?.editor;
+
+        if (editorReady && initialDesign && editor) {
             editor.loadDesign(initialDesign);
         }
+    }, [editorReady, initialDesign]);
 
-        // Armar merge tags con formato deseado
-        const mergeTags = {};
-        variablesDisponibles.forEach((v) => {
-            mergeTags[v] = {
-                name: v.charAt(0).toUpperCase() + v.slice(1),
-                value: `{{${v}}}`
+    useEffect(() => {
+        const editor = emailEditorRef.current?.editor;
+
+        // Si el editor está listo, no hay diseño inicial y existe el editor, forzamos ancho 600px
+        if (editorReady && !initialDesign && editor) {
+            const diseñoNuevo = {
+                body: {
+                    contentWidth: '600px',
+                    rows: [
+                        {
+                            cells: [1],
+                            columns: [
+                                {
+                                    contents: [],
+                                    values: {},
+                                },
+                            ],
+                            values: {},
+                        },
+                    ],
+                },
             };
-        });
 
-        // Agruparlos bajo nombre personalizado
-        editor.setMergeTags(mergeTags);
+            editor.loadDesign(diseñoNuevo);
+            // ✅ Forzar visualmente el ancho del contenido
+            editor.setBodyValues({ contentWidth: '600px' });
+        }
+    }, [editorReady, initialDesign]);
+
+    const handleLoad = () => {
+        setEditorReady(true);
     };
 
     const handleExportar = () => {
@@ -88,10 +101,9 @@ const EditorTemplate = ({ initialDesign, onGuardar }) => {
 
         emailEditorRef.current.editor.exportHtml((data) => {
             const { html, design } = data;
-
             setExportedData({ html, design });
             setDialogOpen(true);
-            console.log(html)
+            console.log(html);
         });
     };
 
@@ -127,6 +139,19 @@ const EditorTemplate = ({ initialDesign, onGuardar }) => {
 
                 <Box display="flex" gap={1} alignItems="center" flexWrap="wrap">
                     <Button
+                        sx={{
+                            borderRadius: 2,
+                            fontFamily: commonFont,
+                            textTransform: 'none',
+                            fontSize: '0.9rem',
+                            backgroundColor: '#075E54',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                                backgroundColor: '#0b7b65',
+                                transform: 'scale(1.03)',
+                                boxShadow: 4,
+                            },
+                        }}
                         variant="contained"
                         color="primary"
                         size="small"
@@ -151,10 +176,10 @@ const EditorTemplate = ({ initialDesign, onGuardar }) => {
                     translations: {
                         es: {
                             mergeTags: {
-                                merge_tags: 'Variables disponibles', // ✅ este es el nombre del botón principal
-                                no_tags: 'No hay variables disponibles', // opcional
-                                search_placeholder: 'Buscar variable...', // opcional
-                                search_empty: 'Sin resultados' // opcional
+                                merge_tags: 'Variables disponibles',
+                                no_tags: 'No hay variables disponibles',
+                                search_placeholder: 'Buscar variable...',
+                                search_empty: 'Sin resultados'
                             }
                         }
                     }
@@ -173,7 +198,21 @@ const EditorTemplate = ({ initialDesign, onGuardar }) => {
                     <Button onClick={() => setDialogOpen(false)} color="secondary">
                         Cancelar
                     </Button>
-                    <Button onClick={handleConfirmarGuardado} color="primary" variant="contained">
+                    <Button sx={{
+                        px: 2,
+                        py: 1,
+                        borderRadius: 2,
+                        fontFamily: commonFont,
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#075E54',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                            backgroundColor: '#0b7b65',
+                            transform: 'scale(1.03)',
+                            boxShadow: 4,
+                        },
+                    }} onClick={handleConfirmarGuardado} color="primary" variant="contained">
                         Confirmar
                     </Button>
                 </DialogActions>

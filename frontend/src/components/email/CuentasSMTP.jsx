@@ -170,8 +170,8 @@ export default function CuentasSMTP() {
             <Box display="flex" justifyContent="space-between" mb={2} >
                 <Typography variant="h5" fontWeight="bold">Cuentas SMTP</Typography>
                 <Button sx={{
-                    px: 4,
-                    py: 1.3,
+                    px: 2,
+                    py: 1,
                     borderRadius: 2,
                     fontFamily: commonFont,
                     textTransform: 'none',
