@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { UpdateTemplateEmailDto } from './dtos/update-template-email.dto';
 
 @Injectable()
 export class TemplatesEmailService {
@@ -18,5 +19,22 @@ export class TemplatesEmailService {
 
     async obtenerUno(id: number) {
         return this.prisma.templateEmail.findUnique({ where: { id } });
+    }
+
+    // template-email.service.ts
+    async update(id: number, data: UpdateTemplateEmailDto) {
+        return this.prisma.templateEmail.update({
+            where: { id },
+            data,
+        });
+    }
+
+    async eliminarTemplate(id: number) {
+        try {
+            await this.prisma.templateEmail.delete({ where: { id } });
+            return { mensaje: 'Template eliminado' };
+        } catch (error) {
+            throw new NotFoundException(`Template con ID ${id} no encontrado`);
+        }
     }
 }
