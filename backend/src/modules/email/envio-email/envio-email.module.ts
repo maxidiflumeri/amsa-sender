@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { EnvioEmailService } from './envio-email.service';
 import { EnvioEmailController } from './envio-email.controller';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AuthModule],
   providers: [EnvioEmailService],
   controllers: [EnvioEmailController],
   exports: [EnvioEmailService], // opcional si lo vas a usar en otros módulos

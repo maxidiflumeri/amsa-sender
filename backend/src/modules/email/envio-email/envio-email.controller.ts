@@ -1,7 +1,10 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { EnvioEmailService } from './envio-email.service';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('email/envio')
+@UseGuards(JwtAuthGuard)
+
 export class EnvioEmailController {
     constructor(private mailService: EnvioEmailService) { }
 
