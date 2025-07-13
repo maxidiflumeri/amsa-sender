@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { chunk } from 'lodash';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as fs from 'fs/promises';
@@ -58,5 +58,37 @@ export class CampaniasEmailService {
             console.log(error.message)
             throw new InternalServerErrorException('Error al crear campaña de email: ' + error.message);
         }
+    }
+
+    async eliminarCampaña(id: number) {
+        this.logger.log(`🗑️ Eliminando campaña ${id}`);
+        const campaña = await this.prisma.campañaEmail.findUnique({ where: { id } });
+
+        if (!campaña) throw new NotFoundException('Campaña no encontrada');
+        if (campaña.estado === 'procesando') {
+            this.logger.warn(`❌ No se puede eliminar campaña ${id} porque está procesando`);
+            throw new BadRequestException('No se puede eliminar una campaña en proceso');
+        }
+
+        // if (campaña.jobId) {
+        //     try {
+        //         const job: Job | undefined = await this.colaEnvios.getJob(campaña.jobId);
+        //         if (job) {
+        //             await job.remove();
+        //             this.logger.log(`🗑️ Job ${campaña.jobId} eliminado de la cola.`);
+        //         }
+        //     } catch (err) {
+        //         this.logger.warn(`⚠️ No se pudo eliminar el job ${campaña.jobId}: ${err.message}`);
+        //     }
+        // }
+
+        await this.prisma.contactoEmail.deleteMany({ where: { campañaId: campaña.id } });
+        await this.prisma.campañaEmail.update({
+            where: { id: campaña.id },
+            data: { archivada: true },
+        });
+
+        this.logger.log(`✅ Campaña ${id} archivada y contactos eliminados`);
+        return { message: 'Campaña eliminada con contactos. Reportes conservados.' };
     }
 }

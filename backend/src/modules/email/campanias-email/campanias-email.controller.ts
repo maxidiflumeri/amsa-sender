@@ -7,7 +7,9 @@ import {
     Logger,
     UseInterceptors,
     UploadedFile,
-    BadRequestException
+    BadRequestException,
+    Delete,
+    Param
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CampaniasEmailService } from './campanias-email.service';
@@ -48,5 +50,11 @@ export class CampaniasEmailController {
     async obtenerCampañas() {
         this.logger.log('📥 GET / - Obtener todas las campañas');
         return this.campaniasService.obtenerCampañas();
+    }
+
+    @Delete(':id')
+    async eliminarCampaña(@Param('id') id: string) {
+        this.logger.log(`🗑️ DELETE /${id} - Eliminar campaña`);
+        return this.campaniasService.eliminarCampaña(+id);
     }
 }
