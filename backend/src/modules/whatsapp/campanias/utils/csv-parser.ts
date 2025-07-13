@@ -7,6 +7,11 @@ export interface ContactoCsv {
     datos: Record<string, any>;
 }
 
+export interface ContactoEmail {
+    email: string;
+    datos: any
+}
+
 export async function parseCsv(filePath: string): Promise<ContactoCsv[]> {
     const contactos: ContactoCsv[] = [];
 
@@ -23,6 +28,27 @@ export async function parseCsv(filePath: string): Promise<ContactoCsv[]> {
                 contactos.push({
                     numero,
                     mensaje: mensaje || null,
+                    datos: otrosCampos,
+                });
+            })
+            .on('end', () => resolve(contactos))
+            .on('error', reject);
+    });
+}
+
+export async function parseCsvEmail(filePath: string): Promise<ContactoEmail[]> {
+    const contactos: ContactoEmail[] = [];
+
+    return new Promise((resolve, reject) => {
+        fs.createReadStream(filePath)
+            .pipe(csv({ separator: '\t' }))
+            .on('data', (data) => {                
+                const email = data['mail']?.trim();
+                if (!email) return;
+
+                const { email: _, ...otrosCampos } = data;
+                contactos.push({
+                    email,
                     datos: otrosCampos,
                 });
             })

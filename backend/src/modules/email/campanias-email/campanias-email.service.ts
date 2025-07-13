@@ -1,6 +1,8 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { chunk } from 'lodash';
 import { PrismaService } from 'src/prisma/prisma.service';
+import * as fs from 'fs/promises';
+import { parseCsvEmail } from 'src/modules/whatsapp/campanias/utils/csv-parser';
 
 @Injectable()
 export class CampaniasEmailService {
@@ -17,20 +19,17 @@ export class CampaniasEmailService {
         });
     }
 
-    async crearCampañaEmail(dto: {
-        nombre: string;
-        contactos: { email: string; datos: any; }[];
-        userId: number;
-    }) {
+    async crearCampañaEmail(dto: { nombre: string; userId: string; }, filePath: string) {
+        this.logger.log(`📥 Creando campaña de email: ${dto.nombre}`);
         try {
-            console.log('entre al servicio de crear campaña de email');
-            const { nombre, contactos, userId } = dto;
+            const { nombre, userId } = dto;
+            const contactos = await parseCsvEmail(filePath);
 
             // 1. Crear campaña
             const campania = await this.prisma.campañaEmail.create({
                 data: {
                     nombre,
-                    userId,
+                    userId: parseInt(userId),
                 },
             });
 
@@ -45,6 +44,9 @@ export class CampaniasEmailService {
                     })),
                 });
             }
+
+            await fs.unlink(filePath);
+            this.logger.log(`🧹 Archivo CSV eliminado: ${filePath}`);
 
             return {
                 id: campania.id,

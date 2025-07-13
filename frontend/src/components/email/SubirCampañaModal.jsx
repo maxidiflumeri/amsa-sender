@@ -7,7 +7,6 @@ import {
     CircularProgress
 } from '@mui/material';
 import api from '../../api/axios';
-import Papa from 'papaparse';
 
 export default function SubirCampaniaEmail({ onUploadSuccess }) {
     const [nombre, setNombre] = useState('');
@@ -19,19 +18,6 @@ export default function SubirCampaniaEmail({ onUploadSuccess }) {
         setArchivo(e.target.files[0]);
     };
 
-    const parseCSV = (file) => {
-        return new Promise((resolve, reject) => {
-            Papa.parse(file, {
-                header: true,
-                skipEmptyLines: true,
-                complete: (results) => {
-                    resolve(results.data);
-                },
-                error: (err) => reject(err),
-            });
-        });
-    };
-
     const handleUpload = async () => {
         if (!nombre || !archivo) {
             setError('Debe completar el nombre y subir un archivo CSV');
@@ -39,26 +25,14 @@ export default function SubirCampaniaEmail({ onUploadSuccess }) {
         }
 
         try {
+            const user = JSON.parse(localStorage.getItem('usuario'));
+            const formData = new FormData();
+            formData.append('file', archivo);
+            formData.append('nombre', nombre);
+            formData.append('userId', user.id);
             setSubiendo(true);
             setError(null);
-            const data = await parseCSV(archivo);
-            const contactos = data.map((row) => {
-                const { mail, ...rest } = row;
-                return {
-                    email: mail?.trim(),
-                    datos: rest,
-                };
-            });
-
-            console.log(contactos)
-
-            const user = JSON.parse(localStorage.getItem('usuario'));
-            await api.post('/email/campanias', {
-                nombre,
-                contactos,
-                userId: user.id,
-            });
-
+            await api.post('/email/campanias', formData);
             onUploadSuccess();
         } catch (err) {
             console.error('Error al subir campaña:', err);
