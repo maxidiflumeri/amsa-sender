@@ -13,6 +13,7 @@ import Tooltip from '@mui/material/Tooltip';
 import InputAdornment from '@mui/material/InputAdornment';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import LinkIcon from '@mui/icons-material/Link';
 
 export default function CuentasSMTP() {
     const [validacionesDominio, setValidacionesDominio] = useState({});
@@ -168,16 +169,14 @@ export default function CuentasSMTP() {
             py: 3
         }}>
             <Box display="flex" justifyContent="space-between" mb={2} >
-                <Typography variant="h5" fontWeight="bold">Cuentas SMTP</Typography>
+                <Box display="flex" alignItems="center">
+                    <LinkIcon sx={{ fontSize: 32 }} />
+                    <Typography ml={1} variant="h5" fontWeight="bold">Cuentas SMTP</Typography>
+                </Box>
                 <Button sx={{
-                    px: 2,
-                    py: 1,
                     borderRadius: 2,
-                    fontFamily: commonFont,
                     textTransform: 'none',
-                    fontSize: '0.9rem',
                     backgroundColor: '#075E54',
-                    transition: 'all 0.3s ease',
                     '&:hover': {
                         backgroundColor: '#0b7b65',
                         transform: 'scale(1.03)',

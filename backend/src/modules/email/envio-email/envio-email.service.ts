@@ -1,12 +1,18 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import * as nodemailer from 'nodemailer';
+import { insertHeaderAndFooter } from 'src/common/renderTemplate';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class EnvioEmailService {
     private readonly logger = new Logger(EnvioEmailService.name);
 
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        @InjectQueue('emailsEnvios') private readonly emailsEnvios: Queue
+    ) { }
 
     async enviarCorreo({
         html,
@@ -38,7 +44,7 @@ export class EnvioEmailService {
                 from: `"${smtp.nombre}" <${smtp.usuario}>`,
                 to,
                 subject,
-                html: this.insertHeaderAndFooter(html),
+                html: insertHeaderAndFooter(html),
             });
 
             return { success: true };
@@ -48,33 +54,31 @@ export class EnvioEmailService {
         }
     }
 
-    private insertHeaderAndFooter(html: string) {
-        const verEnNavegadorUrl = `https://amsasender.anamayasa.com.ar/mailing/vista/${Date.now()}`; // cambiar por campaña/contacto real        
-        const urlDesuscribirse = `https://amsasender.anamayasa.com.ar/mailing/desuscribirse/mock`;
+    async enviarCampania({
+        idCampania,
+        idTemplate,
+        idCuentaSmtp,
+    }: {
+        idCampania: number;
+        idTemplate: number;
+        idCuentaSmtp: number;
+    }) {
 
-        // 🔧 Insertar encabezado y footer al HTML original
-        const htmlFinal = `
-          <div style="text-align: center; font-size: 12px; color: #888; margin-top: 10px;">
-            <a href="${verEnNavegadorUrl}" target="_blank" style="color: #888;">Ver en mi navegador</a>
-          </div>
-          ${html}
-          <hr style="margin-top: 40px; border: none; border-top: 1px solid #ccc;" />
-          <div style="font-size: 11px; color: #666; text-align: center; padding: 20px;">
-            <div>              
-              <a href="${urlDesuscribirse}" style="margin-left: 10px; color: #666;">Desuscribite</a>
-            </div>
-            <p style="margin: 10px 0;">
-              Recibes este mail porque estás suscripto a nuestra lista de correos.<br />
-              Ana Maya S.A. - Dirección - Ciudad - Provincia - Argentina<br />
-              <a href="https://www.anamayasa.com.ar" style="color: #666;">www.anamayasa.com.ar</a>
-            </p>
-            <p style="font-size: 10px; color: #999;">
-              Mensaje enviado automáticamente desde AMSA Sender
-            </p>
-          </div>
-        `;
+        await this.prisma.campañaEmail.update({
+            where: { id: idCampania },
+            data: {
+                estado: 'procesando',
+                templateId: idTemplate
+            }
+        });
 
-        return htmlFinal;
+        await this.emailsEnvios.add('enviar-campania', {
+            idCampania,
+            idTemplate,
+            idCuentaSmtp,
+        });
+
+        return { ok: true, message: 'Campaña programada para envío' };
     }
 }
 

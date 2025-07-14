@@ -17,7 +17,8 @@ import {
     Dialog,
     DialogTitle,
     DialogContent,
-    DialogActions
+    DialogActions,
+    useMediaQuery
 } from '@mui/material';
 import {
     Visibility as VisibilityIcon,
@@ -30,8 +31,10 @@ import api from '../../api/axios';
 import dayjs from 'dayjs';
 import MuiAlert from '@mui/material/Alert';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ArticleIcon from '@mui/icons-material/Article';
 
 const VerTemplatesEmail = () => {
+    const isMobile = useMediaQuery('(max-width:768px)');
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [templates, setTemplates] = useState([]);
     const [busqueda, setBusqueda] = useState('');
@@ -86,37 +89,34 @@ const VerTemplatesEmail = () => {
 
     return (
         <>
-            <Box sx={{ mt: 2 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={2}>
-                    <Typography variant="h5" fontWeight="bold">
-                        Templates de Email
-                    </Typography>
+            <Box sx={{ py: 2 }}>
+                <Paper elevation={3} sx={{ p: isMobile ? 2 : 4 }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={2}>
+                        <Box display="flex" alignItems="center">
+                            <ArticleIcon sx={{ fontSize: 32 }} />
+                            <Typography ml={1} variant="h5" fontWeight="bold">
+                                Templates de Email
+                            </Typography>
+                        </Box>
 
-                    <Button
-                        sx={{
-                            px: 2,
-                            py: 1,
-                            borderRadius: 2,
-                            fontFamily: commonFont,
-                            textTransform: 'none',
-                            fontSize: '0.9rem',
-                            backgroundColor: '#075E54',
-                            transition: 'all 0.3s ease',
-                            '&:hover': {
-                                backgroundColor: '#0b7b65',
-                                transform: 'scale(1.03)',
-                                boxShadow: 4,
-                            },
-                        }}
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={() => navigate('/email/crearTemplate')}
-                    >
-                        Nuevo Template
-                    </Button>
-                </Box>
-
-                <Paper elevation={3}>
+                        <Button
+                            sx={{
+                                borderRadius: 2,
+                                textTransform: 'none',
+                                backgroundColor: '#075E54',
+                                '&:hover': {
+                                    backgroundColor: '#0b7b65',
+                                    transform: 'scale(1.03)',
+                                    boxShadow: 4,
+                                },
+                            }}
+                            variant="contained"
+                            startIcon={<AddIcon />}
+                            onClick={() => navigate('/email/crearTemplate')}
+                        >
+                            Nuevo Template
+                        </Button>
+                    </Box>
                     <Box sx={{ p: 2, m: 2 }}>
                         <TextField
                             label="Buscar por nombre"

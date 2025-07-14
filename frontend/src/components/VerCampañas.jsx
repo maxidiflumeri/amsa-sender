@@ -98,8 +98,7 @@ export default function VerCampañas() {
             }
         });
 
-        socket.on('campania_estado', ({ campaña, estado }) => {
-            console.log('llega evento de campaña programada')
+        socket.on('campania_estado', ({ campaña, estado }) => {            
             cargarCampañas();
         });
 

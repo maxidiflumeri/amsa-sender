@@ -17,4 +17,9 @@ export class EnvioEmailController {
     }) {
         return this.mailService.enviarCorreo(body);
     }
+
+    @Post('campania')
+    async enviarCampania(@Body() body: { idCampania: number; idTemplate: number; idCuentaSmtp: number }) {
+      return this.mailService.enviarCampania(body);
+    }
 }

@@ -13,6 +13,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "start:worker": "ts-node -r tsconfig-paths/register -P tsconfig.build.json src/workers/whatsapp-worker.ts",
+    "start:emailWorker:prod": "node dist/workers/email-worker.js",
     "start:worker:prod": "node dist/workers/whatsapp-worker.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
@@ -21,7 +22,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "dev": "concurrently \"npm run start:dev\" \"npm run start:worker\"",
-    "prod": "concurrently \"npm run start:prod\" \"npm run start:worker:prod\""
+    "prod": "concurrently \"npm run start:prod\" \"npm run start:worker:prod\" \"npm run start:emailWorker:prod\""
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.2",
