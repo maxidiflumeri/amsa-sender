@@ -9,9 +9,10 @@ import { PubSubService } from './websocket/pubsub.service';
 import { SesionesModule } from './modules/whatsapp/sesiones/sesiones.module';
 import { QueueModule } from './queues/queue.module';
 import { AuthModule } from './auth/auth.module';
+import { ConfiguracionModule } from './modules/configuracion/configuracion.module';
 
 @Module({
-  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule, AuthModule],
+  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule, AuthModule, ConfiguracionModule],
   controllers: [AppController],
   providers: [AppService, SocketGateway, PubSubService],
 })
