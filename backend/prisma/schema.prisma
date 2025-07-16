@@ -13,88 +13,151 @@ datasource db {
 }
 
 model Campaña {
-  id         Int         @id @default(autoincrement())
+  id         Int        @id @default(autoincrement())
   nombre     String
-  createdAt  DateTime    @default(now())
+  createdAt  DateTime   @default(now())
   enviadoAt  DateTime?
   agendadoAt DateTime? // NUEVO: fecha y hora del agendamiento
-  estado     String      @default("pendiente") // nuevo campo
-  pausada    Boolean   @default(false) // <-- NUEVO
-  templateId Int?      // FK opcional
-  jobId      String?   // 👈 NUEVO
-  template   Template? @relation(fields: [templateId], references: [id])
+  estado     String     @default("pendiente") // nuevo campo
+  pausada    Boolean    @default(false) // <-- NUEVO
+  templateId Int? // FK opcional
+  jobId      String? // 👈 NUEVO
+  template   Template?  @relation(fields: [templateId], references: [id])
   contactos  Contacto[]
   reportes   Reporte[]
-  archivada  Boolean @default(false)
-  sesiones   String?   // JSON.stringified sessionIds
-  config     Json?     // { batchSize, delayEntreMensajes, delayEntreLotes }
+  archivada  Boolean    @default(false)
+  sesiones   String? // JSON.stringified sessionIds
+  config     Json? // { batchSize, delayEntreMensajes, delayEntreLotes }
 }
 
 model Contacto {
   id         Int      @id @default(autoincrement())
   numero     String
-  mensaje    String? @db.Text
-  datos      Json?    // ⬅️ Acá irán los datos variables del CSV
-  campañaId  Int
-  campaña    Campaña  @relation(fields: [campañaId], references: [id])
+  mensaje    String?  @db.Text
+  datos      Json? // ⬅️ Acá irán los datos variables del CSV
+  campañaId Int
+  campaña   Campaña @relation(fields: [campañaId], references: [id])
 }
 
-
 model Reporte {
-  id         Int         @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   numero     String
-  mensaje    String? @db.Text
+  mensaje    String?   @db.Text
   estado     String
-  aniEnvio   String?  // <--- este campo
-  enviadoAt  DateTime?   // nuevo campo
-  datos      Json?     // ← Nuevo campo para almacenar los datos del contacto (del CSV)
-  campaña    Campaña? @relation(fields: [campañaId], references: [id], onDelete: SetNull)
-  campañaId  Int?
+  aniEnvio   String? // <--- este campo
+  enviadoAt  DateTime? // nuevo campo
+  datos      Json? // ← Nuevo campo para almacenar los datos del contacto (del CSV)
+  campaña   Campaña? @relation(fields: [campañaId], references: [id], onDelete: SetNull)
+  campañaId Int?
 }
 
 model Sesion {
-  id         Int      @id @default(autoincrement())
-  sessionId  String   @unique
-  estado     String
-  ani        String?   // nuevo campo opcional
+  id        Int     @id @default(autoincrement())
+  sessionId String  @unique
+  estado    String
+  ani       String? // nuevo campo opcional
 }
 
 model Template {
-  id        Int      @id @default(autoincrement())
+  id        Int        @id @default(autoincrement())
   nombre    String
-  contenido String @db.Text   // Ej: "Hola {{nombre}}, tu deuda es de {{deuda}}"
-  createdAt DateTime @default(now())
-  campañas  Campaña[] // Relación con campañas
+  contenido String     @db.Text // Ej: "Hola {{nombre}}, tu deuda es de {{deuda}}"
+  createdAt DateTime   @default(now())
+  campañas Campaña[] // Relación con campañas
 }
 
 model Mensaje {
   id         Int      @id @default(autoincrement())
   numero     String
-  campañaId  Int?     // Puede estar o no vinculado a una campaña
+  campañaId Int? // Puede estar o no vinculado a una campaña
   ani        String
-  mensaje    String @db.Text
-  fromMe     Boolean  // true = enviado, false = recibido
+  mensaje    String   @db.Text
+  fromMe     Boolean // true = enviado, false = recibido
   fecha      DateTime
-  tipo       String?  // "texto", "imagen", etc.
+  tipo       String? // "texto", "imagen", etc.
 }
 
 model CuentaSMTP {
-  id          Int      @id @default(autoincrement())
-  nombre      String   // ej. "Cuenta corporativa"
-  host        String
-  puerto      Int
-  usuario     String
-  password    String   // se puede cifrar más adelante
-  remitente   String   // nombre del remitente que verá el destinatario
-  emailFrom   String   // dirección de email usada en el "From"
-  creadoAt    DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  nombre    String // ej. "Cuenta corporativa"
+  host      String
+  puerto    Int
+  usuario   String
+  password  String // se puede cifrar más adelante
+  remitente String // nombre del remitente que verá el destinatario
+  emailFrom String // dirección de email usada en el "From"
+  creadoAt  DateTime @default(now())
 }
 
 model Usuario {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id       Int      @id @default(autoincrement())
+  email    String   @unique
+  nombre   String
+  foto     String?
+  rol      String   @default("usuario")
+  creadoAt DateTime @default(now())
+}
+
+model TemplateEmail {
+  id        Int             @id @default(autoincrement())
   nombre    String
-  foto      String?
-  rol       String   @default("usuario")
-  creadoAt  DateTime @default(now())
+  asunto    String
+  html      String          @db.MediumText
+  design    Json
+  creadoAt  DateTime        @default(now())
+  campanias CampañaEmail[]
+}
+
+model CampañaEmail {
+  id         Int             @id @default(autoincrement())
+  nombre     String
+  createdAt  DateTime        @default(now())
+  enviadoAt  DateTime?
+  agendadoAt DateTime?
+  estado     String          @default("pendiente") // pendiente | agendada | procesando | finalizada
+  pausada    Boolean         @default(false)
+  templateId Int?
+  jobId      String?
+  template   TemplateEmail?  @relation(fields: [templateId], references: [id])
+  contactos  ContactoEmail[]
+  reportes   ReporteEmail[]
+  archivada  Boolean         @default(false)
+  config     Json?
+  userId     Int
+}
+
+model ContactoEmail {
+  id         Int            @id @default(autoincrement())
+  email      String
+  nombre     String?
+  datos      Json? // variables del CSV
+  campañaId Int
+  campaña   CampañaEmail  @relation(fields: [campañaId], references: [id])
+  reportes   ReporteEmail[]
+}
+
+model ReporteEmail {
+  id         Int       @id @default(autoincrement())
+  campañaId Int
+  contactoId Int
+  estado     String // 'enviado', 'fallido', etc.
+  enviadoAt  DateTime?
+  error      String?
+  asunto     String? // asunto final con variables reemplazadas
+  html       String?   @db.Text // HTML renderizado con datos del contacto
+  creadoAt   DateTime  @default(now())
+
+  campaña CampañaEmail @relation(fields: [campañaId], references: [id])
+  contacto ContactoEmail @relation(fields: [contactoId], references: [id])
+}
+
+model Configuracion {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  scope     String   // Ej: 'whatsapp.envio', 'email.envio', etc.
+  clave     String   // Ej: 'batchSize', 'delayEntreMensajes'
+  valor     String   // Guardado como string por simplicidad
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, scope, clave])
 }
