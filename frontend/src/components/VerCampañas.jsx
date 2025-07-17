@@ -44,6 +44,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import EventIcon from '@mui/icons-material/Event';
 import { useTheme } from '@mui/material/styles';
 import InboxIcon from '@mui/icons-material/Inbox';
+import CampaignIcon from '@mui/icons-material/Campaign';
 
 export default function VerCampañas() {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -98,7 +99,7 @@ export default function VerCampañas() {
             }
         });
 
-        socket.on('campania_estado', ({ campaña, estado }) => {            
+        socket.on('campania_estado', ({ campaña, estado }) => {
             cargarCampañas();
         });
 
@@ -270,7 +271,10 @@ export default function VerCampañas() {
                 }}
             >
                 <Box display="flex" flexDirection={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'flex-start' : 'center'} gap={2}>
-                    <Typography variant="h6">Campañas</Typography>
+                    <Box display="flex" alignItems="center">
+                        <CampaignIcon sx={{ fontSize: 32 }} />
+                        <Typography ml={1} variant="h5" fontWeight="bold">Campañas WhatsApp</Typography>
+                    </Box>
                     <Button
                         variant="contained"
                         startIcon={<AddIcon />}

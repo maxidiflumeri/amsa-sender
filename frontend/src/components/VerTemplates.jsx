@@ -16,8 +16,7 @@ import {
     InputAdornment,
     Card,
     CardContent,
-    CardActions,
-    Collapse,
+    CardActions,    
     Pagination,
     MenuItem,
     Select,
@@ -34,6 +33,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import api from '../api/axios';
 import TemplateModal from './TemplateModal';
 import PreviewTemplateReal from './PreviewTemplateReal';
+import ArticleIcon from '@mui/icons-material/Article';
 
 export default function VerTemplates() {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -111,7 +111,12 @@ export default function VerTemplates() {
             }}
         >
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h5">Templates</Typography>
+                <Box display="flex" alignItems="center">
+                    <ArticleIcon sx={{ fontSize: 32 }} />
+                    <Typography ml={1} variant="h5" fontWeight="bold">
+                        Templates de WhatsApp
+                    </Typography>
+                </Box>
                 <Button
                     variant="contained"
                     startIcon={<AddIcon />}
@@ -119,7 +124,7 @@ export default function VerTemplates() {
                         setSelectedTemplate(null);
                         setOpenDialog(true);
                     }}
-                    sx={{                        
+                    sx={{
                         borderRadius: 2,
                         fontFamily: commonFont,
                         textTransform: 'none',
