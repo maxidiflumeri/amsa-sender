@@ -150,3 +150,14 @@ model ReporteEmail {
   campaña CampañaEmail @relation(fields: [campañaId], references: [id])
   contacto ContactoEmail @relation(fields: [contactoId], references: [id])
 }
+
+model Configuracion {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  scope     String   // Ej: 'whatsapp.envio', 'email.envio', etc.
+  clave     String   // Ej: 'batchSize', 'delayEntreMensajes'
+  valor     String   // Guardado como string por simplicidad
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, scope, clave])
+}

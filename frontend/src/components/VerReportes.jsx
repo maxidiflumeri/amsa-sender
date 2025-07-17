@@ -152,8 +152,8 @@ export default function VerReportes() {
         });
 
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', `reporte_campaña_${campañaSeleccionada?.id}.csv`);
+        link.href = URL.createObjectURL(blob);        
+        link.setAttribute('download', `reporte_campaña_${campañaSeleccionada?.id}_${campañaSeleccionada?.nombre}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -179,7 +179,7 @@ export default function VerReportes() {
         const blob = new Blob(["\uFEFF" + contenidoCSV], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', `mensajes_campaña_${campañaSeleccionada?.id}.csv`);
+        link.setAttribute('download', `mensajes_campaña_${campañaSeleccionada?.id}_${campañaSeleccionada?.nombre}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

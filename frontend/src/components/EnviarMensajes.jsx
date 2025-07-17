@@ -35,12 +35,16 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
     const [loading, setLoading] = useState(false);
     const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
-    const [config, setConfig] = useState({
-        batchSize: 10,
-        delayEntreMensajes: 3000,
-        delayEntreLotes: 15000
-    });
+    const configPorDefecto = {
+        batchSize: 5,
+        delayEntreMensajes: 25000,
+        delayEntreLotes: 60000,
+    };
+
+    const [config, setConfig] = useState(configPorDefecto);
     const [fechaAgendada, setFechaAgendada] = useState(null);
+    const [loadingGuardarConfig, setLoadingGuardarConfig] = useState(false);
+    const usuario = JSON.parse(localStorage.getItem('usuario'));
 
     useEffect(() => {
         if (open) {
@@ -56,6 +60,28 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
             api.get('/whatsapp/templates')
                 .then(res => setTemplates(res.data))
                 .catch(err => console.error('Error al obtener templates:', err));
+
+            // Intentar cargar configuración personalizada del backend
+            api.get('/config', {
+                params: {
+                    scope: 'whatsapp.envio'
+                }
+            })
+                .then(res => {
+                    const backendConfig = res.data;
+                    setConfig(prev => ({
+                        ...prev,
+                        ...{
+                            batchSize: Number(backendConfig.batchSize ?? prev.batchSize),
+                            delayEntreMensajes: Number(backendConfig.delayEntreMensajes ?? prev.delayEntreMensajes),
+                            delayEntreLotes: Number(backendConfig.delayEntreLotes ?? prev.delayEntreLotes),
+                        }
+                    }));
+                })
+                .catch(err => {
+                    console.warn('No se pudo cargar configuración del backend, se usan valores por defecto.', err);
+                    setConfig(configPorDefecto);
+                });
         }
     }, [open]);
 
@@ -234,6 +260,32 @@ export default function EnviarMensajesModal({ open, onSendSuccess, onClose, camp
                             />
                         </Box>
                     </AccordionDetails>
+                    <Box display="flex" justifyContent="center">
+                        <Button
+                            disabled={loadingGuardarConfig}
+                            variant="outlined"
+                            sx={{ mt: 1, mb: 1 }}
+                            onClick={async () => {
+                                try {
+                                    setLoadingGuardarConfig(true);
+                                    await api.post('/config', {
+                                        userId: usuario?.id,
+                                        scope: 'whatsapp.envio',
+                                        valores: config
+                                    });
+                                    setMensaje({ tipo: 'success', texto: 'Configuración guardada como predeterminada' });
+                                } catch (error) {
+                                    console.error('Error guardando config:', error);
+                                    setMensaje({ tipo: 'error', texto: 'Error al guardar configuración' });
+                                } finally {
+                                    setLoadingGuardarConfig(false);
+                                }
+                            }}
+                            startIcon={loadingGuardarConfig ? <CircularProgress size={20} /> : null}
+                        >
+                            {loadingGuardarConfig ? 'Guardando...' : 'Guardar como predeterminado'}
+                        </Button>
+                    </Box>
                 </Accordion>
 
                 {mensaje.texto && (
