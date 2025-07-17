@@ -92,15 +92,36 @@ export class EmailWorkerService implements OnModuleInit {
             const html = renderTemplate(template.html, datos);
             const subject = renderTemplate(template.asunto, datos);
 
+            const reporte = await this.prisma.reporteEmail.create({
+                data: {
+                    campañaId: idCampania,
+                    contactoId: contacto.id,
+                    estado: 'pendiente', // aún no enviado
+                    asunto: subject,
+                    html, // HTML ya renderizado
+                    creadoAt: new Date(),
+                },
+            });
+            const verEnNavegadorUrl = `http://localhost:5173/mailing/vista/${reporte.id}`;
+            //const verEnNavegadorUrl = `https://amsasender.anamayasa.com.ar/mailing/vista/${reporte.id}`;
+
             try {
                 await transporter.sendMail({
                     from: smtp.usuario,
                     to: contacto.email,
                     subject,
-                    html: insertHeaderAndFooter(html),
+                    html: insertHeaderAndFooter(html, verEnNavegadorUrl),
                 });
 
                 enviados++;
+
+                await this.prisma.reporteEmail.update({
+                    where: { id: reporte.id },
+                    data: {
+                        estado: 'enviado',
+                        enviadoAt: new Date(),
+                    },
+                });
 
                 await this.subClient.publish('progreso-envio-mail', JSON.stringify({
                     campañaId: idCampania,
@@ -108,41 +129,18 @@ export class EmailWorkerService implements OnModuleInit {
                     total,
                 }));
 
-                // await this.prisma.reporte.create({
-                //   data: {
-                //     campañaId: idCampania,
-                //     email: contacto.email,
-                //     asunto: subject,
-                //     estado: 'enviado',
-                //     enviadoAt: new Date(),
-                //     datos: contacto.datos || undefined,
-                //   },
-                // });
-
-                // await this.prisma.mensaje.create({
-                //   data: {
-                //     campañaId: idCampania,
-                //     email: contacto.email,
-                //     asunto: subject,
-                //     html,
-                //     fecha: new Date(),
-                //   },
-                // });
-
                 this.logger.log(`✅ Enviado a ${contacto.email}`);
             } catch (err) {
                 this.logger.warn(`⚠️ Fallo al enviar a ${contacto.email}: ${err.message}`);
 
-                // await this.prisma.reporte.create({
-                //   data: {
-                //     campañaId: idCampania,
-                //     email: contacto.email,
-                //     asunto: subject,
-                //     estado: 'fallo',
-                //     enviadoAt: new Date(),
-                //     datos: contacto.datos || undefined,
-                //   },
-                // });
+                await this.prisma.reporteEmail.update({
+                    where: { id: reporte.id },
+                    data: {
+                        estado: 'fallo',
+                        error: err.message,
+                        enviadoAt: new Date(),
+                    },
+                });
             }
         }
 

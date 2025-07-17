@@ -7,8 +7,7 @@ export function renderTemplate(template: string, datos: Record<string, any>): st
     });
 }
 
-export function insertHeaderAndFooter(html: string) {
-    const verEnNavegadorUrl = `https://amsasender.anamayasa.com.ar/mailing/vista/${Date.now()}`; // cambiar por campaña/contacto real        
+export function insertHeaderAndFooter(html: string, verEnNavegadorUrl: string) {    
     const urlDesuscribirse = `https://amsasender.anamayasa.com.ar/mailing/desuscribirse/mock`;
 
     // 🔧 Insertar encabezado y footer al HTML original

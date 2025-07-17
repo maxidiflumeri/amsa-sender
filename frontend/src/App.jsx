@@ -16,14 +16,17 @@ import CrearTemplate from './components/email/CrearTemplate';
 import VerTemplatesEmail from './components/email/VerTemplatesEmail';
 import PreviewTemplate from './components/email/PreviewTemplate';
 import VerCampañasEmail from './components/email/VerCampañasEmail';
+import VistaPublicaEmail from './components/email/VistaPublicaEmail';
 
 export default function App() {
     const [mode, setMode] = useState('light');
     const location = useLocation();
     const isLoggedIn = !!localStorage.getItem('token');
-    const isLoginRoute = location.pathname === '/login';
 
-    if (!isLoggedIn && !isLoginRoute) {
+    const publicRoutes = ['/login', '/mailing/vista'];
+    const isPublicRoute = publicRoutes.some((r) => location.pathname.startsWith(r));
+
+    if (!isLoggedIn && !isPublicRoute) {
         return <Navigate to="/login" />;
     }
 
@@ -213,6 +216,7 @@ export default function App() {
             <Routes>
                 {/* Ruta pública */}
                 <Route path="/login" element={<Login />} />
+                <Route path="/mailing/vista/:id" element={<VistaPublicaEmail />} />
 
                 {/* Rutas privadas con layout */}
                 <Route element={<LayoutPrivado mode={mode} toggleTheme={toggleTheme} />}>
