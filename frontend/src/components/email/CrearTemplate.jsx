@@ -14,8 +14,8 @@ import {
 import { useTheme } from '@mui/material/styles';
 import EditorTemplate from './EditorTemplate';
 import api from '../../api/axios';
-import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
+import { Picker } from 'emoji-mart';
 import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
 import { useSearchParams } from 'react-router-dom';
 import MuiAlert from '@mui/material/Alert';
