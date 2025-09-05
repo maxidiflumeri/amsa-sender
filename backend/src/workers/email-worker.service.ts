@@ -7,10 +7,17 @@ import { insertHeaderAndFooter, renderTemplate } from 'src/common/renderTemplate
 import { getDatosFromContacto } from 'src/common/getDatosFromContacto';
 import * as nodemailer from 'nodemailer';
 import { RedisClientType } from 'redis';
+//import { prepararHtmlConTracking } from 'src/common/inyectEmailTracking';
+import { prepararHtmlConTracking_safe  } from 'src/common/inyectEmailTracking';
+import { generarTrackingTok } from 'src/common/generateTrackingTok';
 
 @Injectable()
 export class EmailWorkerService implements OnModuleInit {
     private readonly logger = new Logger(EmailWorkerService.name);
+
+    private getApiBaseUrl(): string {
+        return process.env.PUBLIC_API_BASE_URL || 'http://localhost:5001/api';
+    }
 
     constructor(
         private prisma: PrismaService,
@@ -92,34 +99,55 @@ export class EmailWorkerService implements OnModuleInit {
             const html = renderTemplate(template.html, datos);
             const subject = renderTemplate(template.asunto, datos);
 
+            // 1) Crear Reporte "pendiente" (como ya hacías)
             const reporte = await this.prisma.reporteEmail.create({
                 data: {
                     campañaId: idCampania,
                     contactoId: contacto.id,
-                    estado: 'pendiente', // aún no enviado
+                    estado: 'pendiente',
                     asunto: subject,
-                    html, // HTML ya renderizado
+                    html, // HTML base renderizado (sin tracking aún)
                     creadoAt: new Date(),
                 },
             });
+
+            // 2) URL "ver en navegador"
             const verEnNavegadorUrl = `http://localhost:5173/mailing/vista/${reporte.id}`;
-            //const verEnNavegadorUrl = `https://amsasender.anamayasa.com.ar/mailing/vista/${reporte.id}`;
+            // const verEnNavegadorUrl = `https://amsasender.anamayasa.com.ar/mailing/vista/${reporte.id}`;
 
             try {
+                // 3) 🔵 Generar token (si no tuviera)
+                const tok = reporte.trackingTok || generarTrackingTok();
+                if (!reporte.trackingTok) {
+                    await this.prisma.reporteEmail.update({
+                        where: { id: reporte.id },
+                        data: { trackingTok: tok },
+                    });
+                }
+
+                // 4) 🔵 Armar HTML final:
+                //    Primero aplico header/footer; luego inyecto pixel y reescribo links
+                const htmlConLayout = insertHeaderAndFooter(html, verEnNavegadorUrl);
+                const apiBase = this.getApiBaseUrl();
+                const htmlFinal = prepararHtmlConTracking_safe(htmlConLayout, apiBase, tok);
+
+                // 5) Enviar
                 await transporter.sendMail({
-                    from: smtp.usuario,
+                    from: smtp.usuario, // si querés mostrar remitente: `"${smtp.remitente}" <${smtp.emailFrom || smtp.usuario}>`
                     to: contacto.email,
                     subject,
-                    html: insertHeaderAndFooter(html, verEnNavegadorUrl),
+                    html: htmlFinal,
                 });
 
                 enviados++;
 
+                // 6) 🔵 Guardar estado + html final con tracking
                 await this.prisma.reporteEmail.update({
                     where: { id: reporte.id },
                     data: {
                         estado: 'enviado',
                         enviadoAt: new Date(),
+                        html: htmlFinal, // guardamos el HTML que se envió realmente (con pixel + links reescritos)
                     },
                 });
 
@@ -139,6 +167,7 @@ export class EmailWorkerService implements OnModuleInit {
                         estado: 'fallo',
                         error: err.message,
                         enviadoAt: new Date(),
+                        // (opcional) podés persistir htmlConLayout/htmlFinal si lo calculaste antes del send
                     },
                 });
             }
