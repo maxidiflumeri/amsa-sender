@@ -4,9 +4,11 @@ import { TemplatesEmailModule } from './templates-email/templates-email.module';
 import { EnvioEmailModule } from './envio-email/envio-email.module';
 import { CampaniasEmailModule } from './campanias-email/campanias-email.module';
 import { EmailPublicModule } from './public-email/public-email.module';
+import { TrackingEmailModule } from './tracking-email/tracking-email.module';
+import { ReportesEmailModule } from './reportes-email/reportes-email.module';
 
 @Module({    
-    imports: [SmtpModule, TemplatesEmailModule, EnvioEmailModule, CampaniasEmailModule, EmailPublicModule],
+    imports: [SmtpModule, TemplatesEmailModule, EnvioEmailModule, CampaniasEmailModule, EmailPublicModule, TrackingEmailModule, ReportesEmailModule],
   })
 
   export class EmailModule {}  

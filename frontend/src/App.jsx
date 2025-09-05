@@ -17,6 +17,7 @@ import VerTemplatesEmail from './components/email/VerTemplatesEmail';
 import PreviewTemplate from './components/email/PreviewTemplate';
 import VerCampañasEmail from './components/email/VerCampañasEmail';
 import VistaPublicaEmail from './components/email/VistaPublicaEmail';
+import VerReportesEmail from './components/email/VerReportesEmail';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -234,6 +235,7 @@ export default function App() {
                     <Route path="/email/templates" element={<VerTemplatesEmail />} />
                     <Route path="/preview-template/:id" element={<PreviewTemplate />} />
                     <Route path="/email/campanias" element={<VerCampañasEmail />} />
+                    <Route path="/email/reportes" element={<VerReportesEmail />} />
                 </Route>
 
                 {/* Catch-all */}
