@@ -2,8 +2,15 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
-import * as dayjs from 'dayjs';
 import { EmailEventoTipo } from '@prisma/client';
+import dayjs = require('dayjs');
+import utc = require('dayjs/plugin/utc');
+import timezone = require('dayjs/plugin/timezone');
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+const AR_TZ = 'America/Argentina/Buenos_Aires';
+
 
 type TipoFiltro = 'open' | 'click' | 'all';
 
@@ -278,20 +285,43 @@ export class ReportesEmailService {
         };
     }
 
-    async todayEvents(params: { limit: number; afterId?: number }) {
-        const { limit, afterId } = params;
-        const start = new Date(); start.setHours(0, 0, 0, 0);
-        const end = new Date();   // ahora
+    /**
+  * Eventos por fecha (si no viene date => hoy en AR_TZ)
+  * @param params.date YYYY-MM-DD (opcional)
+  * @param params.limit cantidad máxima (default 200)
+  * @param params.afterId paginación incremental por id
+  */
+    async eventsByDate(params: { date?: string; limit?: number; afterId?: number }) {
+        const { date, afterId } = params || {};
+        const limit = Math.min(Math.max(params?.limit ?? 200, 1), 500000); // guarda
 
-        const whereBase: any = { fecha: { gte: start, lt: end } };
+        // Si viene YYYY-MM-DD válido, usamos esa fecha; si no, "hoy" en AR_TZ
+        const base = (date && /^\d{4}-\d{2}-\d{2}$/.test(date))
+            ? dayjs.tz(date, AR_TZ)
+            : dayjs.tz(undefined, AR_TZ);
+
+        // Rango del día: [00:00:00.000, siguiente día 00:00) en AR_TZ
+        const start = base.startOf('day');
+        const end = start.add(1, 'day');
+
+        const whereBase: any = {
+            fecha: {
+                gte: start.toDate(),
+                lt: end.toDate(), // end exclusivo para evitar problemas de milisegundos
+            },
+        };
         if (afterId) whereBase.id = { gt: afterId };
 
         const events = await this.prisma.emailEvento.findMany({
             where: whereBase,
-            orderBy: { id: 'asc' },
+            orderBy: { id: 'asc' },   // id asc para streaming incremental
             take: limit,
             select: {
-                id: true, tipo: true, fecha: true, urlDestino: true, dominioDestino: true,
+                id: true,
+                tipo: true,
+                fecha: true,
+                urlDestino: true,
+                dominioDestino: true,
                 reporte: {
                     select: {
                         campañaId: true,

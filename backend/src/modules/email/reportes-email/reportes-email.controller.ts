@@ -52,9 +52,16 @@ export class ReportesEmailController {
         });
     }
 
-    @Get('events/today')
-    async today(@Query('limit') limit = '200', @Query('afterId') afterId?: string) {
-        return this.svc.todayEvents({ limit: Number(limit), afterId: afterId ? Number(afterId) : undefined });
+    // GET /email/reportes/events/by-date?date=YYYY-MM-DD&limit=200&afterId=123
+    @Get('events/by-date')
+    async eventsByDate(
+        @Query('date') date?: string,
+        @Query('limit') limitStr?: string,
+        @Query('afterId') afterIdStr?: string,
+    ) {
+        const limit = Number.isFinite(Number(limitStr)) ? Number(limitStr) : 200;
+        const afterId = Number.isFinite(Number(afterIdStr)) ? Number(afterIdStr) : undefined;
+        return this.svc.eventsByDate({ date, limit, afterId });
     }
 
     @Get('actividades.csv')

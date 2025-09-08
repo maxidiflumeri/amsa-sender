@@ -39,9 +39,14 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-// Opcional: Recharts para minicharts. Si no está instalado, comentar las líneas de Recharts y los usos.
 import { Area, AreaChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import DownloadIcon from '@mui/icons-material/Download';
+
+// ⬇️ NUEVO: DatePicker
+import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import dayjs from 'dayjs';
+import "dayjs/locale/es";
 
 // =====================================================
 // Helpers de API (axios reales)
@@ -58,7 +63,6 @@ async function apiFetchOverview({ since, until, query, page = 0, size = 12 }) {
   params.append('size', String(size));
 
   const { data } = await api.get(`/email/reportes/overview?${params.toString()}`);
-  // El backend devuelve: { total, page, size, items }
   return {
     total: data.total,
     items: (data.items || []).map((c) => ({
@@ -84,17 +88,24 @@ async function apiFetchCampaignDetail(campaniaId, { since, until, pageOpen = 0, 
   return data;
 }
 
-async function apiFetchTodayEvents({ limit = 200, afterId } = {}) {
+// ⬇️ NUEVO: eventos por fecha (reemplaza el "today")
+async function apiFetchEventsByDate({ date, limit = 200, afterId } = {}) {
+  // Si ya tenés un endpoint /email/reportes/events?date=YYYY-MM-DD lo usamos:
+  // const { data } = await api.get('/email/reportes/events', { params: { date, limit, afterId } });
+  // return data;
+
+  // Si aún no existe, podés seguir usando el actual de "today" mientras adaptás backend:
+  // pero idealmente movelo al endpoint por fecha.
   const params = new URLSearchParams();
   params.append('limit', String(limit));
   if (afterId) params.append('afterId', String(afterId));
-  const { data } = await api.get(`/email/reportes/events/today?${params.toString()}`);
+  // TEMP: endpoint actual "today" (mientras migrás backend)
+  const { data } = await api.get(`/email/reportes/events/by-date`, { params: { date, limit, afterId } });
   return data;
 }
 
 // =====================================================
 // Componentes auxiliares
-// =====================================================
 // =====================================================
 function Metric({ label, value, help }) {
   return (
@@ -258,7 +269,7 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
       onClose={onClose}
       variant="temporary"
       sx={{
-        zIndex: (theme) => theme.zIndex.drawer + 2, // AppBar tiene +1, le damos +2
+        zIndex: (theme) => theme.zIndex.drawer + 2,
         '& .MuiPaper-root': {
           width: { xs: '100%', md: 640 },
         },
@@ -351,24 +362,21 @@ export default function CampaignEngagementPage() {
   const [size, setSize] = useState(12);    // tarjetas por página
   const [total, setTotal] = useState(0);   // total de campañas
 
+  // ⬇️ NUEVO: fecha seleccionada para eventos
+  const [selectedDate, setSelectedDate] = useState(dayjs()); // default hoy
+
   const dates = useMemo(() => {
     const now = new Date();
-
-    // siempre el end = ahora
     const end = toLocalISOString(now);
-
     const startDate = new Date(now);
     if (range === '7d') {
       startDate.setDate(now.getDate() - 7);
     } else if (range === '30d') {
       startDate.setDate(now.getDate() - 30);
     } else {
-      // caso "hoy": inicio del día
       startDate.setHours(0, 0, 0, 0);
     }
-
     const start = toLocalISOString(startDate);
-
     return { since: start, until: end };
   }, [range]);
 
@@ -382,6 +390,16 @@ export default function CampaignEngagementPage() {
       ':' + pad(date.getMinutes()) +
       ':' + pad(date.getSeconds())
     );
+  }
+
+  // ⬇️ util: start/end del día para CSV (en local time)
+  function startEndOfDay(d) {
+    const js = d.toDate(); // dayjs -> Date
+    const start = new Date(js);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(js);
+    end.setHours(23, 59, 59, 999);
+    return { desde: toLocalISOString(start), hasta: toLocalISOString(end) };
   }
 
   const loadOverview = async () => {
@@ -409,10 +427,12 @@ export default function CampaignEngagementPage() {
     setDetail(d);
   };
 
-  const loadEventsToday = async () => {
+  // ⬇️ NUEVO: carga eventos según fecha seleccionada
+  const loadEventsByDate = async () => {
     setLoadingEvents(true);
     try {
-      const data = await apiFetchTodayEvents({ limit: 500000 });
+      const dateParam = selectedDate.format('YYYY-MM-DD');
+      const data = await apiFetchEventsByDate({ date: dateParam, limit: 500000 });
       setEvents(data);
     } finally {
       setLoadingEvents(false);
@@ -420,9 +440,9 @@ export default function CampaignEngagementPage() {
   };
 
   useEffect(() => {
-    if (tab === 1) loadEventsToday();
+    if (tab === 1) loadEventsByDate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, selectedDate]);
 
   const openDetail = async (campania) => {
     setSelectedCampaign(campania);
@@ -434,27 +454,20 @@ export default function CampaignEngagementPage() {
     setDetail(d);
   };
 
-  const downloadCsvToday = async () => {
+  // ⬇️ NUEVO: descarga CSV de la fecha seleccionada
+  const downloadCsvSelectedDate = async () => {
     try {
-      // rango: hoy 00:00:00 → ahora (hora local)
-      const now = new Date();
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-
-      const desde = toLocalISOString(start);
-      const hasta = toLocalISOString(now);
-
+      const { desde, hasta } = startEndOfDay(selectedDate);
       const res = await api.get('/email/reportes/actividades.csv', {
         params: { desde, hasta, tipo: 'all' },
-        responseType: 'blob', // <- importante para CSV
+        responseType: 'blob',
       });
 
-      // Intentar extraer nombre de archivo del header
       const cd = res.headers?.['content-disposition'] || '';
       const match = /filename="?([^"]+)"?/i.exec(cd);
-      const filename = match?.[1] || `actividades_${desde.slice(0, 10)}.csv`;
+      const fallbackName = `actividades_${selectedDate.format('YYYY-MM-DD')}.csv`;
+      const filename = match?.[1] || fallbackName;
 
-      // Crear link de descarga del blob
       const blobUrl = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8;' }));
       const a = document.createElement('a');
       a.href = blobUrl;
@@ -465,7 +478,6 @@ export default function CampaignEngagementPage() {
       URL.revokeObjectURL(blobUrl);
     } catch (err) {
       console.error('Error al descargar CSV:', err);
-      // opcional: mostrar snackbar/toast de error
     }
   };
 
@@ -484,7 +496,7 @@ export default function CampaignEngagementPage() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                setPage(0);     // ⬅️ reset page
+                setPage(0);
                 loadOverview();
               }
             }}
@@ -515,7 +527,7 @@ export default function CampaignEngagementPage() {
           <Button
             variant="contained"
             onClick={() => {
-              setPage(0);       // ⬅️ reset page
+              setPage(0);
               loadOverview();
             }}
           >
@@ -526,7 +538,7 @@ export default function CampaignEngagementPage() {
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
         <Tab label="Resumen por campaña" />
-        <Tab label="Aperturas y clics (hoy)" />
+        <Tab label="Aperturas y clics (por fecha)" />
       </Tabs>
 
       {tab === 0 && (
@@ -584,18 +596,26 @@ export default function CampaignEngagementPage() {
       {tab === 1 && (
         <Card sx={{ borderRadius: 3 }}>
           <CardHeader
-            title="Eventos de hoy"
+            title={`Eventos del ${selectedDate.format('YYYY-MM-DD')}`}
             subheader="Aperturas y clics más recientes en todas las campañas"
             action={
-              <Stack direction="row" spacing={1}>
-                <Button variant="outlined" size="small" onClick={loadEventsToday}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
+                  <DatePicker
+                    label="Fecha"
+                    value={selectedDate}
+                    onChange={(v) => v && setSelectedDate(v)}
+                    slotProps={{ textField: { size: 'small' } }}
+                  />
+                </LocalizationProvider>
+                <Button variant="outlined" size="small" onClick={loadEventsByDate}>
                   Actualizar
                 </Button>
                 <Button
                   variant="outlined"
                   size="small"
                   startIcon={<DownloadIcon />}
-                  onClick={downloadCsvToday}
+                  onClick={downloadCsvSelectedDate}
                 >
                   Descargar CSV
                 </Button>
@@ -620,7 +640,7 @@ export default function CampaignEngagementPage() {
                     {events.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={5} align="center">
-                          <Typography variant="body2" color="text.secondary">Sin eventos registrados hoy.</Typography>
+                          <Typography variant="body2" color="text.secondary">Sin eventos registrados en la fecha.</Typography>
                         </TableCell>
                       </TableRow>
                     )}
