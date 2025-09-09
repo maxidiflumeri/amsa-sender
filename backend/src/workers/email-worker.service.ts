@@ -10,6 +10,8 @@ import { RedisClientType } from 'redis';
 //import { prepararHtmlConTracking } from 'src/common/inyectEmailTracking';
 import { prepararHtmlConTracking_safe } from 'src/common/inyectEmailTracking';
 import { generarTrackingTok } from 'src/common/generateTrackingTok';
+import { randomUUID } from 'node:crypto';
+import { buildAmsaHeader, injectHtmlMarker } from 'src/common/bounce.common';
 
 @Injectable()
 export class EmailWorkerService implements OnModuleInit {
@@ -130,17 +132,26 @@ export class EmailWorkerService implements OnModuleInit {
                 const htmlConLayout = insertHeaderAndFooter(html, verEnNavegadorUrl);
                 const apiBase = this.getApiBaseUrl();
                 const htmlFinal = prepararHtmlConTracking_safe(htmlConLayout, apiBase, tok);
+                const secret = process.env.AMSA_BOUNCE_SECRET || '';
+                const domain = 'anamayasa.com.ar'; // o sacalo de config
+                const messageId = `<${reporte.id}.${randomUUID()}@${domain}>`;
+                const xHeader = buildAmsaHeader(reporte.id, contacto.email, messageId, secret);
+                const htmlConMarker = injectHtmlMarker(htmlFinal, xHeader);
 
                 // 5) Enviar
                 await transporter.sendMail({
                     from: smtp.usuario, // si querés mostrar remitente: `"${smtp.remitente}" <${smtp.emailFrom || smtp.usuario}>`
                     to: contacto.email,
                     subject,
-                    html: htmlFinal,
+                    html: htmlConMarker,
                     // 👇 envelope controla el Return-Path real del sobre
                     envelope: {
                         from: 'rebotes@anamayasa.com.ar', // casilla que creaste en Workspace
                         to: contacto.email
+                    },
+                    messageId, // lo fijamos nosotros
+                    headers: {
+                        'X-AMSASender': xHeader,
                     },
                 });
 
@@ -152,7 +163,8 @@ export class EmailWorkerService implements OnModuleInit {
                     data: {
                         estado: 'enviado',
                         enviadoAt: new Date(),
-                        html: htmlFinal, // guardamos el HTML que se envió realmente (con pixel + links reescritos)
+                        html: htmlConMarker, // guardamos el HTML que se envió realmente (con pixel + links reescritos),
+                        smtpMessageId: messageId,
                     },
                 });
 

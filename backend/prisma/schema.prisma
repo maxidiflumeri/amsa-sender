@@ -148,8 +148,9 @@ model ReporteEmail {
   creadoAt         DateTime      @default(now())
   trackingTok      String?       @unique // token por envío (se setea al enviar)
   primeroAbiertoAt DateTime?
-  primeroClickAt   DateTime?
-  campaña         CampañaEmail @relation(fields: [campañaId], references: [id], onDelete: Cascade)
+  primeroClickAt   DateTime?  
+  smtpMessageId    String?        @unique @db.VarChar(255)
+  campaña          CampañaEmail @relation(fields: [campañaId], references: [id], onDelete: Cascade)
   contacto         ContactoEmail @relation(fields: [contactoId], references: [id], onDelete: Cascade)
   eventos          EmailEvento[]
   rebotes          EmailRebote[]
@@ -198,13 +199,16 @@ enum EmailEventoTipo {
 }
 
 model EmailRebote {
-  id          Int           @id @default(autoincrement())
-  reporteId   Int?          // <- ahora opcional
-  fecha       DateTime      @default(now())
-  codigo      String?       @db.VarChar(32)   // 5.1.1 / 550 / etc.
-  descripcion String?       @db.Text          // motivo/diagnóstico
-  raw         String?       @db.MediumText    // cuerpo/DSN (más grande)
-  reporte     ReporteEmail? @relation(fields: [reporteId], references: [id], onDelete: SetNull)
+  id            Int           @id @default(autoincrement())
+  reporteId     Int?          // <- ahora opcional
+  fecha         DateTime      @default(now())
+  codigo        String?       @db.VarChar(32)   // 5.1.1 / 550 / etc.
+  descripcion   String?       @db.Text          // motivo/diagnóstico
+  raw           String?       @db.MediumText    // cuerpo/DSN (más grande)    
+  correo        String?        @db.VarChar(320)  
+  smtpMessageId String?       @db.VarChar(255)
+  xAmsaSender   String?       @db.VarChar(512)
+  reporte       ReporteEmail? @relation(fields: [reporteId], references: [id], onDelete: SetNull)
 
   @@index([reporteId, fecha])
 }

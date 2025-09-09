@@ -76,7 +76,7 @@ async function apiFetchOverview({ since, until, query, page = 0, size = 12 }) {
   };
 }
 
-async function apiFetchCampaignDetail(campaniaId, { since, until, pageOpen = 0, sizeOpen = 10, pageClick = 0, sizeClick = 10 } = {}) {
+async function apiFetchCampaignDetail(campaniaId, { since, until, pageOpen = 0, sizeOpen = 10, pageClick = 0, sizeClick = 10, pageBounce = 0, sizeBounce = 10 } = {}) {
   const params = new URLSearchParams();
   if (since) params.append('since', since);
   if (until) params.append('until', until);
@@ -84,8 +84,14 @@ async function apiFetchCampaignDetail(campaniaId, { since, until, pageOpen = 0, 
   params.append('sizeOpen', String(sizeOpen));
   params.append('pageClick', String(pageClick));
   params.append('sizeClick', String(sizeClick));
+  params.append('pageBounce', String(pageBounce));
+  params.append('sizeBounce', String(sizeBounce));
   const { data } = await api.get(`/email/reportes/campanias/${campaniaId}/engagement?${params.toString()}`);
-  return data;
+  return {
+    ...data,
+    // normalización defensiva si backend aún no envía el array
+    rebotes: Array.isArray(data.rebotes) ? data.rebotes : [],
+  };
 }
 
 // ⬇️ NUEVO: eventos por fecha (reemplaza el "today")
@@ -236,9 +242,11 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
   const [pageClick, setPageClick] = useState(0);
   const [rppOpen, setRppOpen] = useState(10);
   const [rppClick, setRppClick] = useState(10);
+  const [pageBounce, setPageBounce] = useState(0);
+  const [rppBounce, setRppBounce] = useState(10);
 
   useEffect(() => {
-    if (open) { setTab(0); setPageOpen(0); setPageClick(0); }
+    if (open) { setTab(0); setPageOpen(0); setPageClick(0); setPageBounce(0) }
   }, [open]);
 
   const colsOpens = [
@@ -260,6 +268,13 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
     },
     { key: 'ip', label: 'IP' },
     { key: 'userAgent', label: 'Agente' },
+  ];
+
+  const colsBounces = [
+    { key: 'timestamp', label: 'Fecha/Hora', render: v => new Date(v).toLocaleString() },
+    { key: 'email', label: 'Email' },
+    { key: 'codigo', label: 'Código' },
+    { key: 'descripcion', label: 'Descripción' },
   ];
 
   return (
@@ -311,6 +326,7 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
             <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mt: 2 }}>
               <Tab label={`Aperturas (${detail.aperturas.length})`} />
               <Tab label={`Clicks (${detail.clicks.length})`} />
+              <Tab label={`Rebotes (${detail.rebotes?.length ?? 0})`} />
             </Tabs>
 
             <Box hidden={tab !== 0} sx={{ mt: 2 }}>
@@ -336,6 +352,18 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
                 emptyLabel="Sin clics registrados"
               />
             </Box>
+
+            <Box hidden={tab !== 2} sx={{ mt: 2 }}>
+              <EventsTable
+                rows={detail.rebotes ?? []}
+                columns={colsBounces}
+                page={pageBounce}
+                rowsPerPage={rppBounce}
+                onPageChange={(p) => { setPageBounce(p); onPaginate?.({ pageBounce: p, sizeBounce: rppBounce }); }}
+                onRowsPerPageChange={(size) => { setRppBounce(size); setPageBounce(0); onPaginate?.({ pageBounce: 0, sizeBounce: size }); }}
+                emptyLabel="Sin rebotes registrados"
+              />
+            </Box>
           </>
         )}
       </Box>
@@ -355,12 +383,16 @@ export default function CampaignEngagementPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [detailParams, setDetailParams] = useState({ pageOpen: 0, sizeOpen: 10, pageClick: 0, sizeClick: 10 });
+  const [detailParams, setDetailParams] = useState({ pageOpen: 0, sizeOpen: 10, pageClick: 0, sizeClick: 10, pageBounce: 0, sizeBounce: 10 });
   const [events, setEvents] = useState([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [page, setPage] = useState(0);     // página 0-based
   const [size, setSize] = useState(12);    // tarjetas por página
   const [total, setTotal] = useState(0);   // total de campañas
+  // ⬇️ NUEVO: rebotes por fecha
+  const [rebotes, setRebotes] = useState([]);
+  const [loadingRebotes, setLoadingRebotes] = useState(false);
+
 
   // ⬇️ NUEVO: fecha seleccionada para eventos
   const [selectedDate, setSelectedDate] = useState(dayjs()); // default hoy
@@ -423,7 +455,10 @@ export default function CampaignEngagementPage() {
     const params = { ...detailParams, ...patch };
     setDetailParams(params);
     setDetail(null);
-    const d = await apiFetchCampaignDetail(selectedCampaign.id, { since: dates.since, until: dates.until, ...params });
+    const d = await apiFetchCampaignDetail(
+      selectedCampaign.id,
+      { since: dates.since, until: dates.until, ...params }
+    );
     setDetail(d);
   };
 
@@ -442,13 +477,15 @@ export default function CampaignEngagementPage() {
   useEffect(() => {
     if (tab === 1) loadEventsByDate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (tab === 2) loadRebotesByDate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, selectedDate]);
 
   const openDetail = async (campania) => {
     setSelectedCampaign(campania);
     setDrawerOpen(true);
     setDetail(null);
-    const defaults = { pageOpen: 0, sizeOpen: 10, pageClick: 0, sizeClick: 10 };
+    const defaults = { pageOpen: 0, sizeOpen: 10, pageClick: 0, sizeClick: 10, pageBounce: 0, sizeBounce: 10 };
     setDetailParams(defaults);
     const d = await apiFetchCampaignDetail(campania.id, { since: dates.since, until: dates.until, ...defaults });
     setDetail(d);
@@ -478,6 +515,57 @@ export default function CampaignEngagementPage() {
       URL.revokeObjectURL(blobUrl);
     } catch (err) {
       console.error('Error al descargar CSV:', err);
+    }
+  };
+
+  // ⬇️ NUEVO: rebotes por fecha (JSON)
+  async function apiFetchRebotesByDate({ date, limit = 200, afterId } = {}) {
+    const { data } = await api.get(`/email/reportes/rebotes/by-date`, {
+      params: { date, limit, afterId }
+    });
+    return data; // [{ id, timestamp, email, código/descripcion, campañaNombre, ... }]
+  }
+
+  // ⬇️ NUEVO: descarga CSV de rebotes por fecha
+  async function apiDownloadCsvRebotes({ desde, hasta }) {
+    return api.get('/email/reportes/rebotes.csv', {
+      params: { desde, hasta },
+      responseType: 'blob',
+    });
+  }
+
+  // ⬇️ NUEVO: carga rebotes según fecha seleccionada
+  const loadRebotesByDate = async () => {
+    setLoadingRebotes(true);
+    try {
+      const dateParam = selectedDate.format('YYYY-MM-DD');
+      const data = await apiFetchRebotesByDate({ date: dateParam, limit: 500000 });
+      setRebotes(data);
+    } finally {
+      setLoadingRebotes(false);
+    }
+  };
+
+  // ⬇️ NUEVO: descarga CSV de rebotes para la fecha seleccionada
+  const downloadCsvRebotesSelectedDate = async () => {
+    try {
+      const { desde, hasta } = startEndOfDay(selectedDate);
+      const res = await apiDownloadCsvRebotes({ desde, hasta });
+
+      const cd = res.headers?.['content-disposition'] || '';
+      const match = /filename="?([^"]+)"?/i.exec(cd);
+      const filename = match?.[1] || `rebotes_${selectedDate.format('YYYY-MM-DD')}.csv`;
+
+      const blobUrl = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8;' }));
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error('Error al descargar CSV de rebotes:', err);
     }
   };
 
@@ -539,6 +627,7 @@ export default function CampaignEngagementPage() {
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
         <Tab label="Resumen por campaña" />
         <Tab label="Aperturas y clics (por fecha)" />
+        <Tab label="Rebotes (por fecha)" />
       </Tabs>
 
       {tab === 0 && (
@@ -655,6 +744,74 @@ export default function CampaignEngagementPage() {
                         <TableCell>
                           {ev.url ? <Link href={ev.url} target="_blank" rel="noopener noreferrer">{ev.url}<OpenInNewIcon sx={{ ml: 0.5, fontSize: 16 }} /></Link> : '-'}
                         </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 2 && (
+        <Card sx={{ borderRadius: 3 }}>
+          <CardHeader
+            title={`Rebotes del ${selectedDate.format('YYYY-MM-DD')}`}
+            subheader="Rebotes más recientes en todas las campañas"
+            action={
+              <Stack direction="row" spacing={1} alignItems="center">
+                <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
+                  <DatePicker
+                    label="Fecha"
+                    value={selectedDate}
+                    onChange={(v) => v && setSelectedDate(v)}
+                    slotProps={{ textField: { size: 'small' } }}
+                  />
+                </LocalizationProvider>
+                <Button variant="outlined" size="small" onClick={loadRebotesByDate}>
+                  Actualizar
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<DownloadIcon />}
+                  onClick={downloadCsvRebotesSelectedDate}
+                >
+                  Descargar CSV
+                </Button>
+              </Stack>
+            }
+          />
+          <CardContent>
+            {loadingRebotes && <LinearProgress />}
+            {!loadingRebotes && (
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Hora</TableCell>
+                      <TableCell>Campaña</TableCell>
+                      <TableCell>Email</TableCell>
+                      <TableCell>Código</TableCell>
+                      <TableCell>Descripción</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rebotes.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography variant="body2" color="text.secondary">Sin rebotes registrados en la fecha.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {rebotes.map(rb => (
+                      <TableRow key={rb.id} hover>
+                        <TableCell>{new Date(rb.timestamp).toLocaleTimeString()}</TableCell>
+                        <TableCell>{rb.campañaNombre ?? (rb.campañaId ? `Campaña ${rb.campañaId}` : '-')}</TableCell>
+                        <TableCell>{rb.email}</TableCell>
+                        <TableCell>{rb.codigo ?? '-'}</TableCell>
+                        <TableCell>{rb.descripcion ?? '-'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

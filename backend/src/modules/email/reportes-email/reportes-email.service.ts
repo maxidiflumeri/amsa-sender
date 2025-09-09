@@ -175,8 +175,19 @@ export class ReportesEmailService {
         return { total, page, size, items };
     }
 
-    async campaignDetail(params: { campañaId: number; since: Date; until: Date; pageOpen: number; sizeOpen: number; pageClick: number; sizeClick: number; }) {
-        const { campañaId, since, until, pageOpen, sizeOpen, pageClick, sizeClick } = params;
+    async campaignDetail(params: {
+        campañaId: number;
+        since: Date;
+        until: Date;
+        pageOpen: number;
+        sizeOpen: number;
+        pageClick: number;
+        sizeClick: number;
+        // ⬇️ NUEVO
+        pageBounce: number;
+        sizeBounce: number;
+    }) {
+        const { campañaId, since, until, pageOpen, sizeOpen, pageClick, sizeClick, pageBounce, sizeBounce } = params;
 
         // KPIs
         const enviados = await this.prisma.reporteEmail.count({
@@ -252,6 +263,26 @@ export class ReportesEmailService {
             }),
         ]);
 
+        const [rebotesList, totalRebotes] = await Promise.all([
+            this.prisma.emailRebote.findMany({
+                where: { reporte: { campañaId }, fecha: { gte: since, lt: until } },
+                orderBy: { fecha: 'desc' },
+                skip: pageBounce * sizeBounce,
+                take: sizeBounce,
+                select: {
+                    id: true,
+                    fecha: true,
+                    codigo: true,
+                    descripcion: true,
+                    correo: true,
+                    reporte: { select: { contacto: { select: { email: true } } } },
+                },
+            }),
+            this.prisma.emailRebote.count({
+                where: { reporte: { campañaId }, fecha: { gte: since, lt: until } },
+            }),
+        ]);
+
         return {
             resumen: {
                 enviados,
@@ -280,8 +311,17 @@ export class ReportesEmailService {
                 ip: e.ip ?? undefined,
                 userAgent: e.userAgent ?? undefined,
             })),
+            rebotes: rebotesList.map(r => ({
+                id: r.id,
+                timestamp: r.fecha.toISOString(),
+                // preferimos el correo que realmente rebotó; si no está, fallback al del contacto
+                email: r.correo ?? r.reporte?.contacto?.email ?? '',
+                codigo: r.codigo ?? undefined,
+                descripcion: r.descripcion ?? undefined,
+            })),
             totalAperturas,
             totalClicks,
+            totalRebotes
         };
     }
 
@@ -441,6 +481,160 @@ export class ReportesEmailService {
         }
 
         // Fin de línea con CRLF para máxima compatibilidad (Excel, etc.)
+        return rows.join('\r\n') + '\r\n';
+    }
+
+    /**
+ * Rebotes por fecha (si no viene date => hoy en AR_TZ)
+ * @param params.date YYYY-MM-DD (opcional)
+ * @param params.limit cantidad máxima (default 200)
+ * @param params.afterId paginación incremental por id
+ */
+    async rebotesByDate(params: { date?: string; limit?: number; afterId?: number }) {
+        const { date, afterId } = params || {};
+        const limit = Math.min(Math.max(params?.limit ?? 200, 1), 500000);
+
+        // Si viene YYYY-MM-DD válido, usamos esa fecha; si no, "hoy" en AR_TZ
+        const base = (date && /^\d{4}-\d{2}-\d{2}$/.test(date))
+            ? dayjs.tz(date, AR_TZ)
+            : dayjs.tz(undefined, AR_TZ);
+
+        // Rango del día: [00:00:00.000, 00:00 del día siguiente) en AR_TZ
+        const start = base.startOf('day');
+        const end = start.add(1, 'day');
+
+        const whereBase: any = {
+            fecha: {
+                gte: start.toDate(),
+                lt: end.toDate(),
+            },
+        };
+        if (afterId) whereBase.id = { gt: afterId };
+
+        const rebotes = await this.prisma.emailRebote.findMany({
+            where: whereBase,
+            orderBy: { id: 'asc' },
+            take: limit,
+            select: {
+                id: true,
+                fecha: true,
+                codigo: true,
+                descripcion: true,
+                correo: true,
+                reporteId: true,
+                reporte: {
+                    select: {
+                        id: true,
+                        enviadoAt: true,
+                        creadoAt: true,
+                        campañaId: true,
+                        campaña: { select: { nombre: true } },
+                        contacto: { select: { id: true, email: true } },
+                    },
+                },
+            },
+        });
+
+        return rebotes.map(r => ({
+            id: r.id,
+            timestamp: r.fecha.toISOString(),                              // FECHA_ACTIVIDAD
+            email: r.correo ?? r.reporte?.contacto?.email ?? '',
+            codigo: r.codigo ?? undefined,
+            descripcion: r.descripcion ?? undefined,
+            campañaId: r.reporte?.campañaId,
+            campañaNombre: r.reporte?.campaña?.nombre ?? (r.reporte?.campañaId ? `Campaña ${r.reporte.campañaId}` : undefined),
+            idContacto: r.reporte?.contacto?.id,
+            reporteId: r.reporteId ?? undefined,
+            enviadoAt: r.reporte?.enviadoAt ?? r.reporte?.creadoAt ?? null, // por si querés mostrarla en UI
+        }));
+    }
+
+    /**
+ * Genera CSV de rebotes con los encabezados exactos requeridos.
+ * Filtros opcionales:
+ * - campaniaId?: number
+ * - desde?: Date (filtra por FECHA_ACTIVIDAD = fecha del rebote)
+ * - hasta?: Date
+ *
+ * Devuelve string CSV listo para descargar (separado por ';').
+ */
+    async generarCsvRebotes(params: {
+        campaniaId?: number;
+        desde?: Date;
+        hasta?: Date;
+    }): Promise<string> {
+        const { campaniaId, desde, hasta } = params;
+
+        const where: any = {
+            ...(desde || hasta ? { fecha: { gte: desde ?? undefined, lte: hasta ?? undefined } } : {}),
+            ...(campaniaId ? { reporte: { campañaId: campaniaId } } : {}),
+        };
+
+        const rebotes = await this.prisma.emailRebote.findMany({
+            where,
+            include: {
+                reporte: {
+                    select: {
+                        id: true,
+                        enviadoAt: true,
+                        creadoAt: true,
+                        campaña: { select: { id: true, nombre: true } },
+                        contacto: { select: { id: true, email: true } },
+                    },
+                },
+            },
+            orderBy: { fecha: 'asc' },
+        });
+
+        const header =
+            'EMAIL;FECHA_ENVIO;FECHA_ACTIVIDAD;CAMPANIA;ACCION;TIPO_ACCION;ACTIVIDAD;DESCRIPCION;ID_CONTACTO';
+        const rows: string[] = [header];
+
+        for (const r of rebotes) {
+            // EMAIL: primero el que detectamos en el rebote; sino, el del contacto del reporte
+            const EMAIL = this.clean(r.correo ?? r.reporte?.contacto?.email);
+
+            // FECHA_ENVIO: del reporte (fallback creadoAt si enviadoAt nulo)
+            const FECHA_ENVIO = this.fmtDate(r.reporte?.enviadoAt ?? r.reporte?.creadoAt);
+
+            // FECHA_ACTIVIDAD: fecha del rebote
+            const FECHA_ACTIVIDAD = this.fmtDate(r.fecha);
+
+            // CAMPANIA: nombre (fallback al id)
+            const CAMPANIA = this.clean(r.reporte?.campaña?.nombre ?? (r.reporte?.campaña?.id ? `Campaña #${r.reporte.campaña.id}` : ''));
+
+            // ACCION: en tu schema no existe un campo específico → lo dejamos vacío (como haces en actividades)
+            const ACCION = '';
+
+            // TIPO_ACCION: fijo como en el ejemplo
+            const TIPO_ACCION = 'Envio simple';
+
+            // ACTIVIDAD: fijo
+            const ACTIVIDAD = 'Rebote';
+
+            // DESCRIPCION: "codigo - descripcion" (si ambos), sino uno u otro
+            const DESCRIPCION =
+                r.codigo && r.descripcion ? `${this.clean(r.codigo)} - ${this.clean(r.descripcion)}` :
+                    r.codigo ? this.clean(r.codigo) :
+                        this.clean(r.descripcion);
+
+            // ID_CONTACTO: del reporte
+            const ID_CONTACTO = r.reporte?.contacto?.id !== undefined ? String(r.reporte.contacto.id) : '';
+
+            rows.push([
+                EMAIL,
+                FECHA_ENVIO,
+                FECHA_ACTIVIDAD,
+                CAMPANIA,
+                ACCION,
+                TIPO_ACCION,
+                ACTIVIDAD,
+                DESCRIPCION,
+                ID_CONTACTO,
+            ].join(';'));
+        }
+
+        // CRLF para compatibilidad con Excel
         return rows.join('\r\n') + '\r\n';
     }
 }

@@ -8,15 +8,24 @@ import * as fs from 'fs/promises';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 type BounceInfo = {
-    recipient: string;
-    code: string | null;                  // 5.1.1 / 550 / 4.2.2 / etc.
+    recipient: string | null;            // correo que rebotó
+    code: string | null;                 // 5.1.1 / 550 / 4.2.2 / etc.
     type: 'hard' | 'soft' | 'unknown';
-    reason: string | null;                // Diagnostic-Code o similar
+    reason: string | null;               // Diagnostic-Code o similar
     subject: string | null;
-    messageId: string | null;             // Message-ID del NDR (no siempre el original)
+
+    // NUEVO: correlación
+    originalMessageId: string | null;    // Message-ID del mail ORIGINAL enviado por vos
+    xAmsaSender: string | null;          // valor del header/marcador X-AMSASender (si vino)
+    originalHeaders: string | null;      // headers del original (si vino adjunto message/rfc822)
+    originalBodyQuoted: string | null;   // cuerpo quoteado (si vino en texto/HTML)
+    messageId: string | null;            // Message-ID del NDR (rebote) recibido
     receivedAt: Date;
-    rawSnippet: string | null;            // para debug
+    rawSnippet: string | null;           // para debug (texto del bounce)
+    dsnText: string | null;              // cuerpo del delivery-status (si vino)
 };
+
+
 
 @Injectable()
 export class GmailService {
@@ -31,14 +40,34 @@ export class GmailService {
     private processedLabelName = process.env.GMAIL_LABEL_PROCESSED || 'Bounces-Processed';
     private processedLabelId: string | null = null;
 
-    constructor(private readonly prisma: PrismaService) {        
+    constructor(private readonly prisma: PrismaService) {
         this.oauth2 = new google.auth.OAuth2(this.clientId, this.clientSecret, this.redirectUri);
         // Intentar cargar tokens al iniciar (si existen)
         this.loadTokens().catch(() => { });
     }
 
-    // --- OAuth helpers ---
+    private parseAmsaHeader(value?: string) {
+        if (!value) return null;
+        const rid = value.match(/rid=(\d+)/i)?.[1];
+        const msgid = value.match(/msgid=([^;]+)\b/i)?.[1]?.trim();
+        const to = value.match(/to=([^;]+)\b/i)?.[1]?.trim();
+        const sig = value.match(/sig=([A-Za-z0-9\-_]+)/i)?.[1]?.trim();
+        if (!rid && !msgid && !to) return null;
+        return {
+            reporteId: rid ? Number(rid) : null,
+            messageId: msgid || null,
+            to: to || null,
+            sig: sig || null,
+        };
+    }
 
+    /** Convierte headerLines a string legible */
+    private stringifyHeaderLines(lines: { key: string; line: string }[] | undefined) {
+        if (!lines || !lines.length) return null;
+        return lines.map(l => l.line).join('\n');
+    }
+
+    // --- OAuth helpers ---
     getAuthUrl() {
         const url = this.oauth2.generateAuthUrl({
             access_type: 'offline',           // refresh_token
@@ -94,7 +123,7 @@ export class GmailService {
 
     private buildQuery() {
         // is:unread para no reprocesar; limitamos por remitente/asunto
-        return [            
+        return [
             '(from:"Mail Delivery Subsystem" OR subject:("Delivery Status Notification" OR "Delivery incomplete" OR "Undelivered Mail Returned to Sender"))',
             'is:unread',
             'newer_than:7d',
@@ -111,28 +140,76 @@ export class GmailService {
         return this.extractBounceInfo(mail);
     }
 
-    private extractBounceInfo(mail: ParsedMail): BounceInfo | null {
+    private extractBounceInfo = async (mail: ParsedMail): Promise<BounceInfo | null> => {
         const subject = mail.subject || '';
         const text = (mail.text || '').replace(/\r/g, '');
         const headers = mail.headers;
 
         const failed = (headers.get('x-failed-recipients') as string) || '';
 
-        // ¿trae parte delivery-status?
+        // --- delivery-status si viene como adjunto ---
         const dsPart = mail.attachments?.find(a => /delivery-status/i.test(a.contentType));
         let statusCode = '';
         let finalRecipient = '';
+        let dsnText: string | null = null;
 
         if (dsPart) {
             const body = dsPart.content.toString();
+            dsnText = body;
             finalRecipient = (body.match(/Final-Recipient:\s*[^\s;]+;\s*([^\s\r\n]+)/i)?.[1]) || '';
             statusCode = (body.match(/Status:\s*([245]\.\d+\.\d+)/i)?.[1]) || '';
+        } else {
+            // ⭐️ NUEVO: si no vino adjunto, usamos el propio cuerpo como DSN “texto”
+            dsnText = text || null;
+        }
+
+        // --- intentar abrir el original (message/rfc822) ---
+        const rfc822 = mail.attachments?.find(a => /message\/rfc822/i.test(a.contentType));
+        let originalMessageId: string | null = null;
+        let originalHeaders: string | null = null;
+        let originalBodyQuoted: string | null = null;
+        let xAmsaSender: string | null = null;
+
+        if (rfc822) {
+            try {
+                const inner = await simpleParser(rfc822.content);
+                originalMessageId = inner.messageId || null;
+                xAmsaSender = (inner.headers.get('x-amsasender') as string) || null;
+                originalHeaders = this.stringifyHeaderLines(inner.headerLines as any);
+                const innerText = (inner.text || '').replace(/\r/g, '');
+                const innerHtml = inner.html ? (typeof inner.html === 'string' ? inner.html : '') : '';
+                const markerFromText = innerText.match(/X-AMSASender:\s*([^\r\n<]+)/i)?.[1] || null;
+                const markerFromHtml = innerHtml.match(/X-AMSASender:\s*([^<]+)/i)?.[1]?.trim() || null;
+                if (!xAmsaSender) xAmsaSender = markerFromText || markerFromHtml || null;
+                originalBodyQuoted = innerText || null;
+            } catch {
+                // ignore
+            }
+        } else {
+            const markerFromText = text.match(/X-AMSASender:\s*([^\r\n<]+)/i)?.[1] || null;
+            if (markerFromText) xAmsaSender = markerFromText;
+            const headersBlockMatch = text.match(/(?:Original message headers|Message headers):\s*\n([\s\S]+?)\n{2,}/i);
+            if (headersBlockMatch) originalHeaders = headersBlockMatch[1];
+            originalBodyQuoted = null;
+        }
+
+        // ⭐️ NUEVO: Fallback específico de Gmail: X-Original-Message-ID en el cuerpo del DSN
+        if (!originalMessageId) {
+            // a) a veces viene como header del DSN
+            const xOrigHdr = (headers.get('x-original-message-id') as string) || null;
+            // b) y casi siempre como línea dentro del texto
+            const xOrigInText =
+                text.match(/^\s*X-Original-Message-ID:\s*(<[^>\r\n]+>)/im)?.[1] ||
+                text.match(/^\s*X-Original-Message-ID:\s*([^\s\r\n]+)/im)?.[1] ||
+                null;
+
+            originalMessageId = xOrigHdr || xOrigInText || null;
         }
 
         const code =
             statusCode ||
-            (text.match(/(\b[245]\.\d+\.\d+\b)/)?.[1]) ||     // RFC 5.x.x / 4.x.x
-            (text.match(/\b(5\d{2}|4\d{2})\b/)?.[1]) ||       // SMTP 550 / 450
+            (text.match(/(\b[245]\.\d+\.\d+\b)/)?.[1]) ||
+            (text.match(/\b(5\d{2}|4\d{2})\b/)?.[1]) ||
             null;
 
         const recipient =
@@ -153,16 +230,24 @@ export class GmailService {
             null;
 
         return {
-            recipient: recipient || 'unknown',
+            recipient: recipient || null,
             code,
             type: hard ? 'hard' : (soft ? 'soft' : 'unknown'),
             reason,
             subject: subject || null,
+
+            // devuelvo todo lo útil para correlación
+            originalMessageId,
+            xAmsaSender,
+            originalHeaders,
+            originalBodyQuoted,
+            dsnText,
+
             messageId: mail.messageId || null,
             receivedAt: mail.date || new Date(),
-            rawSnippet: text ? text.slice(0, 1000) : null,
+            rawSnippet: text ? text.slice(0, 2000) : null,
         };
-    }
+    };
 
     private async markProcessed(id: string) {
         const g = this.gmail();
@@ -182,25 +267,57 @@ export class GmailService {
     async pollBouncesOnce(): Promise<BounceInfo[]> {
         const g = this.gmail();
         const q = this.buildQuery();
-        const { data } = await g.users.messages.list({ userId: 'me', q, maxResults: 50 });        
-        const ids = data.messages?.map(m => m.id) ?? [];       
+        const { data } = await g.users.messages.list({ userId: 'me', q, maxResults: 50 });
+        const ids = data.messages?.map(m => m.id) ?? [];
 
         const results: BounceInfo[] = [];
         for (const id of ids) {
             try {
-                const parsed = await this.readAndParse(id!!);                
+                const parsed = await this.readAndParse(id!!);
                 if (parsed) {
+                    // 1) Intento por X-AMSASender (rid=...)
+                    let reporteId: number | null = null;
+                    let smtpMessageId: string | null = parsed.originalMessageId || null;
+                    let xAmsaSender: string | null = parsed.xAmsaSender || null;
+                    let correo: string | null = parsed.recipient || null;
+                    
+                    if (xAmsaSender) {
+                        const amsa = this.parseAmsaHeader(xAmsaSender);                    
+                        if (amsa?.reporteId) reporteId = amsa.reporteId;
+                        if (!smtpMessageId && amsa?.messageId) smtpMessageId = amsa.messageId;
+                        if (!correo && amsa?.to) correo = amsa.to;
+                    }
+
+                    // 2) Fallback por Message-ID del original → ReporteEmail.smtpMessageId                    
+                    if (!reporteId && smtpMessageId) {
+                        const rep = await this.prisma.reporteEmail.findUnique({
+                            where: { smtpMessageId },
+                            select: { id: true },
+                        });
+                        if (rep) reporteId = rep.id;
+                    }
+
+                    const correlation =
+                        xAmsaSender && this.parseAmsaHeader(xAmsaSender)?.reporteId ? 'by_header' :
+                            (reporteId ? 'by_message_id' : 'none');
+
+                    this.logger.log(`Bounce -> correo=${correo ?? '-'} code=${parsed.code ?? '-'} corr=${correlation} repId=${reporteId ?? '-'}`);
+
+                    // 3) Guardar rebote (con campos nuevos)
                     await this.prisma.emailRebote.create({
                         data: {
+                            reporteId,
                             fecha: parsed.receivedAt,
                             codigo: parsed.code ?? null,
                             descripcion: parsed.reason ?? parsed.subject ?? null,
                             raw: parsed.rawSnippet ?? null,
-                            // reporteId: lo completás si podés vincular con ReporteEmail
-                            reporteId: null,
+
+                            // NUEVO
+                            correo: correo,
+                            smtpMessageId: smtpMessageId,
+                            xAmsaSender: xAmsaSender,
                         },
                     });
-                    results.push(parsed);                    
                 }
                 await this.markProcessed(id!!);
             } catch (e) {

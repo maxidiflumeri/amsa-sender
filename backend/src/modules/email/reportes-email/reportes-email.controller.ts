@@ -37,6 +37,8 @@ export class ReportesEmailController {
         @Query('sizeOpen') sizeOpen = '25',
         @Query('pageClick') pageClick = '0',
         @Query('sizeClick') sizeClick = '25',
+        @Query('pageBounce') pageBounce = '0',
+        @Query('sizeBounce') sizeBounce = '25',
     ) {
         const end = until ? new Date(until) : new Date();
         const start = since ? new Date(since) : new Date(Date.now() - 24 * 3600 * 1000);
@@ -49,6 +51,8 @@ export class ReportesEmailController {
             sizeOpen: Number(sizeOpen),
             pageClick: Number(pageClick),
             sizeClick: Number(sizeClick),
+            pageBounce: Number(pageBounce),
+            sizeBounce: Number(sizeBounce),
         });
     }
 
@@ -83,6 +87,40 @@ export class ReportesEmailController {
         res.setHeader(
             'Content-Disposition',
             'attachment; filename="actividades_email.csv"',
+        );
+        res.send(csv);
+    }
+
+    // GET /email/reportes/rebotes/by-date?date=YYYY-MM-DD&limit=200&afterId=123
+    @Get('rebotes/by-date')
+    async rebotesByDate(
+        @Query('date') date?: string,
+        @Query('limit') limitStr?: string,
+        @Query('afterId') afterIdStr?: string,
+    ) {
+        const limit = Number.isFinite(Number(limitStr)) ? Number(limitStr) : 200;
+        const afterId = Number.isFinite(Number(afterIdStr)) ? Number(afterIdStr) : undefined;
+        return this.svc.rebotesByDate({ date, limit, afterId });
+    }
+
+    // GET /email/reportes/rebotes.csv?campaniaId=&desde=&hasta=
+    @Get('rebotes.csv')
+    async descargarCsvRebotes(
+        @Res() res: Response,
+        @Query('campaniaId') campaniaId?: string,
+        @Query('desde') desde?: string,
+        @Query('hasta') hasta?: string,
+    ) {
+        const csv = await this.svc.generarCsvRebotes({
+            campaniaId: campaniaId ? Number(campaniaId) : undefined,
+            desde: desde ? new Date(desde) : undefined,
+            hasta: hasta ? new Date(hasta) : undefined,
+        });
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+            'Content-Disposition',
+            'attachment: filename="rebotes_email.csv"',
         );
         res.send(csv);
     }
