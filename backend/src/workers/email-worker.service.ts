@@ -8,7 +8,7 @@ import { getDatosFromContacto } from 'src/common/getDatosFromContacto';
 import * as nodemailer from 'nodemailer';
 import { RedisClientType } from 'redis';
 //import { prepararHtmlConTracking } from 'src/common/inyectEmailTracking';
-import { prepararHtmlConTracking_safe  } from 'src/common/inyectEmailTracking';
+import { prepararHtmlConTracking_safe } from 'src/common/inyectEmailTracking';
 import { generarTrackingTok } from 'src/common/generateTrackingTok';
 
 @Injectable()
@@ -137,6 +137,11 @@ export class EmailWorkerService implements OnModuleInit {
                     to: contacto.email,
                     subject,
                     html: htmlFinal,
+                    // 👇 envelope controla el Return-Path real del sobre
+                    envelope: {
+                        from: 'rebotes@anamayasa.com.ar', // casilla que creaste en Workspace
+                        to: contacto.email
+                    },
                 });
 
                 enviados++;

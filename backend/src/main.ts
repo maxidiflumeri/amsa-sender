@@ -6,8 +6,13 @@ import { json, urlencoded } from 'express';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import { webcrypto } from 'crypto';
 
 dotenv.config();
+
+if (!(global as any).crypto) {
+    (global as any).crypto = webcrypto; // polyfill para WebCrypto en Node < 20
+}
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
