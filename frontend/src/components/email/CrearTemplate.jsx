@@ -15,7 +15,7 @@ import { useTheme } from '@mui/material/styles';
 import EditorTemplate from './EditorTemplate';
 import api from '../../api/axios';
 import data from '@emoji-mart/data';
-import { Picker } from 'emoji-mart';
+import Picker from '@emoji-mart/react';
 import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
 import { useSearchParams } from 'react-router-dom';
 import MuiAlert from '@mui/material/Alert';
@@ -193,7 +193,7 @@ const CrearTemplate = () => {
                                 <Picker
                                     data={data}
                                     onEmojiSelect={handleEmojiClick}
-                                    theme={theme.palette.mode}
+                                    theme={theme.palette.mode === 'dark' ? 'dark' : 'light'}
                                     previewPosition="none"
                                 />
                             </Popover>
