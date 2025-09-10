@@ -1,6 +1,7 @@
 # frontend/Dockerfile.frontend
 FROM node:18 as build
 
+ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
 WORKDIR /app
 COPY frontend/package*.json ./
 RUN npm install
