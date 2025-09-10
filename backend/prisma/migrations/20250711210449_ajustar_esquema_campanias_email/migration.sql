@@ -1,19 +1,19 @@
 /*
   Warnings:
 
-  - You are about to drop the column `asunto` on the `campañaemail` table. All the data in the column will be lost.
-  - You are about to drop the column `asunto` on the `contactoemail` table. All the data in the column will be lost.
-  - You are about to drop the column `enviado` on the `contactoemail` table. All the data in the column will be lost.
-  - You are about to drop the column `enviadoAt` on the `contactoemail` table. All the data in the column will be lost.
-  - You are about to drop the column `error` on the `contactoemail` table. All the data in the column will be lost.
-  - You are about to drop the column `mensaje` on the `contactoemail` table. All the data in the column will be lost.
+  - You are about to drop the column `asunto` on the `CampañaEmail` table. All the data in the column will be lost.
+  - You are about to drop the column `asunto` on the `ContactoEmail` table. All the data in the column will be lost.
+  - You are about to drop the column `enviado` on the `ContactoEmail` table. All the data in the column will be lost.
+  - You are about to drop the column `enviadoAt` on the `ContactoEmail` table. All the data in the column will be lost.
+  - You are about to drop the column `error` on the `ContactoEmail` table. All the data in the column will be lost.
+  - You are about to drop the column `mensaje` on the `ContactoEmail` table. All the data in the column will be lost.
 
 */
 -- AlterTable
-ALTER TABLE `campañaemail` DROP COLUMN `asunto`;
+ALTER TABLE `CampañaEmail` DROP COLUMN `asunto`;
 
 -- AlterTable
-ALTER TABLE `contactoemail` DROP COLUMN `asunto`,
+ALTER TABLE `ContactoEmail` DROP COLUMN `asunto`,
     DROP COLUMN `enviado`,
     DROP COLUMN `enviadoAt`,
     DROP COLUMN `error`,

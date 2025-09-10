@@ -5,7 +5,7 @@
 
 */
 -- DropForeignKey
-ALTER TABLE `contactoemail` DROP FOREIGN KEY `ContactoEmail_campañaId_fkey`;
+ALTER TABLE `ContactoEmail` DROP FOREIGN KEY `ContactoEmail_campañaId_fkey`;
 
 -- DropForeignKey
 ALTER TABLE `reporteemail` DROP FOREIGN KEY `ReporteEmail_campañaId_fkey`;
@@ -14,7 +14,7 @@ ALTER TABLE `reporteemail` DROP FOREIGN KEY `ReporteEmail_campañaId_fkey`;
 ALTER TABLE `reporteemail` DROP FOREIGN KEY `ReporteEmail_contactoId_fkey`;
 
 -- DropIndex
-DROP INDEX `ContactoEmail_campañaId_fkey` ON `contactoemail`;
+DROP INDEX `ContactoEmail_campañaId_fkey` ON `ContactoEmail`;
 
 -- AlterTable
 ALTER TABLE `reporteemail` ADD COLUMN `primeroAbiertoAt` DATETIME(3) NULL,
