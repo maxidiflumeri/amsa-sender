@@ -168,7 +168,7 @@ const EditorTemplate = ({ initialDesign, onGuardar }) => {
                 onLoad={handleLoad}
                 style={{ height: 'calc(100vh - 64px)' }}
                 options={{
-                    projectId: '276295',
+                    projectId: '279225',
                     locale: 'es',
                     appearance: {
                         theme: theme.palette.mode === 'dark' ? 'dark' : 'modern_light'
