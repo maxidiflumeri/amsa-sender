@@ -51,8 +51,7 @@ const emailItems = [
     { label: 'Cuentas SMTP', path: '/email/cuentas', icon: <LinkIcon /> },
     { label: 'Templates', path: '/email/templates', icon: <ArticleIcon /> },
     { label: 'Campañas', path: '/email/campanias', icon: <CampaignIcon /> },
-    { label: 'Reportes', path: '/email/reportes', icon: <BarChartIcon /> },
-    { label: 'Métricas', path: '/email/metricas', icon: <InsightsIcon /> },
+    { label: 'Reportes', path: '/email/reportes', icon: <BarChartIcon /> },    
     { label: 'Desuscripciones', path: '/email/desuscripciones', icon: <UnsubscribeIcon /> },
 ];
 

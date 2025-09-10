@@ -13,11 +13,18 @@ function insertPixelAtEndOfBody(html: string, pixelHtml: string): string {
 // Evita reescribir si ya es un link de tracking.
 function rewriteAnchorsHref(html: string, apiBaseUrl: string, token: string): string {
     const trackingPrefix = `${apiBaseUrl}/email/t/c/`;
+
     return html.replace(
         /(<a\b[^>]*\bhref\s*=\s*")([^"#]+)("[^>]*>)/gi,
         (match, p1, href, p3) => {
-            // Evitar anchors internos, mailto:, tel:, javascript: y ya reescritos
             const low = href.toLowerCase().trim();
+
+            // 1) Si el <a ...> tiene data-no-track / data-unsubscribe, no reescribas
+            if (/\bdata-no-track\b/i.test(match) || /\bdata-unsubscribe\b/i.test(match)) {
+                return match;
+            }
+
+            // 2) No tocar anchors internos, mailto, tel, js, ya reescritos
             if (
                 low.startsWith('#') ||
                 low.startsWith('mailto:') ||
@@ -27,6 +34,13 @@ function rewriteAnchorsHref(html: string, apiBaseUrl: string, token: string): st
             ) {
                 return match;
             }
+
+            // 3) No tocar links de desuscripción (backend o front)
+            if (low.includes('/mailing/u?u=') || low.includes('/mailing/desuscribirse')) {
+                return match;
+            }
+
+            // 4) Reescritura por defecto
             const destino = encodeURIComponent(href);
             const newHref = `${trackingPrefix}${token}?u=${destino}`;
             return `${p1}${newHref}${p3}`;

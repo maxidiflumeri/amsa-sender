@@ -212,3 +212,18 @@ model EmailRebote {
 
   @@index([reporteId, fecha])
 }
+
+model EmailDesuscripciones {
+  id            String   @id @default(cuid())
+  tenantId      String
+  email         String   // guardá el original por auditoría
+  emailHash     String   // normalizado: trim + lowercase + hash (p.ej. sha256)
+  scope         String   @default("global") // "global" o "campaign"
+  campaignId    String   @default("")       // <— ya no es opcional; default vacío
+  reason        String?  // "user_click", "admin_add", "list-unsubscribe", etc.
+  source        String?  // "footer_link", "header_oneclick", "api", etc.
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, emailHash])
+  @@unique([tenantId, emailHash, scope, campaignId])
+}

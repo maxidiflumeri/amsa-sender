@@ -44,7 +44,7 @@ export class EnvioEmailService {
                 from: `"${smtp.nombre}" <${smtp.usuario}>`,
                 to,
                 subject,
-                html: insertHeaderAndFooter(html, ''),
+                html: insertHeaderAndFooter(html, '', ''),
             });
 
             return { success: true };

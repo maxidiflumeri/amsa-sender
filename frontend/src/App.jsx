@@ -18,6 +18,9 @@ import PreviewTemplate from './components/email/PreviewTemplate';
 import VerCampañasEmail from './components/email/VerCampañasEmail';
 import VistaPublicaEmail from './components/email/VistaPublicaEmail';
 import VerReportesEmail from './components/email/VerReportesEmail';
+import DesuscripcionConfirmar from './components/email/DesuscripcionConfirmar';
+import DesuscripcionResultado from './components/email/DesuscripcionResultado';
+import VerDesuscripcionesEmail from './components/email/VerDesuscripcionesEmail';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -218,6 +221,8 @@ export default function App() {
                 {/* Ruta pública */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/mailing/vista/:id" element={<VistaPublicaEmail />} />
+                <Route path='/mailing/desuscribirse' element={<DesuscripcionConfirmar />} />
+                <Route path='/mailing/desuscribirse/resultado' element={<DesuscripcionResultado />} />
 
                 {/* Rutas privadas con layout */}
                 <Route element={<LayoutPrivado mode={mode} toggleTheme={toggleTheme} />}>
@@ -236,6 +241,7 @@ export default function App() {
                     <Route path="/preview-template/:id" element={<PreviewTemplate />} />
                     <Route path="/email/campanias" element={<VerCampañasEmail />} />
                     <Route path="/email/reportes" element={<VerReportesEmail />} />
+                    <Route path="/email/desuscripciones" element={<VerDesuscripcionesEmail />} />
                 </Route>
 
                 {/* Catch-all */}

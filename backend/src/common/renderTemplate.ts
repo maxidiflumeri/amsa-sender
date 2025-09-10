@@ -7,8 +7,7 @@ export function renderTemplate(template: string, datos: Record<string, any>): st
     });
 }
 
-export function insertHeaderAndFooter(html: string, verEnNavegadorUrl: string) {    
-    const urlDesuscribirse = `https://amsasender.anamayasa.com.ar/mailing/desuscribirse/mock`;
+export function insertHeaderAndFooter(html: string, verEnNavegadorUrl: string, urlDesuscribirse: string) {    
 
     // 🔧 Insertar encabezado y footer al HTML original
     const htmlFinal = `
@@ -19,7 +18,7 @@ export function insertHeaderAndFooter(html: string, verEnNavegadorUrl: string) {
       <hr style="margin-top: 40px; border: none; border-top: 1px solid #ccc;" />
       <div style="font-size: 11px; color: #666; text-align: center; padding: 20px;">
         <div>              
-          <a href="${urlDesuscribirse}" style="margin-left: 10px; color: #666;">Desuscribite</a>
+          <a href="${urlDesuscribirse}" data-no-track="1" rel="nofollow noopener" style="margin-left: 10px; color: #666;">Desuscribite</a>
         </div>
         <p style="margin: 10px 0;">
           Recibes este mail porque estás suscripto a nuestra lista de correos.<br />

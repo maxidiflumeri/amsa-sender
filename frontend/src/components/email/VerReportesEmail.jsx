@@ -614,6 +614,16 @@ export default function CampaignEngagementPage() {
           </TextField>
           <Button
             variant="contained"
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              backgroundColor: '#075E54',
+              '&:hover': {
+                backgroundColor: '#0b7b65',
+                transform: 'scale(1.03)',
+                boxShadow: 4,
+              },
+            }}
             onClick={() => {
               setPage(0);
               loadOverview();
