@@ -10,7 +10,7 @@ ALTER TABLE `emailrebote` ADD COLUMN `correo` VARCHAR(320) NULL,
     ADD COLUMN `xAmsaSender` VARCHAR(512) NULL;
 
 -- AlterTable
-ALTER TABLE `reporteemail` ADD COLUMN `smtpMessageId` VARCHAR(255) NULL;
+ALTER TABLE `ReporteEmail` ADD COLUMN `smtpMessageId` VARCHAR(255) NULL;
 
 -- CreateIndex
 CREATE UNIQUE INDEX `ReporteEmail_smtpMessageId_key` ON `ReporteEmail`(`smtpMessageId`);

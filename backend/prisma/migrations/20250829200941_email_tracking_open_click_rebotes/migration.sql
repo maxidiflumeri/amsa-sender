@@ -8,16 +8,16 @@
 ALTER TABLE `ContactoEmail` DROP FOREIGN KEY `ContactoEmail_campañaId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `reporteemail` DROP FOREIGN KEY `ReporteEmail_campañaId_fkey`;
+ALTER TABLE `ReporteEmail` DROP FOREIGN KEY `ReporteEmail_campañaId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `reporteemail` DROP FOREIGN KEY `ReporteEmail_contactoId_fkey`;
+ALTER TABLE `ReporteEmail` DROP FOREIGN KEY `ReporteEmail_contactoId_fkey`;
 
 -- DropIndex
 DROP INDEX `ContactoEmail_campañaId_fkey` ON `ContactoEmail`;
 
 -- AlterTable
-ALTER TABLE `reporteemail` ADD COLUMN `primeroAbiertoAt` DATETIME(3) NULL,
+ALTER TABLE `ReporteEmail` ADD COLUMN `primeroAbiertoAt` DATETIME(3) NULL,
     ADD COLUMN `primeroClickAt` DATETIME(3) NULL,
     ADD COLUMN `trackingTok` VARCHAR(191) NULL,
     MODIFY `html` MEDIUMTEXT NULL;
@@ -76,7 +76,7 @@ ALTER TABLE `EmailEvento` ADD CONSTRAINT `EmailEvento_reporteId_fkey` FOREIGN KE
 ALTER TABLE `EmailRebote` ADD CONSTRAINT `EmailRebote_reporteId_fkey` FOREIGN KEY (`reporteId`) REFERENCES `ReporteEmail`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- RenameIndex
-ALTER TABLE `reporteemail` RENAME INDEX `ReporteEmail_campañaId_fkey` TO `ReporteEmail_campañaId_idx`;
+ALTER TABLE `ReporteEmail` RENAME INDEX `ReporteEmail_campañaId_fkey` TO `ReporteEmail_campañaId_idx`;
 
 -- RenameIndex
-ALTER TABLE `reporteemail` RENAME INDEX `ReporteEmail_contactoId_fkey` TO `ReporteEmail_contactoId_idx`;
+ALTER TABLE `ReporteEmail` RENAME INDEX `ReporteEmail_contactoId_fkey` TO `ReporteEmail_contactoId_idx`;
