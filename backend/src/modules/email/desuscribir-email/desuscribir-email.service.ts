@@ -26,9 +26,7 @@ export class EmailDesuscribirService {
             let c = (campaignId ?? '').toString().trim();
 
             if (c) s = 'campaign';
-            else { s = 'global'; c = ''; }
-
-            console.log({ tenantId, email, emailHash, scope: s, campaignId: c, reason, source });
+            else { s = 'global'; c = ''; }            
 
             return await this.prisma.emailDesuscripciones.upsert({
                 where: {

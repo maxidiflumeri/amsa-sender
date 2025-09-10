@@ -101,8 +101,7 @@ export class EmailWorkerService implements OnModuleInit {
 
         for (const contacto of campania.contactos) {
             const norm = normalizeEmail(contacto.email);
-            const h = hashEmail(norm);
-            console.log(h)
+            const h = hashEmail(norm);            
             const isSuppressed = await this.prisma.emailDesuscripciones.findFirst({
                 where: {
                     tenantId: 'amsa-sender', // o del campaign si es multi-tenant
@@ -114,8 +113,6 @@ export class EmailWorkerService implements OnModuleInit {
                 },
                 select: { id: true },
             });
-
-            console.log({ isSuppressed })
 
             if (!isSuppressed) {
                 const datos = getDatosFromContacto(contacto.datos);

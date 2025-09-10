@@ -10,8 +10,7 @@ export class GmailController {
     // 1) Genera la URL de autorización
     @Get('oauth2/auth')
     async auth(@Res() res) {
-        const { url } = this.gmail.getAuthUrl();
-        console.log('AUTH URL:', url)
+        const { url } = this.gmail.getAuthUrl();        
         return res.redirect(url);
     }
 
