@@ -9,6 +9,9 @@ import { connection } from './bullmq.config';
         BullModule.registerQueue({
             name: 'colaEnvios',
         }),
+        BullModule.registerQueue({
+            name: 'emailsEnvios',
+        }),
     ],
     exports: [BullModule],
 })

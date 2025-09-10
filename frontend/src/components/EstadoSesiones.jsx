@@ -7,7 +7,7 @@ import {
     Box,
     Button,
     CircularProgress,
-    Snackbar,    
+    Snackbar,
     useTheme,
     useMediaQuery,
     IconButton
@@ -22,6 +22,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import { useNavigate } from 'react-router-dom';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 
 export default function EstadoSesiones() {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -93,9 +94,10 @@ export default function EstadoSesiones() {
                 gap={2}
                 mb={3}
             >
-                <Typography variant="h5" fontWeight="bold">
-                    Sesiones activas
-                </Typography>
+                <Box display="flex" alignItems="center">
+                    <DashboardIcon sx={{ fontSize: 32 }} />
+                    <Typography ml={1} variant="h5" fontWeight="bold">Sesiones activas</Typography>
+                </Box>                
                 <Button
                     sx={{
 
@@ -301,7 +303,7 @@ export default function EstadoSesiones() {
                     icon={<CheckCircleIcon fontSize="inherit" />}
                 >
                     {feedback.message}
-                </MuiAlert>                
+                </MuiAlert>
             </Snackbar>
         </Box>
     );

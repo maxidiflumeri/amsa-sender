@@ -33,6 +33,7 @@ export class PubSubService implements OnModuleInit {
             'campania-estado',
             'estado-sesion',
             'solicitar-sesion',
+            'progreso-envio-mail'
         ];
 
         for (const canal of canales) {
@@ -68,6 +69,10 @@ export class PubSubService implements OnModuleInit {
                     case 'progreso-envio':
                         this.logger.log(`📊 Progreso de envío: ${JSON.stringify(data)}`);
                         this.socketGateway.emitirEvento('progreso', data, `campaña_${data.campañaId}`);
+                        break;
+                    case 'progreso-envio-mail':
+                        this.logger.log(`📊 Progreso de envío mail: ${JSON.stringify(data)}`);
+                        this.socketGateway.emitirEvento('progreso_mail', data, `campaña_${data.campañaId}`);
                         break;
                     default:
                         this.logger.warn(`⚠️ Canal no manejado: ${channel}`);

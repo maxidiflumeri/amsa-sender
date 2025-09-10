@@ -20,8 +20,7 @@ import {
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
-import { FaSun, FaMoon } from 'react-icons/fa';
-import { FiMenu, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiMenu, FiChevronLeft } from 'react-icons/fi';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import LinkIcon from '@mui/icons-material/Link';
@@ -29,18 +28,31 @@ import CampaignIcon from '@mui/icons-material/Campaign';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import ArticleIcon from '@mui/icons-material/Article';
 import InsightsIcon from '@mui/icons-material/Insights';
+import MailIcon from '@mui/icons-material/Mail';
+import { Collapse } from '@mui/material';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import UnsubscribeIcon from '@mui/icons-material/Unsubscribe';
 import { Avatar, Menu, MenuItem } from '@mui/material';
 import logo from '../assets/amsasender.png'; // Asegúrate de que la ruta sea correcta
 
-const drawerWidth = 200;
+const drawerWidth = 220;
 
-const navItems = [
+const whatsappItems = [
     { label: 'Sesiones', path: '/sesiones', icon: <DashboardIcon /> },
     { label: 'Conectar', path: '/conectar', icon: <LinkIcon /> },
     { label: 'Campañas', path: '/campanias', icon: <CampaignIcon /> },
     { label: 'Templates', path: '/templates', icon: <ArticleIcon /> },
     { label: 'Reportes', path: '/reportes', icon: <BarChartIcon /> },
-    { label: 'Métricas', path: '/metricas', icon: <InsightsIcon /> }
+    { label: 'Métricas', path: '/metricas', icon: <InsightsIcon /> },
+];
+
+const emailItems = [
+    { label: 'Cuentas SMTP', path: '/email/cuentas', icon: <LinkIcon /> },
+    { label: 'Templates', path: '/email/templates', icon: <ArticleIcon /> },
+    { label: 'Campañas', path: '/email/campanias', icon: <CampaignIcon /> },
+    { label: 'Reportes', path: '/email/reportes', icon: <BarChartIcon /> },    
+    { label: 'Desuscripciones', path: '/email/desuscripciones', icon: <UnsubscribeIcon /> },
 ];
 
 // Switch estilo iOS con íconos dentro del track
@@ -95,7 +107,7 @@ const ThemedSwitch = styled(Switch)(({ theme }) => ({
 
 export default function Layout({ children, mode, toggleTheme }) {
     const [mobileOpen, setMobileOpen] = useState(false);
-    const [collapsed, setCollapsed] = useState(true);
+    const [collapsed, setCollapsed] = useState(false);
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     const location = useLocation();
@@ -104,6 +116,8 @@ export default function Layout({ children, mode, toggleTheme }) {
     const toggleCollapse = () => setCollapsed(prev => !prev);
     const [anchorEl, setAnchorEl] = useState(null);
     const open = Boolean(anchorEl);
+    const [openWhatsapp, setOpenWhatsapp] = useState(false);
+    const [openEmail, setOpenEmail] = useState(false);
 
     const handleMenuOpen = (event) => {
         setAnchorEl(event.currentTarget);
@@ -159,73 +173,193 @@ export default function Layout({ children, mode, toggleTheme }) {
 
     const drawerContent = (
         <Box height="100%" display="flex" flexDirection="column">
-            {/* Encabezado con botón de colapsar */}
+            {/* Botón de colapsar */}
             <Box
                 display="flex"
                 justifyContent={collapsed ? 'center' : 'flex-end'}
                 alignItems="center"
                 px={1}
                 py={1}
-                sx={{
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    position: 'relative',
-                }}
+                sx={{ borderBottom: '1px solid', borderColor: 'divider', position: 'relative' }}
             >
                 <Tooltip title={collapsed ? 'Expandir menú' : 'Colapsar menú'}>
-                    <IconButton
-                        onClick={toggleCollapse}
-                        sx={{
-                            backgroundColor: theme.palette.background.paper,
-                            border: `1px solid ${theme.palette.divider}`,
-                            boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-                            '&:hover': {
-                                backgroundColor: theme.palette.action.hover,
-                            },
-                            transition: 'transform 0.3s ease',
-                            transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)'
-                        }}
-                    >
+                    <IconButton onClick={toggleCollapse} sx={{
+                        backgroundColor: theme.palette.background.paper,
+                        border: `1px solid ${theme.palette.divider}`,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                        '&:hover': { backgroundColor: theme.palette.action.hover },
+                        transition: 'transform 0.3s ease',
+                        transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)'
+                    }}>
                         <FiChevronLeft />
                     </IconButton>
                 </Tooltip>
             </Box>
 
-            <Box sx={{ flexGrow: 1 }}>
+            {/* Menú */}
+            <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
                 <List sx={{ paddingTop: 1 }}>
-                    {navItems.map(({ label, path, icon }) => (
-                        <ListItem key={path} disablePadding>
-                            <Tooltip title={collapsed ? label : ''} placement="right">
-                                <ListItemButton
-                                    component={RouterLink}
-                                    to={path}
-                                    selected={location.pathname === path}
-                                    onClick={isMobile ? handleDrawerToggle : undefined}
-                                    sx={{
-                                        '&.Mui-selected': {
-                                            backgroundColor: theme.palette.action.selected,
-                                            fontWeight: 'bold',
-                                        }
-                                    }}
-                                >
-                                    <ListItemIcon>{icon}</ListItemIcon>
-                                    {!collapsed && <ListItemText primary={label} />}
-                                </ListItemButton>
-                            </Tooltip>
-                        </ListItem>
-                    ))}
+                    {/* WhatsApp */}
+                    <ListItemButton onClick={() => setOpenWhatsapp(!openWhatsapp)}>
+                        <ListItemIcon
+                            sx={{
+                                minWidth: 'auto',
+                                justifyContent: 'center',
+                                mr: collapsed ? 0 : 1.5, // agrega separación en expandido
+                                ...(collapsed && {
+                                    backgroundColor: '#E8F5E9',
+                                    borderRadius: '50%',
+                                    width: 36,
+                                    height: 36,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#4caf50',
+                                    '& svg': { fontSize: 26 }
+                                }),
+                                ...(!collapsed && {
+                                    backgroundColor: '#E8F5E9',
+                                    borderRadius: '50%',
+                                    width: 36,
+                                    height: 36,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#4caf50',
+                                    '& svg': { fontSize: 22 }
+                                }),
+                            }}
+                        >
+                            <WhatsAppIcon />
+                        </ListItemIcon>
+                        {!collapsed && (
+                            <ListItemText
+                                primary="WhatsApp"
+                                primaryTypographyProps={{ sx: { fontWeight: 'bold' } }}
+                            />
+                        )}
+                        {!collapsed && (openWhatsapp ? <ExpandLess /> : <ExpandMore />)}
+                    </ListItemButton>
+                    <Collapse in={openWhatsapp} timeout="auto" unmountOnExit>
+                        {whatsappItems.map(({ label, path, icon }) => (
+                            <ListItem key={path} disablePadding>
+                                <Tooltip title={collapsed ? label : ''} placement="right">
+                                    <ListItemButton
+                                        component={RouterLink}
+                                        to={path}
+                                        selected={location.pathname === path}
+                                        onClick={isMobile ? handleDrawerToggle : undefined}
+                                        sx={{
+                                            pl: collapsed ? 0 : 4,
+                                            justifyContent: collapsed ? 'center' : 'flex-start',
+                                            '&.Mui-selected': {
+                                                backgroundColor: theme.palette.action.selected,
+                                                fontWeight: 'bold',
+                                            }
+                                        }}
+                                    >
+                                        <ListItemIcon
+                                            sx={{
+                                                minWidth: 'auto',
+                                                mr: collapsed ? 0 : 1.5,
+                                                justifyContent: collapsed ? 'center' : 'flex-start',
+                                                width: collapsed ? '100%' : 'auto',
+                                                display: 'flex',
+                                            }}
+                                        >
+                                            {icon}
+                                        </ListItemIcon>
+                                        {!collapsed && <ListItemText primary={label} />}
+                                    </ListItemButton>
+                                </Tooltip>
+                            </ListItem>
+                        ))}
+                    </Collapse>
+                    {/* Email */}
+                    <ListItemButton onClick={() => setOpenEmail(!openEmail)}>
+                        <ListItemIcon
+                            sx={{
+                                minWidth: 'auto',
+                                justifyContent: 'center',
+                                mr: collapsed ? 0 : 1.5,
+                                ...(collapsed && {
+                                    backgroundColor: '#E3F2FD',
+                                    borderRadius: '50%',
+                                    width: 36,
+                                    height: 36,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#1976d2',
+                                    '& svg': { fontSize: 26 }
+                                }),
+                                ...(!collapsed && {
+                                    backgroundColor: '#E3F2FD',
+                                    borderRadius: '50%',
+                                    width: 36,
+                                    height: 36,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#1976d2',
+                                    '& svg': { fontSize: 22 }
+                                }),
+                            }}
+                        >
+                            <MailIcon />
+                        </ListItemIcon>
+
+                        {!collapsed && (
+                            <ListItemText
+                                primary="Email"
+                                primaryTypographyProps={{ sx: { fontWeight: 'bold' } }}
+                            />
+                        )}
+
+                        {!collapsed && (openEmail ? <ExpandLess /> : <ExpandMore />)}
+                    </ListItemButton>
+                    <Collapse in={openEmail} timeout="auto" unmountOnExit>
+                        {emailItems.map(({ label, path, icon }) => (
+                            <ListItem key={path} disablePadding>
+                                <Tooltip title={collapsed ? label : ''} placement="right">
+                                    <ListItemButton
+                                        component={RouterLink}
+                                        to={path}
+                                        selected={location.pathname === path}
+                                        onClick={isMobile ? handleDrawerToggle : undefined}
+                                        sx={{
+                                            pl: collapsed ? 0 : 4,
+                                            justifyContent: collapsed ? 'center' : 'flex-start',
+                                            '&.Mui-selected': {
+                                                backgroundColor: theme.palette.action.selected,
+                                                fontWeight: 'bold',
+                                            }
+                                        }}
+                                    >
+                                        <ListItemIcon
+                                            sx={{
+                                                minWidth: 'auto',
+                                                mr: collapsed ? 0 : 1.5,
+                                                justifyContent: collapsed ? 'center' : 'flex-start',
+                                                width: collapsed ? '100%' : 'auto',
+                                                display: 'flex',
+                                            }}
+                                        >
+                                            {icon}
+                                        </ListItemIcon>
+                                        {!collapsed && <ListItemText primary={label} />}
+                                    </ListItemButton>
+                                </Tooltip>
+                            </ListItem>
+                        ))}
+                    </Collapse>
                 </List>
             </Box>
 
             <Divider sx={{ my: 1 }} />
 
-            <Box
-                px={2}
-                py={2}
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-            >
+            {/* Switch modo oscuro */}
+            <Box px={2} py={2} display="flex" alignItems="center" justifyContent="center">
                 {!collapsed ? (
                     <ThemedSwitch checked={mode === 'dark'} onChange={toggleTheme} />
                 ) : (
@@ -300,7 +434,7 @@ export default function Layout({ children, mode, toggleTheme }) {
                     sx={{
                         transition: 'width 0.3s ease',
                         '& .MuiDrawer-paper': {
-                            width: collapsed ? 60 : drawerWidth,
+                            width: collapsed ? 65 : drawerWidth,
                             top: 64,
                             height: 'calc(100% - 64px)',
                             boxSizing: 'border-box',

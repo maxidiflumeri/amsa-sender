@@ -9,16 +9,28 @@ import VerReportes from './components/VerReportes';
 import VerCampañas from './components/VerCampañas';
 import VerTemplates from './components/VerTemplates';
 import VerMetricas from './components/VerMetricas';
+import CuentasSMTP from './components/email/CuentasSMTP';
 import Login from './components/Login';
 import LayoutPrivado from './components/LayoutPrivado';
+import CrearTemplate from './components/email/CrearTemplate';
+import VerTemplatesEmail from './components/email/VerTemplatesEmail';
+import PreviewTemplate from './components/email/PreviewTemplate';
+import VerCampañasEmail from './components/email/VerCampañasEmail';
+import VistaPublicaEmail from './components/email/VistaPublicaEmail';
+import VerReportesEmail from './components/email/VerReportesEmail';
+import DesuscripcionConfirmar from './components/email/DesuscripcionConfirmar';
+import DesuscripcionResultado from './components/email/DesuscripcionResultado';
+import VerDesuscripcionesEmail from './components/email/VerDesuscripcionesEmail';
 
 export default function App() {
     const [mode, setMode] = useState('light');
     const location = useLocation();
     const isLoggedIn = !!localStorage.getItem('token');
-    const isLoginRoute = location.pathname === '/login';
 
-    if (!isLoggedIn && !isLoginRoute) {
+    const publicRoutes = ['/login', '/mailing/vista'];
+    const isPublicRoute = publicRoutes.some((r) => location.pathname.startsWith(r));
+
+    if (!isLoggedIn && !isPublicRoute) {
         return <Navigate to="/login" />;
     }
 
@@ -208,6 +220,9 @@ export default function App() {
             <Routes>
                 {/* Ruta pública */}
                 <Route path="/login" element={<Login />} />
+                <Route path="/mailing/vista/:id" element={<VistaPublicaEmail />} />
+                <Route path='/mailing/desuscribirse' element={<DesuscripcionConfirmar />} />
+                <Route path='/mailing/desuscribirse/resultado' element={<DesuscripcionResultado />} />
 
                 {/* Rutas privadas con layout */}
                 <Route element={<LayoutPrivado mode={mode} toggleTheme={toggleTheme} />}>
@@ -220,6 +235,13 @@ export default function App() {
                     <Route path="/reportes" element={<VerReportes />} />
                     <Route path="/templates" element={<VerTemplates />} />
                     <Route path="/metricas" element={<VerMetricas />} />
+                    <Route path="/email/cuentas" element={<CuentasSMTP />} />
+                    <Route path="/email/crearTemplate" element={<CrearTemplate />} />
+                    <Route path="/email/templates" element={<VerTemplatesEmail />} />
+                    <Route path="/preview-template/:id" element={<PreviewTemplate />} />
+                    <Route path="/email/campanias" element={<VerCampañasEmail />} />
+                    <Route path="/email/reportes" element={<VerReportesEmail />} />
+                    <Route path="/email/desuscripciones" element={<VerDesuscripcionesEmail />} />
                 </Route>
 
                 {/* Catch-all */}

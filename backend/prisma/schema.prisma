@@ -132,32 +132,98 @@ model ContactoEmail {
   nombre     String?
   datos      Json? // variables del CSV
   campañaId Int
-  campaña   CampañaEmail  @relation(fields: [campañaId], references: [id])
+  campaña   CampañaEmail  @relation(fields: [campañaId], references: [id], onDelete: Cascade)
   reportes   ReporteEmail[]
 }
 
 model ReporteEmail {
-  id         Int       @id @default(autoincrement())
-  campañaId Int
-  contactoId Int
-  estado     String // 'enviado', 'fallido', etc.
-  enviadoAt  DateTime?
-  error      String?
-  asunto     String? // asunto final con variables reemplazadas
-  html       String?   @db.Text // HTML renderizado con datos del contacto
-  creadoAt   DateTime  @default(now())
+  id               Int           @id @default(autoincrement())
+  campañaId       Int
+  contactoId       Int
+  estado           String // 'enviado', 'fallido', etc.
+  enviadoAt        DateTime?
+  error            String?
+  asunto           String? // asunto final con variables reemplazadas
+  html             String?       @db.MediumText // HTML renderizado con datos del contacto
+  creadoAt         DateTime      @default(now())
+  trackingTok      String?       @unique // token por envío (se setea al enviar)
+  primeroAbiertoAt DateTime?
+  primeroClickAt   DateTime?  
+  smtpMessageId    String?        @unique @db.VarChar(255)
+  campaña          CampañaEmail @relation(fields: [campañaId], references: [id], onDelete: Cascade)
+  contacto         ContactoEmail @relation(fields: [contactoId], references: [id], onDelete: Cascade)
+  eventos          EmailEvento[]
+  rebotes          EmailRebote[]
 
-  campaña CampañaEmail @relation(fields: [campañaId], references: [id])
-  contacto ContactoEmail @relation(fields: [contactoId], references: [id])
+  @@index([campañaId])
+  @@index([contactoId])
 }
 
 model Configuracion {
   id        Int      @id @default(autoincrement())
   userId    Int
-  scope     String   // Ej: 'whatsapp.envio', 'email.envio', etc.
-  clave     String   // Ej: 'batchSize', 'delayEntreMensajes'
-  valor     String   // Guardado como string por simplicidad
+  scope     String // Ej: 'whatsapp.envio', 'email.envio', etc.
+  clave     String // Ej: 'batchSize', 'delayEntreMensajes'
+  valor     String // Guardado como string por simplicidad
   updatedAt DateTime @updatedAt
 
   @@unique([userId, scope, clave])
+}
+
+model EmailEvento {
+  id             Int             @id @default(autoincrement())
+  reporteId      Int
+  tipo           EmailEventoTipo // OPEN | CLICK
+  urlDestino     String? // sólo para CLICK
+  dominioDestino String? // sólo para CLICK (ej: "example.com")
+  fecha          DateTime        @default(now())
+
+  // metadatos
+  ip             String?
+  userAgent      String?
+  deviceFamily   String? // "Desktop" | "Mobile" | "Tablet" | "GenericPhone" | "Bot" | etc.
+  osName         String?
+  osVersion      String?
+  browserName    String?
+  browserVersion String?
+  uaRaw          String?
+  reporte        ReporteEmail @relation(fields: [reporteId], references: [id], onDelete: Cascade)
+
+  @@index([reporteId, tipo, fecha])
+  @@index([tipo, fecha])
+}
+
+enum EmailEventoTipo {
+  OPEN
+  CLICK
+}
+
+model EmailRebote {
+  id            Int           @id @default(autoincrement())
+  reporteId     Int?          // <- ahora opcional
+  fecha         DateTime      @default(now())
+  codigo        String?       @db.VarChar(32)   // 5.1.1 / 550 / etc.
+  descripcion   String?       @db.Text          // motivo/diagnóstico
+  raw           String?       @db.MediumText    // cuerpo/DSN (más grande)    
+  correo        String?        @db.VarChar(320)  
+  smtpMessageId String?       @db.VarChar(255)
+  xAmsaSender   String?       @db.VarChar(512)
+  reporte       ReporteEmail? @relation(fields: [reporteId], references: [id], onDelete: SetNull)
+
+  @@index([reporteId, fecha])
+}
+
+model EmailDesuscripciones {
+  id            String   @id @default(cuid())
+  tenantId      String
+  email         String   // guardá el original por auditoría
+  emailHash     String   // normalizado: trim + lowercase + hash (p.ej. sha256)
+  scope         String   @default("global") // "global" o "campaign"
+  campaignId    String   @default("")       // <— ya no es opcional; default vacío
+  reason        String?  // "user_click", "admin_add", "list-unsubscribe", etc.
+  source        String?  // "footer_link", "header_oneclick", "api", etc.
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, emailHash])
+  @@unique([tenantId, emailHash, scope, campaignId])
 }

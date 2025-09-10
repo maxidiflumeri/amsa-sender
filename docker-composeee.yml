@@ -1,0 +1,82 @@
+version: '3'
+
+services:
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy
+    container_name: nginx-proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./certs:/etc/nginx/certs:ro
+      - ./vhost.d:/etc/nginx/vhost.d
+      - ./html:/usr/share/nginx/html
+    networks:
+      - nginx-proxy
+
+  acme-companion:
+    image: nginxproxy/acme-companion
+    container_name: nginx-acme
+    restart: always
+    environment:
+      - DEFAULT_EMAIL=certs@anamayasa.com.ar
+      - NGINX_PROXY_CONTAINER=nginx-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./certs:/etc/nginx/certs
+      - ./vhost.d:/etc/nginx/vhost.d
+      - ./html:/usr/share/nginx/html
+    depends_on:
+      - nginx-proxy
+    networks:
+      - nginx-proxy
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: backend
+    restart: always
+    environment:
+      - PORT=3001
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_URL=mysql://root:oblongo750@90.0.21.186:3306/whatsapp_automation
+      - VIRTUAL_HOST=api.amsasender.anamayasa.com
+      - LETSENCRYPT_HOST=api.amsasender.anamayasa.com
+      - LETSENCRYPT_EMAIL=certs@anamayasa.com.ar
+    networks:
+      - nginx-proxy
+      - default
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: frontend
+    restart: always
+    environment:
+      - VITE_API_URL=https://api.amsasender.anamayasa.com
+      - VIRTUAL_HOST=amsasender.anamayasa.com
+      - LETSENCRYPT_HOST=amsasender.anamayasa.com
+      - LETSENCRYPT_EMAIL=certs@anamayasa.com.ar
+    networks:
+      - nginx-proxy
+      - default
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    networks:
+      - default
+
+volumes:
+  wwebjs_auth_data:
+  wwebjs_cache_data:
+
+networks:
+  nginx-proxy:
+    external: true
+  default:
