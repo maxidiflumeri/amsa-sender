@@ -50,6 +50,7 @@ export class TrackingEmailService {
                 osVersion: parsed.os?.version,
                 browserName: parsed.browser?.name,
                 browserVersion: parsed.browser?.version,
+                fecha: new Date()
             },
         });
 
@@ -82,6 +83,7 @@ export class TrackingEmailService {
                 osVersion: parsed.os?.version,
                 browserName: parsed.browser?.name,
                 browserVersion: parsed.browser?.version,
+                fecha: new Date()
             },
         });
 

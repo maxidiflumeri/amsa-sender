@@ -29,7 +29,7 @@ export class CampaniasService {
             this.logger.log(`📄 CSV parseado: ${contactos.length} contactos`);
 
             const campaña = await this.prisma.campaña.create({
-                data: { nombre: nombreCampaña },
+                data: { nombre: nombreCampaña, createdAt: new Date() },
             });
             this.logger.log(`📦 Campaña creada con ID: ${campaña.id} (${nombreCampaña})`);
 

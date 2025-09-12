@@ -8,7 +8,7 @@ export class TemplatesEmailService {
     constructor(private prisma: PrismaService) { }
 
     async crear(data: Prisma.TemplateEmailCreateInput) {
-        return this.prisma.templateEmail.create({ data });
+        return this.prisma.templateEmail.create({data: {...data, creadoAt: new Date()}});
     }
 
     async obtenerTodos() {

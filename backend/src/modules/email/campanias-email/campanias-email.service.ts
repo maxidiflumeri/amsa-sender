@@ -30,6 +30,7 @@ export class CampaniasEmailService {
                 data: {
                     nombre,
                     userId: parseInt(userId),
+                    createdAt: new Date()
                 },
             });
 

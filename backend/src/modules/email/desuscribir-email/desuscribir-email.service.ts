@@ -45,6 +45,7 @@ export class EmailDesuscribirService {
                     campaignId: c,
                     reason,
                     source,
+                    createdAt: new Date()
                 },
                 update: { reason, source },
             });

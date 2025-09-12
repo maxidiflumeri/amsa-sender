@@ -12,7 +12,7 @@ export class SmtpService {
     async crearCuenta(data: CreateCuentaDto) {
         const isValid = await this.validarSMTP(data);
         if (!isValid) throw new BadRequestException('No se pudo validar la cuenta SMTP');
-
+        data.creadoAt = new Date();
         return this.prisma.cuentaSMTP.create({ data });
     }
 

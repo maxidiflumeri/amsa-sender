@@ -71,7 +71,7 @@ export class TemplatesService {
     async crearTemplate(body: any) {
         const { nombre, contenido } = body;
         this.logger.log(`📝 Creando template: ${nombre}`);
-        const nuevo = await this.prisma.template.create({ data: { nombre, contenido } });
+        const nuevo = await this.prisma.template.create({ data: { nombre, contenido, createdAt: new Date() } });
         this.logger.log(`✅ Template creado con ID: ${nuevo.id}`);
         return nuevo;
     }

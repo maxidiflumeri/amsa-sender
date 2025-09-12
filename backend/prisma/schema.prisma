@@ -15,7 +15,7 @@ datasource db {
 model Campaña {
   id         Int        @id @default(autoincrement())
   nombre     String
-  createdAt  DateTime   @default(now())
+  createdAt  DateTime   
   enviadoAt  DateTime?
   agendadoAt DateTime? // NUEVO: fecha y hora del agendamiento
   estado     String     @default("pendiente") // nuevo campo
@@ -62,7 +62,7 @@ model Template {
   id        Int        @id @default(autoincrement())
   nombre    String
   contenido String     @db.Text // Ej: "Hola {{nombre}}, tu deuda es de {{deuda}}"
-  createdAt DateTime   @default(now())
+  createdAt DateTime   
   campañas Campaña[] // Relación con campañas
 }
 
@@ -86,7 +86,7 @@ model CuentaSMTP {
   password  String // se puede cifrar más adelante
   remitente String // nombre del remitente que verá el destinatario
   emailFrom String // dirección de email usada en el "From"
-  creadoAt  DateTime @default(now())
+  creadoAt  DateTime
 }
 
 model Usuario {
@@ -95,7 +95,7 @@ model Usuario {
   nombre   String
   foto     String?
   rol      String   @default("usuario")
-  creadoAt DateTime @default(now())
+  creadoAt DateTime 
 }
 
 model TemplateEmail {
@@ -104,14 +104,14 @@ model TemplateEmail {
   asunto    String
   html      String          @db.MediumText
   design    Json
-  creadoAt  DateTime        @default(now())
+  creadoAt  DateTime        
   campanias CampañaEmail[]
 }
 
 model CampañaEmail {
   id         Int             @id @default(autoincrement())
   nombre     String
-  createdAt  DateTime        @default(now())
+  createdAt  DateTime        
   enviadoAt  DateTime?
   agendadoAt DateTime?
   estado     String          @default("pendiente") // pendiente | agendada | procesando | finalizada
@@ -145,7 +145,7 @@ model ReporteEmail {
   error            String?
   asunto           String? // asunto final con variables reemplazadas
   html             String?       @db.MediumText // HTML renderizado con datos del contacto
-  creadoAt         DateTime      @default(now())
+  creadoAt         DateTime      
   trackingTok      String?       @unique // token por envío (se setea al enviar)
   primeroAbiertoAt DateTime?
   primeroClickAt   DateTime?  
@@ -176,7 +176,7 @@ model EmailEvento {
   tipo           EmailEventoTipo // OPEN | CLICK
   urlDestino     String? // sólo para CLICK
   dominioDestino String? // sólo para CLICK (ej: "example.com")
-  fecha          DateTime        @default(now())
+  fecha          DateTime        
 
   // metadatos
   ip             String?
@@ -201,7 +201,7 @@ enum EmailEventoTipo {
 model EmailRebote {
   id            Int           @id @default(autoincrement())
   reporteId     Int?          // <- ahora opcional
-  fecha         DateTime      @default(now())
+  fecha         DateTime      
   codigo        String?       @db.VarChar(32)   // 5.1.1 / 550 / etc.
   descripcion   String?       @db.Text          // motivo/diagnóstico
   raw           String?       @db.MediumText    // cuerpo/DSN (más grande)    
@@ -222,7 +222,7 @@ model EmailDesuscripciones {
   campaignId    String   @default("")       // <— ya no es opcional; default vacío
   reason        String?  // "user_click", "admin_add", "list-unsubscribe", etc.
   source        String?  // "footer_link", "header_oneclick", "api", etc.
-  createdAt     DateTime @default(now())
+  createdAt     DateTime 
 
   @@index([tenantId, emailHash])
   @@unique([tenantId, emailHash, scope, campaignId])

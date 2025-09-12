@@ -26,4 +26,6 @@ export class CreateCuentaDto {
 
     @IsEmail()
     emailFrom: string;
+
+    creadoAt?: Date;
 }

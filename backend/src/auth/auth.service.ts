@@ -37,7 +37,7 @@ export class AuthService {
         const usuario = await this.prisma.usuario.upsert({
             where: { email },
             update: { nombre: name, foto: picture },
-            create: { email, nombre: name, foto: picture },
+            create: { email, nombre: name, foto: picture, creadoAt: new Date() },
         });
 
         const token = this.jwtService.sign(
