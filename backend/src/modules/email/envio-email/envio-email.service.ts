@@ -32,7 +32,13 @@ export class EnvioEmailService {
         const transporter = nodemailer.createTransport({
             host: smtp.host,
             port: smtp.puerto,
-            secure: false, // true for 465, false for other ports
+            secure: false,
+            name: 'amsasender.anamayasa.com',
+            requireTLS: true,
+            tls: {
+                minVersion: 'TLSv1.2',
+                rejectUnauthorized: true
+            },
             auth: {
                 user: smtp.usuario,
                 pass: smtp.password,

@@ -93,6 +93,12 @@ export class EmailWorkerService implements OnModuleInit {
             host: smtp.host,
             port: smtp.puerto,
             secure: false,
+            name: 'amsasender.anamayasa.com',
+            requireTLS: true,
+            tls: {
+                minVersion: 'TLSv1.2',
+                rejectUnauthorized: true
+            },                               
             auth: {
                 user: smtp.usuario,
                 pass: smtp.password,
@@ -101,7 +107,7 @@ export class EmailWorkerService implements OnModuleInit {
 
         for (const contacto of campania.contactos) {
             const norm = normalizeEmail(contacto.email);
-            const h = hashEmail(norm);            
+            const h = hashEmail(norm);
             const isSuppressed = await this.prisma.emailDesuscripciones.findFirst({
                 where: {
                     tenantId: 'amsa-sender', // o del campaign si es multi-tenant
