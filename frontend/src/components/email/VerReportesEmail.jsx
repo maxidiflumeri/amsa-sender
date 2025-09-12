@@ -408,19 +408,31 @@ export default function CampaignEngagementPage() {
     } else {
       startDate.setHours(0, 0, 0, 0);
     }
-    const start = toLocalISOString(startDate);
+    const start = toLocalISOString(startDate, true);
     return { since: start, until: end };
   }, [range]);
 
-  function toLocalISOString(date) {
+  function toLocalISOString(date, start = false) {
     const pad = (n) => String(n).padStart(2, '0');
+
+    if (start) {
+      return (
+        date.getFullYear() +
+        '-' + pad(date.getMonth() + 1) +
+        '-' + pad(date.getDate()) +
+        'T' + pad(date.getHours()) +
+        ':' + pad(date.getMinutes()) +
+        ':' + pad(date.getSeconds())
+      );
+    }
+
     return (
       date.getFullYear() +
-      '-' + pad(date.getMonth() + 1) +
-      '-' + pad(date.getDate()) +
-      'T' + pad(date.getHours()) +
-      ':' + pad(date.getMinutes()) +
-      ':' + pad(date.getSeconds())
+        '-' + pad(date.getMonth() + 1) +
+        '-' + pad(date.getDate()) +
+        'T' + pad('23') +
+        ':' + pad('59') +
+        ':' + pad('59')
     );
   }
 
