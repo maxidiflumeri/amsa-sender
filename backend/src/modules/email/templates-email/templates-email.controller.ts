@@ -15,7 +15,8 @@ export class TemplatesEmailController {
             nombre: body.nombre,
             asunto: body.asunto,
             html: body.html,
-            design: body.design
+            design: body.design,
+            creadoAt: new Date()
         });
     }
 
