@@ -1,6 +1,10 @@
 # backend/Dockerfile.backend
 FROM node:18
 
+# Establece la variable de entorno para la zona horaria.
+# Esto es suficiente para muchas aplicaciones.
+ENV TZ="America/Argentina/Buenos_Aires"
+
 # Instalá dependencias necesarias para puppeteer
 RUN apt-get update && apt-get install -y \
     wget \
