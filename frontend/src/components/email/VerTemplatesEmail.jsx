@@ -26,6 +26,7 @@ import {
     Delete as DeleteIcon,
     Add as AddIcon
 } from '@mui/icons-material';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import dayjs from 'dayjs';
@@ -42,10 +43,17 @@ const VerTemplatesEmail = () => {
     const [feedback, setFeedback] = useState({
         open: false,
         message: '',
-        type: 'success' // o 'error'
+        type: 'success'
     });
+
+    // eliminar
     const [dialogOpen, setDialogOpen] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState(null);
+
+    // duplicar
+    const [dupOpen, setDupOpen] = useState(false);
+    const [dupName, setDupName] = useState('');
+    const [dupLoading, setDupLoading] = useState(false);
 
     useEffect(() => {
         const fetchTemplates = async () => {
@@ -82,9 +90,61 @@ const VerTemplatesEmail = () => {
         setSelectedTemplate(null);
     };
 
+    // Duplicar - abre modal con nombre por defecto
+    const openDuplicateModal = (tpl) => {
+        setSelectedTemplate(tpl);
+        setDupName(`${tpl.nombre} #copy`);
+        setDupOpen(true);
+    };
+
+    // Duplicar - confirma y llama API
+    const handleDuplicate = async () => {
+        if (!selectedTemplate) return;
+        setDupLoading(true);
+
+        try {
+            // 1) Intento endpoint recomendado del backend
+            // POST /email/templates/:id/duplicate  { nombre: dupName }
+            try {
+                const { data: duplicated } = await api.post(`/email/templates/${selectedTemplate.id}/duplicate`, {
+                    nombre: dupName
+                });
+
+                // Insertamos al principio
+                setTemplates((prev) => [duplicated, ...prev]);
+                setFeedback({ open: true, type: 'success', message: 'Template duplicado correctamente' });
+            } catch (e1) {
+                // 2) Fallback si no existe el endpoint: crear uno nuevo copiando campos conocidos
+                // Tomamos todas las props del original salvo id/fechas y seteamos nombre nuevo.
+                const {
+                    id, creadoAt, actualizadoAt, createdAt, updatedAt, // por dudas de naming
+                    nombre, ...rest
+                } = selectedTemplate;
+
+                // En muchos casos tendrás html/diseño JSON/etc. Copiamos todo "rest" para no perdernos nada.
+                const payload = {
+                    ...rest,
+                    nombre: dupName,
+                };
+
+                const { data: created } = await api.post('/email/templates', payload);
+
+                setTemplates((prev) => [created, ...prev]);
+                setFeedback({ open: true, type: 'success', message: 'Template duplicado correctamente' });
+            }
+        } catch (error) {
+            console.error('Error al duplicar template', error);
+            setFeedback({ open: true, type: 'error', message: 'No se pudo duplicar el template' });
+        } finally {
+            setDupLoading(false);
+            setDupOpen(false);
+            setSelectedTemplate(null);
+        }
+    };
+
     // 🔍 Filtro por nombre
     const templatesFiltrados = templates.filter((tpl) =>
-        tpl.nombre.toLowerCase().includes(busqueda.toLowerCase())
+        (tpl.nombre ?? '').toLowerCase().includes(busqueda.toLowerCase())
     );
 
     return (
@@ -157,6 +217,14 @@ const VerTemplatesEmail = () => {
                                                     <EditIcon />
                                                 </IconButton>
                                             </Tooltip>
+
+                                            {/* NUEVO: Duplicar */}
+                                            <Tooltip title="Duplicar">
+                                                <IconButton onClick={() => openDuplicateModal(tpl)}>
+                                                    <ContentCopyIcon />
+                                                </IconButton>
+                                            </Tooltip>
+
                                             <Tooltip title="Eliminar">
                                                 <IconButton onClick={() => {
                                                     setSelectedTemplate(tpl);
@@ -181,6 +249,7 @@ const VerTemplatesEmail = () => {
                 </Paper>
             </Box>
 
+            {/* Modal eliminar */}
             <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
                 <DialogTitle>¿Eliminar template?</DialogTitle>
                 <DialogContent>
@@ -208,6 +277,51 @@ const VerTemplatesEmail = () => {
                         },
                     }} onClick={handleEliminar} color="primary" variant="contained">
                         Confirmar
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Modal duplicar */}
+            <Dialog open={dupOpen} onClose={() => !dupLoading && setDupOpen(false)}>
+                <DialogTitle>Duplicar template</DialogTitle>
+                <DialogContent>
+                    <Typography mb={2}>
+                        Ingresá el nombre para el nuevo template.
+                    </Typography>
+                    <TextField
+                        fullWidth
+                        label="Nombre del duplicado"
+                        value={dupName}
+                        onChange={(e) => setDupName(e.target.value)}
+                        disabled={dupLoading}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDupOpen(false)} color="secondary" disabled={dupLoading}>
+                        Cancelar
+                    </Button>
+                    <Button
+                        sx={{
+                            px: 2,
+                            py: 1,
+                            borderRadius: 2,
+                            fontFamily: commonFont,
+                            textTransform: 'none',
+                            fontSize: '0.9rem',
+                            backgroundColor: '#075E54',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                                backgroundColor: '#0b7b65',
+                                transform: 'scale(1.03)',
+                                boxShadow: 4,
+                            },
+                        }}
+                        onClick={handleDuplicate}
+                        color="primary"
+                        variant="contained"
+                        disabled={dupLoading || !dupName.trim()}
+                    >
+                        {dupLoading ? 'Duplicando...' : 'Duplicar'}
                     </Button>
                 </DialogActions>
             </Dialog>
