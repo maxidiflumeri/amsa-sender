@@ -44,6 +44,8 @@ export default function CuentasSMTP() {
         message: '',
         type: 'success' // o 'error'
     });
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [selectedCuenta, setSelectedCuenta] = useState(null);
 
 
     useEffect(() => {
@@ -107,6 +109,38 @@ export default function CuentasSMTP() {
     const handleChange = e => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
+
+    const handleDelete = async () => {        
+        try {
+            await api.delete(`/email/cuentas/${selectedCuenta.id}`);
+            setCuentas((prev) => prev.filter((cuenta) => cuenta.id !== selectedCuenta.id));
+            setFeedback({
+                open: true,
+                type: 'success',
+                message: 'Cuenta SMTP eliminada.'
+            });
+            setTestResultados((prev) => {
+                const nuevo = { ...prev };
+                delete nuevo[selectedCuenta.id];
+                localStorage.setItem('smtpTestResultados', JSON.stringify(nuevo));
+                return nuevo;
+            });
+            setSelectedCuenta(null);
+            setDialogOpen(false);
+        } catch (error) {
+            const msg =
+                typeof error?.response?.data?.message === 'string'
+                    ? error.response.data.message
+                    : 'Error al eliminar la cuenta SMTP';
+            setFeedback({
+                open: true,
+                type: 'error',
+                message: msg
+            });
+            setSelectedCuenta(null);
+            setDialogOpen(false);
+        }
+    }
 
     const actualizarResultado = (id, resultado) => {
         setTestResultados((prev) => {
@@ -302,7 +336,10 @@ export default function CuentasSMTP() {
                                     </Typography>
                                     <IconButton
                                         size="small"
-                                        onClick={() => handleDelete(cuenta.id)}
+                                        onClick={() => {
+                                            setSelectedCuenta(cuenta);
+                                            setDialogOpen(true);
+                                        }}
                                         sx={{ color: theme.palette.error.main }}
                                     >
                                         <DeleteOutlineIcon fontSize="small" />
@@ -683,6 +720,36 @@ export default function CuentasSMTP() {
                     {feedback.message}
                 </MuiAlert>
             </Snackbar>
+            <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
+                <DialogTitle>¿Eliminar template?</DialogTitle>
+                <DialogContent>
+                    <Typography>
+                        ¿Esta seguro que desea eliminar la cuenta "{selectedCuenta?.usuario}"? Esta acción no se puede deshacer.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDialogOpen(false)} color="secondary">
+                        Cancelar
+                    </Button>
+                    <Button sx={{
+                        px: 2,
+                        py: 1,
+                        borderRadius: 2,
+                        fontFamily: commonFont,
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#075E54',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                            backgroundColor: '#0b7b65',
+                            transform: 'scale(1.03)',
+                            boxShadow: 4,
+                        },
+                    }} onClick={handleDelete} color="primary" variant="contained">
+                        Confirmar
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }

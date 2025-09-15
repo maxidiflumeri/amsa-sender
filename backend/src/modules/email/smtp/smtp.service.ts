@@ -125,4 +125,12 @@ export class SmtpService {
 
         return resultado;
     }
+
+    async eliminarCuenta(id: number) {
+        const cuenta = await this.prisma.cuentaSMTP.findUnique({ where: { id } });
+        if (!cuenta) throw new NotFoundException('Cuenta no encontrada');
+
+        await this.prisma.cuentaSMTP.delete({ where: { id } });
+        return { ok: true }
+    }
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Delete } from '@nestjs/common';
 import { SmtpService } from './smtp.service';
 import { CreateCuentaDto } from './dtos/create-cuenta.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -26,5 +26,10 @@ export class SmtpController {
     @Get(':id/verificar-dominio')
     async verificarDominio(@Param('id') id: string) {
         return this.smtpService.verificarDominio(Number(id));
+    }
+
+    @Delete(':id')
+    async eliminarCuenta(@Param('id') id: string) {
+        return this.smtpService.eliminarCuenta(Number(id));
     }
 }
