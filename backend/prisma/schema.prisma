@@ -28,6 +28,7 @@ model Campaña {
   archivada  Boolean    @default(false)
   sesiones   String? // JSON.stringified sessionIds
   config     Json? // { batchSize, delayEntreMensajes, delayEntreLotes }
+  @@map("Campaña")
 }
 
 model Contacto {
@@ -37,6 +38,7 @@ model Contacto {
   datos      Json? // ⬅️ Acá irán los datos variables del CSV
   campañaId Int
   campaña   Campaña @relation(fields: [campañaId], references: [id])
+  @@map("Contacto")
 }
 
 model Reporte {
@@ -49,6 +51,7 @@ model Reporte {
   datos      Json? // ← Nuevo campo para almacenar los datos del contacto (del CSV)
   campaña   Campaña? @relation(fields: [campañaId], references: [id], onDelete: SetNull)
   campañaId Int?
+  @@map("Reporte")
 }
 
 model Sesion {
@@ -56,6 +59,7 @@ model Sesion {
   sessionId String  @unique
   estado    String
   ani       String? // nuevo campo opcional
+  @@map("Sesion")
 }
 
 model Template {
@@ -64,6 +68,7 @@ model Template {
   contenido String     @db.Text // Ej: "Hola {{nombre}}, tu deuda es de {{deuda}}"
   createdAt DateTime   
   campañas Campaña[] // Relación con campañas
+  @@map("Template")
 }
 
 model Mensaje {
@@ -75,6 +80,7 @@ model Mensaje {
   fromMe     Boolean // true = enviado, false = recibido
   fecha      DateTime
   tipo       String? // "texto", "imagen", etc.
+  @@map("Mensaje")
 }
 
 model CuentaSMTP {
@@ -87,6 +93,7 @@ model CuentaSMTP {
   remitente String // nombre del remitente que verá el destinatario
   emailFrom String // dirección de email usada en el "From"
   creadoAt  DateTime
+  @@map("CuentaSMTP")
 }
 
 model Usuario {
@@ -96,6 +103,7 @@ model Usuario {
   foto     String?
   rol      String   @default("usuario")
   creadoAt DateTime 
+  @@map("Usuario")
 }
 
 model TemplateEmail {
@@ -106,6 +114,7 @@ model TemplateEmail {
   design    Json
   creadoAt  DateTime        
   campanias CampañaEmail[]
+  @@map("TemplateEmail")
 }
 
 model CampañaEmail {
@@ -124,6 +133,7 @@ model CampañaEmail {
   archivada  Boolean         @default(false)
   config     Json?
   userId     Int
+  @@map("CampañaEmail")
 }
 
 model ContactoEmail {
@@ -134,6 +144,7 @@ model ContactoEmail {
   campañaId Int
   campaña   CampañaEmail  @relation(fields: [campañaId], references: [id], onDelete: Cascade)
   reportes   ReporteEmail[]
+  @@map("ContactoEmail")
 }
 
 model ReporteEmail {
@@ -142,7 +153,7 @@ model ReporteEmail {
   contactoId       Int
   estado           String // 'enviado', 'fallido', etc.
   enviadoAt        DateTime?
-  error            String?
+  error            String? @db.Text
   asunto           String? // asunto final con variables reemplazadas
   html             String?       @db.MediumText // HTML renderizado con datos del contacto
   creadoAt         DateTime      
@@ -157,6 +168,7 @@ model ReporteEmail {
 
   @@index([campañaId])
   @@index([contactoId])
+  @@map("ReporteEmail")
 }
 
 model Configuracion {
@@ -168,6 +180,7 @@ model Configuracion {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, scope, clave])
+  @@map("Configuracion")
 }
 
 model EmailEvento {
@@ -191,6 +204,7 @@ model EmailEvento {
 
   @@index([reporteId, tipo, fecha])
   @@index([tipo, fecha])
+  @@map("EmailEvento")
 }
 
 enum EmailEventoTipo {
@@ -211,6 +225,7 @@ model EmailRebote {
   reporte       ReporteEmail? @relation(fields: [reporteId], references: [id], onDelete: SetNull)
 
   @@index([reporteId, fecha])
+  @@map("EmailRebote")
 }
 
 model EmailDesuscripciones {
@@ -226,4 +241,5 @@ model EmailDesuscripciones {
 
   @@index([tenantId, emailHash])
   @@unique([tenantId, emailHash, scope, campaignId])
+  @@map("EmailDesuscripciones")
 }

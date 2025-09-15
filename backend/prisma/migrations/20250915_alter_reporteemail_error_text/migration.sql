@@ -1,0 +1,1 @@
+ALTER TABLE `ReporteEmail` MODIFY COLUMN `error` TEXT NULL;
