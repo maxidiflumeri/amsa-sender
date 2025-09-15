@@ -173,7 +173,7 @@ export class EmailWorkerService implements OnModuleInit {
 
                     // 5) Enviar
                     await transporter.sendMail({
-                        from: smtp.remitente, // si querés mostrar remitente: `"${smtp.remitente}" <${smtp.emailFrom || smtp.usuario}>`
+                        from: `"${smtp.remitente}" <${smtp.usuario}>`, // si querés mostrar remitente: `"${smtp.remitente}" <${smtp.emailFrom || smtp.usuario}>`
                         to: contacto.email,
                         subject,
                         html: htmlConMarker,

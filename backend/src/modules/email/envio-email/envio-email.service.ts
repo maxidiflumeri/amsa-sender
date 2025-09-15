@@ -47,7 +47,7 @@ export class EnvioEmailService {
 
         try {
             await transporter.sendMail({
-                from: smtp.remitente,
+                from: `"${smtp.remitente}" <${smtp.usuario}>`,
                 to,
                 subject,
                 html: insertHeaderAndFooter(html, '', ''),
