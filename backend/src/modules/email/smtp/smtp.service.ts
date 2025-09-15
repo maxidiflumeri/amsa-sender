@@ -24,20 +24,19 @@ export class SmtpService {
         const cuenta = await this.prisma.cuentaSMTP.findUnique({ where: { id } });
         if (!cuenta) throw new NotFoundException('Cuenta no encontrada');
 
-        try {
-            const cuentaDto = {
-                emailFrom: cuenta.emailFrom,
-                host: cuenta.host,
-                puerto: cuenta.puerto,
-                usuario: cuenta.usuario,
-                password: cuenta.password,
-            } as CreateCuentaDto;
-            const validate = await this.validarSMTP(cuentaDto);
+        const cuentaDto = {
+            emailFrom: cuenta.emailFrom,
+            host: cuenta.host,
+            puerto: cuenta.puerto,
+            usuario: cuenta.usuario,
+            password: cuenta.password,
+        } as CreateCuentaDto;
+        const validate = await this.validarSMTP(cuentaDto);
 
+        if (validate) {
             return { ok: validate };
-        } catch (err) {
-            throw new BadRequestException('Error de conexión SMTP: ' + err.message);
         }
+        throw new BadRequestException('No se pudo conectar con el servidor SMTP. Verificá los datos.');
     }
 
     private async validarSMTP(data: CreateCuentaDto): Promise<boolean> {
