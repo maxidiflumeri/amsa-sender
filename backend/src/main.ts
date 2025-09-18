@@ -7,6 +7,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { webcrypto } from 'crypto';
+import * as bodyParser from 'body-parser';
 
 dotenv.config();
 
@@ -16,6 +17,11 @@ if (!(global as any).crypto) {
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
+
+    // 🔴 Muy importante: agregar un parser de TEXTO para esta ruta
+    app.use('/api/email/ses/webhook',
+        bodyParser.text({ type: '*/*', limit: '2mb' }) // acepta text/plain (SNS) y otros
+    );
 
     // Middlewares globales
     app.enableCors({
@@ -33,6 +39,8 @@ async function bootstrap() {
     app.useWebSocketAdapter(new IoAdapter(app));
     // Aumentar el límite del body
     app.use(json({ limit: '20mb' }));
+    // Tu parser JSON global normal (no rompe nada)
+    app.use(bodyParser.json({ limit: '20mb' }));
     app.use(urlencoded({ limit: '20mb', extended: true }));
 
     const port = process.env.PORT || 3001;

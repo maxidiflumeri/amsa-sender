@@ -8,6 +8,10 @@ import { PrismaService } from 'src/prisma/prisma.service';
 @Injectable()
 export class EnvioEmailService {
     private readonly logger = new Logger(EnvioEmailService.name);
+    private smtpHost = process.env.AWS_SMTP_HOST || 'email-smtp.us-east-1.amazonaws.com';
+    private smtpPort = process.env.AWS_SMTP_PORT || '587'
+    private smtpUser = process.env.AWS_SMTP_USER || '';
+    private smtpPassword = process.env.AWS_SMTP_PASSWORD || '';
 
     constructor(
         private prisma: PrismaService,
@@ -30,18 +34,12 @@ export class EnvioEmailService {
         if (!smtp) throw new NotFoundException('Cuenta SMTP no encontrada');
 
         const transporter = nodemailer.createTransport({
-            host: smtp.host,
-            port: smtp.puerto,
+            host: this.smtpHost,
+            port: parseInt(this.smtpPort),
             secure: false,
-            name: 'amsasender.anamayasa.com',
-            requireTLS: true,
-            tls: {
-                minVersion: 'TLSv1.2',
-                rejectUnauthorized: true
-            },
             auth: {
-                user: smtp.usuario,
-                pass: smtp.password,
+                user: this.smtpUser,
+                pass: this.smtpPassword,
             },
         });
 
@@ -51,6 +49,7 @@ export class EnvioEmailService {
                 to,
                 subject,
                 html: insertHeaderAndFooter(html, '', ''),
+                replyTo: smtp.usuario,
             });
 
             return { success: true };

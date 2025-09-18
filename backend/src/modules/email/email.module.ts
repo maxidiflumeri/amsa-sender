@@ -8,6 +8,7 @@ import { TrackingEmailModule } from './tracking-email/tracking-email.module';
 import { ReportesEmailModule } from './reportes-email/reportes-email.module';
 import { GmailModule } from './gmail/gmail.module';
 import { EmailDesuscribirModule } from './desuscribir-email/desuscribir-email.module';
+import { SesWebhookModule } from './ses-webhook/ses-webhook.module';
 
 @Module({    
     imports: [
@@ -19,7 +20,8 @@ import { EmailDesuscribirModule } from './desuscribir-email/desuscribir-email.mo
       TrackingEmailModule,
       ReportesEmailModule,
       GmailModule,
-      EmailDesuscribirModule
+      EmailDesuscribirModule,
+      SesWebhookModule
     ],
   })
 

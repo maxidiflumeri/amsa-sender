@@ -18,6 +18,10 @@ import { hashEmail, normalizeEmail } from 'src/common/email-normalize.common';
 @Injectable()
 export class EmailWorkerService implements OnModuleInit {
     private readonly logger = new Logger(EmailWorkerService.name);
+    private smtpHost = process.env.AWS_SMTP_HOST || 'email-smtp.us-east-1.amazonaws.com';
+    private smtpPort = process.env.AWS_SMTP_PORT || '587'
+    private smtpUser = process.env.AWS_SMTP_USER || '';
+    private smtpPassword = process.env.AWS_SMTP_PASSWORD || '';
 
     private getApiBaseUrl(): string {
         return process.env.PUBLIC_API_BASE_URL || 'http://localhost:5001/api';
@@ -90,18 +94,12 @@ export class EmailWorkerService implements OnModuleInit {
         });
 
         const transporter = nodemailer.createTransport({
-            host: smtp.host,
-            port: smtp.puerto,
+            host: this.smtpHost,
+            port: parseInt(this.smtpPort),
             secure: false,
-            name: 'amsasender.anamayasa.com',
-            requireTLS: true,
-            tls: {
-                minVersion: 'TLSv1.2',
-                rejectUnauthorized: true
-            },                               
             auth: {
-                user: smtp.usuario,
-                pass: smtp.password,
+                user: this.smtpUser,
+                pass: this.smtpPassword,
             },
         });
 
@@ -177,16 +175,13 @@ export class EmailWorkerService implements OnModuleInit {
                         to: contacto.email,
                         subject,
                         html: htmlConMarker,
-                        // 👇 envelope controla el Return-Path real del sobre
-                        envelope: {
-                            from: 'rebotes@anamayasa.com.ar', // casilla que creaste en Workspace
-                            to: contacto.email
-                        },
+                        replyTo: smtp.usuario,
                         messageId, // lo fijamos nosotros
                         headers: {
                             'X-AMSASender': xHeader,
                             "List-Unsubscribe": `<${unsubUrl}>`,
                             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                            "X-SES-CONFIGURATION-SET": process.env.SES_CONFIG_SET || ''
                         },
                     });
 

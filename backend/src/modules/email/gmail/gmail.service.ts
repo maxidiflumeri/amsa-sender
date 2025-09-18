@@ -1,6 +1,5 @@
 // src/gmail/gmail.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { simpleParser, ParsedMail } from 'mailparser';
@@ -325,17 +324,5 @@ export class GmailService {
             }
         }
         return results;
-    }
-
-    // --- Cron automático (ajustá frecuencia) ---
-
-    @Cron(CronExpression.EVERY_MINUTE)
-    async cron() {
-        try {
-            const res = await this.pollBouncesOnce();
-            if (res.length) this.logger.log(`Rebotes procesados: ${res.length}`);
-        } catch (e) {
-            this.logger.error('Error en cron de Gmail', e as any);
-        }
     }
 }
