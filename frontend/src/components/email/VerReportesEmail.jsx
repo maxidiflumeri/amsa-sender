@@ -244,6 +244,7 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
   const [rppClick, setRppClick] = useState(10);
   const [pageBounce, setPageBounce] = useState(0);
   const [rppBounce, setRppBounce] = useState(10);
+  const [bounceDialog, setBounceDialog] = useState({ open: false, row: null })
 
   useEffect(() => {
     if (open) { setTab(0); setPageOpen(0); setPageClick(0); setPageBounce(0) }
@@ -274,100 +275,175 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
     { key: 'timestamp', label: 'Fecha/Hora', render: v => new Date(v).toLocaleString() },
     { key: 'email', label: 'Email' },
     { key: 'codigo', label: 'Código' },
-    { key: 'descripcion', label: 'Descripción' },
+    {
+      key: 'descripcion',
+      label: 'Descripción',
+      render: (v, row) => (
+        <Box
+          sx={{
+            maxWidth: { xs: 280, sm: 420, md: 680 },   // ajustá a gusto
+            whiteSpace: 'normal',
+            wordBreak: 'break-word',
+            overflowWrap: 'anywhere',                  // fuerza corte en palabras largas
+            display: '-webkit-box',
+            WebkitLineClamp: 3,                        // 3 líneas visibles
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          {v ?? '-'}
+          {v && v.length > 200 && (
+            <Button
+              variant="text"
+              size="small"
+              sx={{ ml: 1, p: 0 }}
+              onClick={() => setBounceDialog({ open: true, row })}
+            >
+              Ver más
+            </Button>
+          )}
+        </Box>
+      )
+    },
   ];
 
   return (
-    <Drawer
-      anchor="right"
-      open={open}
-      onClose={onClose}
-      variant="temporary"
-      sx={{
-        zIndex: (theme) => theme.zIndex.drawer + 2,
-        '& .MuiPaper-root': {
-          width: { xs: '100%', md: 640 },
-        },
-      }}
-      ModalProps={{ keepMounted: true }}
-    >
-      <Box sx={{ p: 2 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Box>
-            <Typography variant="h6">Detalle de campaña</Typography>
-            <Typography variant="body2" color="text.secondary">{campania?.nombre}</Typography>
+    <>
+      <Modal open={bounceDialog.open} onClose={() => setBounceDialog({ open: false, row: null })}>
+        <Box
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '90%', md: 700 },
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            boxShadow: 24,
+            p: 3,
+            maxHeight: '70vh',
+            overflow: 'auto',
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+            <Typography variant="h6">Descripción completa</Typography>
+            <IconButton onClick={() => setBounceDialog({ open: false, row: null })}>
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {bounceDialog.row?.email ?? ''}
+          </Typography>
+
+          <Box
+            sx={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
+              fontFamily: 'monospace',
+              fontSize: '0.9rem',
+              p: 1,
+              bgcolor: 'action.hover',
+              borderRadius: 1,
+            }}
+          >
+            {bounceDialog.row?.descripcion ?? '-'}
           </Box>
-          <IconButton onClick={onClose}><CloseIcon /></IconButton>
-        </Stack>
-        <Divider sx={{ my: 2 }} />
+        </Box>
+      </Modal>
 
-        {!detail && (
-          <>
-            <LinearProgress />
-            <Typography variant="body2" sx={{ mt: 1 }} color="text.secondary">Cargando detalle…</Typography>
-          </>
-        )}
-
-        {detail && (
-          <>
-            <Grid container spacing={2}>
-              <Grid item xs={6} sm={4}><Chip label={`Enviados ${detail.resumen.enviados}`} /></Grid>
-              <Grid item xs={6} sm={4}><Chip color="success" label={`Aperturas únicas ${detail.resumen.abiertosUnicos}`} /></Grid>
-              <Grid item xs={6} sm={4}><Chip color="primary" label={`Clicks únicos ${detail.resumen.clicsUnicos}`} /></Grid>
-              <Grid item xs={6} sm={4}><Chip color="warning" label={`Rebotes ${detail.resumen.rebotes}`} /></Grid>
-              {detail.resumen.primeroAbierto && (
-                <Grid item xs={12}><Chip variant="outlined" label={`Primera apertura ${new Date(detail.resumen.primeroAbierto).toLocaleString()}`} /></Grid>
-              )}
-              {detail.resumen.primeroClick && (
-                <Grid item xs={12}><Chip variant="outlined" label={`Primer click ${new Date(detail.resumen.primeroClick).toLocaleString()}`} /></Grid>
-              )}
-            </Grid>
-
-            <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mt: 2 }}>
-              <Tab label={`Aperturas (${detail.aperturas.length})`} />
-              <Tab label={`Clicks (${detail.clicks.length})`} />
-              <Tab label={`Rebotes (${detail.rebotes?.length ?? 0})`} />
-            </Tabs>
-
-            <Box hidden={tab !== 0} sx={{ mt: 2 }}>
-              <EventsTable
-                rows={detail.aperturas}
-                columns={colsOpens}
-                page={pageOpen}
-                rowsPerPage={rppOpen}
-                onPageChange={(p) => { setPageOpen(p); onPaginate?.({ pageOpen: p, sizeOpen: rppOpen }); }}
-                onRowsPerPageChange={(size) => { setRppOpen(size); setPageOpen(0); onPaginate?.({ pageOpen: 0, sizeOpen: size }); }}
-                emptyLabel="Sin aperturas registradas"
-              />
+      <Drawer
+        anchor="right"
+        open={open}
+        onClose={onClose}
+        variant="temporary"
+        sx={{
+          zIndex: (theme) => theme.zIndex.drawer + 2,
+          '& .MuiPaper-root': {
+            width: { xs: '100%', md: 640 },
+          },
+        }}
+        ModalProps={{ keepMounted: true }}
+      >
+        <Box sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Box>
+              <Typography variant="h6">Detalle de campaña</Typography>
+              <Typography variant="body2" color="text.secondary">{campania?.nombre}</Typography>
             </Box>
+            <IconButton onClick={onClose}><CloseIcon /></IconButton>
+          </Stack>
+          <Divider sx={{ my: 2 }} />
 
-            <Box hidden={tab !== 1} sx={{ mt: 2 }}>
-              <EventsTable
-                rows={detail.clicks}
-                columns={colsClicks}
-                page={pageClick}
-                rowsPerPage={rppClick}
-                onPageChange={(p) => { setPageClick(p); onPaginate?.({ pageClick: p, sizeClick: rppClick }); }}
-                onRowsPerPageChange={(size) => { setRppClick(size); setPageClick(0); onPaginate?.({ pageClick: 0, sizeClick: size }); }}
-                emptyLabel="Sin clics registrados"
-              />
-            </Box>
+          {!detail && (
+            <>
+              <LinearProgress />
+              <Typography variant="body2" sx={{ mt: 1 }} color="text.secondary">Cargando detalle…</Typography>
+            </>
+          )}
 
-            <Box hidden={tab !== 2} sx={{ mt: 2 }}>
-              <EventsTable
-                rows={detail.rebotes ?? []}
-                columns={colsBounces}
-                page={pageBounce}
-                rowsPerPage={rppBounce}
-                onPageChange={(p) => { setPageBounce(p); onPaginate?.({ pageBounce: p, sizeBounce: rppBounce }); }}
-                onRowsPerPageChange={(size) => { setRppBounce(size); setPageBounce(0); onPaginate?.({ pageBounce: 0, sizeBounce: size }); }}
-                emptyLabel="Sin rebotes registrados"
-              />
-            </Box>
-          </>
-        )}
-      </Box>
-    </Drawer>
+          {detail && (
+            <>
+              <Grid container spacing={2}>
+                <Grid item xs={6} sm={4}><Chip label={`Enviados ${detail.resumen.enviados}`} /></Grid>
+                <Grid item xs={6} sm={4}><Chip color="success" label={`Aperturas únicas ${detail.resumen.abiertosUnicos}`} /></Grid>
+                <Grid item xs={6} sm={4}><Chip color="primary" label={`Clicks únicos ${detail.resumen.clicsUnicos}`} /></Grid>
+                <Grid item xs={6} sm={4}><Chip color="warning" label={`Rebotes ${detail.resumen.rebotes}`} /></Grid>
+                {detail.resumen.primeroAbierto && (
+                  <Grid item xs={12}><Chip variant="outlined" label={`Primera apertura ${new Date(detail.resumen.primeroAbierto).toLocaleString()}`} /></Grid>
+                )}
+                {detail.resumen.primeroClick && (
+                  <Grid item xs={12}><Chip variant="outlined" label={`Primer click ${new Date(detail.resumen.primeroClick).toLocaleString()}`} /></Grid>
+                )}
+              </Grid>
+
+              <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mt: 2 }}>
+                <Tab label={`Aperturas (${detail.aperturas.length})`} />
+                <Tab label={`Clicks (${detail.clicks.length})`} />
+                <Tab label={`Rebotes (${detail.rebotes?.length ?? 0})`} />
+              </Tabs>
+
+              <Box hidden={tab !== 0} sx={{ mt: 2 }}>
+                <EventsTable
+                  rows={detail.aperturas}
+                  columns={colsOpens}
+                  page={pageOpen}
+                  rowsPerPage={rppOpen}
+                  onPageChange={(p) => { setPageOpen(p); onPaginate?.({ pageOpen: p, sizeOpen: rppOpen }); }}
+                  onRowsPerPageChange={(size) => { setRppOpen(size); setPageOpen(0); onPaginate?.({ pageOpen: 0, sizeOpen: size }); }}
+                  emptyLabel="Sin aperturas registradas"
+                />
+              </Box>
+
+              <Box hidden={tab !== 1} sx={{ mt: 2 }}>
+                <EventsTable
+                  rows={detail.clicks}
+                  columns={colsClicks}
+                  page={pageClick}
+                  rowsPerPage={rppClick}
+                  onPageChange={(p) => { setPageClick(p); onPaginate?.({ pageClick: p, sizeClick: rppClick }); }}
+                  onRowsPerPageChange={(size) => { setRppClick(size); setPageClick(0); onPaginate?.({ pageClick: 0, sizeClick: size }); }}
+                  emptyLabel="Sin clics registrados"
+                />
+              </Box>
+
+              <Box hidden={tab !== 2} sx={{ mt: 2 }}>
+                <EventsTable
+                  rows={detail.rebotes ?? []}
+                  columns={colsBounces}
+                  page={pageBounce}
+                  rowsPerPage={rppBounce}
+                  onPageChange={(p) => { setPageBounce(p); onPaginate?.({ pageBounce: p, sizeBounce: rppBounce }); }}
+                  onRowsPerPageChange={(size) => { setRppBounce(size); setPageBounce(0); onPaginate?.({ pageBounce: 0, sizeBounce: size }); }}
+                  emptyLabel="Sin rebotes registrados"
+                />
+              </Box>
+            </>
+          )}
+        </Box>
+      </Drawer>
+    </>
   );
 }
 
@@ -392,10 +468,29 @@ export default function CampaignEngagementPage() {
   // ⬇️ NUEVO: rebotes por fecha
   const [rebotes, setRebotes] = useState([]);
   const [loadingRebotes, setLoadingRebotes] = useState(false);
+  const [pageEvents, setPageEvents] = useState(0);
+  const [rppEvents, setRppEvents] = useState(25);
+  const [pageRebotes, setPageRebotes] = useState(0);
+  const [rppRebotes, setRppRebotes] = useState(25);
+  const [reboteDialog, setReboteDialog] = useState({ open: false, row: null });
+
+  // paginados memorizados
+  const paginatedEvents = useMemo(() => {
+    const start = pageEvents * rppEvents;
+    return events.slice(start, start + rppEvents);
+  }, [events, pageEvents, rppEvents]);
+  const paginatedRebotes = useMemo(() => {
+    const start = pageRebotes * rppRebotes;
+    return rebotes.slice(start, start + rppRebotes);
+  }, [rebotes, pageRebotes, rppRebotes]);
 
 
   // ⬇️ NUEVO: fecha seleccionada para eventos
   const [selectedDate, setSelectedDate] = useState(dayjs()); // default hoy
+
+  // resetear página cuando cambian los datos o la fecha elegida
+  useEffect(() => { setPageEvents(0); }, [events, selectedDate]);
+  useEffect(() => { setPageRebotes(0); }, [rebotes, selectedDate]);
 
   const dates = useMemo(() => {
     const now = new Date();
@@ -428,11 +523,11 @@ export default function CampaignEngagementPage() {
 
     return (
       date.getFullYear() +
-        '-' + pad(date.getMonth() + 1) +
-        '-' + pad(date.getDate()) +
-        'T' + pad('23') +
-        ':' + pad('59') +
-        ':' + pad('59')
+      '-' + pad(date.getMonth() + 1) +
+      '-' + pad(date.getDate()) +
+      'T' + pad('23') +
+      ':' + pad('59') +
+      ':' + pad('59')
     );
   }
 
@@ -440,10 +535,11 @@ export default function CampaignEngagementPage() {
   function startEndOfDay(d) {
     const js = d.toDate(); // dayjs -> Date
     const start = new Date(js);
-    start.setHours(0, 0, 0, 0);
+    start.setHours(0, 0, 0, 0);    
     const end = new Date(js);
-    end.setHours(23, 59, 59, 999);
-    return { desde: toLocalISOString(start), hasta: toLocalISOString(end) };
+    end.setHours(23, 59, 59, 999);    
+    
+    return { desde: toLocalISOString(start, true), hasta: toLocalISOString(end) };
   }
 
   const loadOverview = async () => {
@@ -735,42 +831,63 @@ export default function CampaignEngagementPage() {
           />
           <CardContent>
             {loadingEvents && <LinearProgress />}
+
             {!loadingEvents && (
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Hora</TableCell>
-                      <TableCell>Campaña</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Tipo</TableCell>
-                      <TableCell>URL</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {events.length === 0 && (
+              <>
+                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                  <Table size="small">
+                    <TableHead>
                       <TableRow>
-                        <TableCell colSpan={5} align="center">
-                          <Typography variant="body2" color="text.secondary">Sin eventos registrados en la fecha.</Typography>
-                        </TableCell>
+                        <TableCell>Hora</TableCell>
+                        <TableCell>Campaña</TableCell>
+                        <TableCell>Email</TableCell>
+                        <TableCell>Tipo</TableCell>
+                        <TableCell>URL</TableCell>
                       </TableRow>
-                    )}
-                    {events.map(ev => (
-                      <TableRow key={ev.id} hover>
-                        <TableCell>{new Date(ev.timestamp).toLocaleTimeString()}</TableCell>
-                        <TableCell>{ev.campañaNombre ?? `Campaña ${ev.campañaId}`}</TableCell>
-                        <TableCell>{ev.email}</TableCell>
-                        <TableCell>
-                          <Chip size="small" label={ev.tipo} color={ev.tipo === 'OPEN' ? 'success' : 'primary'} />
-                        </TableCell>
-                        <TableCell>
-                          {ev.url ? <Link href={ev.url} target="_blank" rel="noopener noreferrer">{ev.url}<OpenInNewIcon sx={{ ml: 0.5, fontSize: 16 }} /></Link> : '-'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {events.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} align="center">
+                            <Typography variant="body2" color="text.secondary">Sin eventos registrados en la fecha.</Typography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+
+                      {paginatedEvents.map(ev => (
+                        <TableRow key={ev.id} hover>
+                          <TableCell>{new Date(ev.timestamp).toLocaleTimeString()}</TableCell>
+                          <TableCell>{ev.campañaNombre ?? `Campaña ${ev.campañaId}`}</TableCell>
+                          <TableCell>{ev.email}</TableCell>
+                          <TableCell>
+                            <Chip size="small" label={ev.tipo} color={ev.tipo === 'OPEN' ? 'success' : 'primary'} />
+                          </TableCell>
+                          <TableCell>
+                            {ev.url ? (
+                              <Link href={ev.url} target="_blank" rel="noopener noreferrer">
+                                {ev.url}<OpenInNewIcon sx={{ ml: 0.5, fontSize: 16 }} />
+                              </Link>
+                            ) : '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <TablePagination
+                    component="div"
+                    count={events.length}
+                    page={pageEvents}
+                    onPageChange={(_, p) => setPageEvents(p)}
+                    rowsPerPage={rppEvents}
+                    onRowsPerPageChange={(e) => { setRppEvents(parseInt(e.target.value, 10)); setPageEvents(0); }}
+                    rowsPerPageOptions={[10, 25, 50, 100]}
+                    labelRowsPerPage="Filas por página"
+                  />
+                </Box>
+              </>
             )}
           </CardContent>
         </Card>
@@ -807,38 +924,116 @@ export default function CampaignEngagementPage() {
           />
           <CardContent>
             {loadingRebotes && <LinearProgress />}
+
             {!loadingRebotes && (
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Hora</TableCell>
-                      <TableCell>Campaña</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Código</TableCell>
-                      <TableCell>Descripción</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {rebotes.length === 0 && (
+              <>
+                <TableContainer
+                  component={Paper}
+                  variant="outlined"
+                  sx={{ borderRadius: 2, overflowX: 'auto' }}   // scroll horizontal defensivo
+                >
+                  <Table
+                    size="small"
+                    sx={{
+                      tableLayout: 'fixed',                      // evita que crezca por strings largas
+                      minWidth: 900,                             // ajustá si querés
+                      '& td, & th': { fontSize: '0.9rem' },     // opcional: tipografía más chica
+                    }}
+                  >
+                    {/* ancho sugerido por columna */}
+                    <colgroup>
+                      <col style={{ width: 110 }} />            {/* Hora */}
+                      <col style={{ width: 180 }} />            {/* Campaña */}
+                      <col style={{ width: 240 }} />            {/* Email */}
+                      <col style={{ width: 90 }} />             {/* Código */}
+                      <col />                                   {/* Descripción (toma el resto) */}
+                    </colgroup>
+
+                    <TableHead>
                       <TableRow>
-                        <TableCell colSpan={5} align="center">
-                          <Typography variant="body2" color="text.secondary">Sin rebotes registrados en la fecha.</Typography>
-                        </TableCell>
+                        <TableCell>Hora</TableCell>
+                        <TableCell>Campaña</TableCell>
+                        <TableCell>Email</TableCell>
+                        <TableCell>Código</TableCell>
+                        <TableCell>Descripción</TableCell>
                       </TableRow>
-                    )}
-                    {rebotes.map(rb => (
-                      <TableRow key={rb.id} hover>
-                        <TableCell>{new Date(rb.timestamp).toLocaleTimeString()}</TableCell>
-                        <TableCell>{rb.campañaNombre ?? (rb.campañaId ? `Campaña ${rb.campañaId}` : '-')}</TableCell>
-                        <TableCell>{rb.email}</TableCell>
-                        <TableCell>{rb.codigo ?? '-'}</TableCell>
-                        <TableCell>{rb.descripcion ?? '-'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+
+                    <TableBody>
+                      {rebotes.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} align="center">
+                            <Typography variant="body2" color="text.secondary">
+                              Sin rebotes registrados en la fecha.
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+
+                      {paginatedRebotes.map((rb) => (
+                        <TableRow key={rb.id} hover>
+                          <TableCell>{new Date(rb.timestamp).toLocaleTimeString()}</TableCell>
+                          <TableCell>{rb.campañaNombre ?? (rb.campañaId ? `Campaña ${rb.campañaId}` : '-')}</TableCell>
+                          <TableCell>{rb.email}</TableCell>
+                          <TableCell>{rb.codigo ?? '-'}</TableCell>
+
+                          {/* DESCRIPCIÓN CLAMP + VER MÁS */}
+                          <TableCell
+                            sx={{
+                              whiteSpace: 'normal',
+                              wordBreak: 'break-word',
+                              overflowWrap: 'anywhere',
+                              p: 1,
+                            }}
+                          >
+                            {/* Texto clamped a 3 líneas */}
+                            <Box
+                              sx={{
+                                display: '-webkit-box',
+                                WebkitLineClamp: 3,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {rb.descripcion ?? '-'}
+                            </Box>
+
+                            {/* Botón fuera del clamp (si el texto es largo) */}
+                            {rb.descripcion && rb.descripcion.length > 120 && (
+                              <Box sx={{ mt: 0.5, textAlign: 'right' }}>
+                                <Button
+                                  variant="text"
+                                  size="small"
+                                  onClick={() => setReboteDialog({ open: true, row: rb })}
+                                  sx={{ p: 0 }}
+                                >
+                                  Ver más
+                                </Button>
+                              </Box>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <TablePagination
+                    component="div"
+                    count={rebotes.length}
+                    page={pageRebotes}
+                    onPageChange={(_, p) => setPageRebotes(p)}
+                    rowsPerPage={rppRebotes}
+                    onRowsPerPageChange={(e) => {
+                      setRppRebotes(parseInt(e.target.value, 10));
+                      setPageRebotes(0);
+                    }}
+                    rowsPerPageOptions={[10, 25, 50, 100]}
+                    labelRowsPerPage="Filas por página"
+                  />
+                </Box>
+              </>
             )}
           </CardContent>
         </Card>
@@ -851,6 +1046,52 @@ export default function CampaignEngagementPage() {
         detail={detail}
         onPaginate={handlePaginateDetail}
       />
+      <Modal
+        open={reboteDialog.open}
+        onClose={() => setReboteDialog({ open: false, row: null })}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '92%', md: 760 },
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            boxShadow: 24,
+            p: 3,
+            maxHeight: '75vh',
+            overflow: 'auto',
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+            <Typography variant="h6">Descripción del rebote</Typography>
+            <IconButton onClick={() => setReboteDialog({ open: false, row: null })}>
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {reboteDialog.row?.email ?? ''}
+          </Typography>
+
+          <Box
+            sx={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
+              fontFamily: 'monospace',
+              fontSize: '0.9rem',
+              p: 1.5,
+              bgcolor: 'action.hover',
+              borderRadius: 1,
+            }}
+          >
+            {reboteDialog.row?.descripcion ?? '-'}
+          </Box>
+        </Box>
+      </Modal>
     </Box>
   );
 }

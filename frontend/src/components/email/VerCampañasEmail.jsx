@@ -36,8 +36,6 @@ import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
-import PauseIcon from '@mui/icons-material/Pause';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import EventIcon from '@mui/icons-material/Event';
 import MuiAlert from '@mui/material/Alert';
 import CloseIcon from '@mui/icons-material/Close';
@@ -45,6 +43,7 @@ import { FixedSizeList } from 'react-window';
 import EnviarMailsModal from './EnviarMails';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import { io } from 'socket.io-client';
+import Skeleton from '@mui/material/Skeleton'
 
 export default function VerCampañasEmail() {
     const isMobile = useMediaQuery('(max-width:768px)');
@@ -68,14 +67,17 @@ export default function VerCampañasEmail() {
     const [loadingContactos, setLoadingContactos] = useState(false);
     const [busquedaContacto, setBusquedaContacto] = useState('');
     const [mostrarCalendario, setMostrarCalendario] = useState(false);
-    const [pausando, setPausando] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    const cargarCampanias = async () => {
+    const cargarCampanias = async (opts = { silent: false }) => {
+        if (!opts.silent) setLoading(true);
         try {
             const res = await api.get('/email/campanias');
             setCampanias(res.data);
         } catch (err) {
             console.error('Error al obtener campañas:', err);
+        } finally {
+            if (!opts.silent) setLoading(false);
         }
     };
 
@@ -92,7 +94,7 @@ export default function VerCampañasEmail() {
             }
         });
 
-        socket.on('progreso_mail', ({ campañaId, enviados, total }) => {            
+        socket.on('progreso_mail', ({ campañaId, enviados, total }) => {
             setProgresos((prev) => ({
                 ...prev,
                 [campañaId]: { enviados, total }
@@ -223,6 +225,28 @@ export default function VerCampañasEmail() {
         setModalEnvio(true);
     };
 
+    const SkeletonRow = () => (
+        <TableRow>
+            <TableCell><Skeleton variant="text" width="80%" /></TableCell>
+            <TableCell align="right"><Skeleton variant="text" width={40} /></TableCell>
+            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+            <TableCell><Skeleton variant="rounded" width={100} height={28} /></TableCell>
+            <TableCell><Skeleton variant="text" width="70%" /></TableCell>
+            <TableCell>
+                <Skeleton variant="rounded" height={8} />
+                <Skeleton variant="text" width="50%" />
+            </TableCell>
+            <TableCell>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Skeleton variant="circular" width={36} height={36} />
+                    <Skeleton variant="circular" width={36} height={36} />
+                    <Skeleton variant="circular" width={36} height={36} />
+                </Box>
+            </TableCell>
+        </TableRow>
+    );
+
     return (
         <>
             <Box sx={{ py: 3 }}>
@@ -257,6 +281,8 @@ export default function VerCampañasEmail() {
                         <Tab label={`Procesando (${procesando.length})`} />
                         <Tab label={`Enviadas (${enviadas.length})`} />
                     </Tabs>
+
+                    {loading && <LinearProgress sx={{ mt: 1, borderRadius: 1 }} />}
 
                     <Box my={2}>
                         <TextField
@@ -330,68 +356,94 @@ export default function VerCampañasEmail() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {campaniasPaginadas.map((c) => (
-                                <React.Fragment key={c.id}>
-                                    <TableRow hover onClick={() => handleAbrirDialogoContactos(c)} sx={{ cursor: 'pointer' }}>
-                                        <TableCell>{c.nombre}</TableCell>
-                                        <TableCell align="right" sx={{ maxWidth: 5 }}>{c.contactos.length}</TableCell>
-                                        <TableCell>{c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}</TableCell>
-                                        <TableCell>{c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–'}</TableCell>
-                                        <TableCell>
-                                            {c.estado === 'procesando' && <Chip label="Procesando" color="info" />}
-                                            {c.estado === 'pausada' && <Chip label="Pausada" color="warning" />}
-                                            {c.estado === 'pendiente' && <Chip label="Pendiente" />}
-                                            {c.estado === 'finalizada' && <Chip label="Finalizada" color="success" />}
-                                            {c.estado === 'programada' && <Chip label="Programada" color="info" />}
-                                            {c.estado === 'pausa_pendiente' && <Chip label="Pausa en cola" color="warning" />}
-                                        </TableCell>
-                                        <TableCell>
-                                            {c.agendadoAt
-                                                ? new Date(c.agendadoAt).toLocaleString()
-                                                : '—'}
-                                        </TableCell>
-                                        <TableCell>
-                                            {c.estado === 'procesando' && (
-                                                <Box width={100}>
-                                                    <LinearProgress
-                                                        variant={progresos[c.id] ? 'determinate' : 'indeterminate'}
-                                                        value={progresos[c.id] ? (progresos[c.id].enviados / progresos[c.id].total) * 100 : 0}
-                                                        sx={{ height: 8, borderRadius: 4 }}
-                                                    />
-                                                    <Typography variant="caption">
-                                                        {progresos[c.id] ? `${progresos[c.id].enviados}/${progresos[c.id].total}` : '...'}
-                                                    </Typography>
-                                                </Box>
-                                            )}
-                                        </TableCell>
-                                        <TableCell onClick={(e) => e.stopPropagation()} sx={{ whiteSpace: 'nowrap', minWidth: 120 }}>
-                                            {c.estado === 'pendiente' && (
-                                                <>
-                                                    <Tooltip title="Enviar campaña">
-                                                        <IconButton color="primary" onClick={() => abrirModalEnvio(c)}>
-                                                            <SendIcon />
-                                                        </IconButton>
-                                                    </Tooltip>
+                            {loading
+                                ? Array.from({ length: rowsPerPage }).map((_, i) => (
+                                    <SkeletonRow key={`sk-${i}`} />
+                                ))
+                                : campaniasPaginadas.map((c) => (
+                                    <React.Fragment key={c.id}>
+                                        <TableRow
+                                            hover
+                                            onClick={() => handleAbrirDialogoContactos(c)}
+                                            sx={{ cursor: 'pointer' }}
+                                        >
+                                            <TableCell>{c.nombre}</TableCell>
+                                            <TableCell align="right" sx={{ maxWidth: 5 }}>
+                                                {c.contactos.length}
+                                            </TableCell>
+                                            <TableCell>
+                                                {c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}
+                                            </TableCell>
+                                            <TableCell>
+                                                {c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–'}
+                                            </TableCell>
+                                            <TableCell>
+                                                {c.estado === 'procesando' && <Chip label="Procesando" color="info" />}
+                                                {c.estado === 'pausada' && <Chip label="Pausada" color="warning" />}
+                                                {c.estado === 'pendiente' && <Chip label="Pendiente" />}
+                                                {c.estado === 'finalizada' && <Chip label="Finalizada" color="success" />}
+                                                {c.estado === 'programada' && <Chip label="Programada" color="info" />}
+                                                {c.estado === 'pausa_pendiente' && <Chip label="Pausa en cola" color="warning" />}
+                                            </TableCell>
+                                            <TableCell>
+                                                {c.agendadoAt ? new Date(c.agendadoAt).toLocaleString() : '—'}
+                                            </TableCell>
+                                            <TableCell>
+                                                {c.estado === 'procesando' && (
+                                                    <Box width={100}>
+                                                        <LinearProgress
+                                                            variant={progresos[c.id] ? 'determinate' : 'indeterminate'}
+                                                            value={
+                                                                progresos[c.id]
+                                                                    ? (progresos[c.id].enviados / progresos[c.id].total) * 100
+                                                                    : 0
+                                                            }
+                                                            sx={{ height: 8, borderRadius: 4 }}
+                                                        />
+                                                        <Typography variant="caption">
+                                                            {progresos[c.id]
+                                                                ? `${progresos[c.id].enviados}/${progresos[c.id].total}`
+                                                                : '...'}
+                                                        </Typography>
+                                                    </Box>
+                                                )}
+                                            </TableCell>
+                                            <TableCell
+                                                onClick={(e) => e.stopPropagation()}
+                                                sx={{ whiteSpace: 'nowrap', minWidth: 120 }}
+                                            >
+                                                {c.estado === 'pendiente' && (
+                                                    <>
+                                                        <Tooltip title="Enviar campaña">
+                                                            <IconButton color="primary" onClick={() => abrirModalEnvio(c)}>
+                                                                <SendIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
 
-                                                    <Tooltip title="Agendar campaña">
-                                                        <IconButton color="secondary" onClick={() => abrirModalAgendar(c)}>
-                                                            <EventIcon />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                </>
-                                            )}                                            
-                                            {(c.estado === 'pendiente' || c.estado === 'pausada' || c.estado === 'finalizada' || c.estado === 'programada') && (
-                                                <Tooltip title="Eliminar campaña">
-                                                    <IconButton color="error" onClick={() => confirmarEliminar(c)}>
-                                                        <DeleteIcon />
-                                                    </IconButton>
-                                                </Tooltip>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                </React.Fragment>
-                            ))}
-                            {campaniasPaginadas.length === 0 && (
+                                                        <Tooltip title="Agendar campaña">
+                                                            <IconButton color="secondary" onClick={() => abrirModalAgendar(c)}>
+                                                                <EventIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    </>
+                                                )}
+                                                {(c.estado === 'pendiente' ||
+                                                    c.estado === 'pausada' ||
+                                                    c.estado === 'finalizada' ||
+                                                    c.estado === 'programada') && (
+                                                        <Tooltip title="Eliminar campaña">
+                                                            <IconButton color="error" onClick={() => confirmarEliminar(c)}>
+                                                                <DeleteIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    )}
+                                            </TableCell>
+                                        </TableRow>
+                                    </React.Fragment>
+                                ))
+                            }
+
+                            {!loading && campaniasPaginadas.length === 0 && (
                                 <TableRow>
                                     <TableCell colSpan={8}>
                                         <Box
@@ -401,7 +453,7 @@ export default function VerCampañasEmail() {
                                                 display: 'flex',
                                                 flexDirection: 'column',
                                                 alignItems: 'center',
-                                                color: 'text.secondary'
+                                                color: 'text.secondary',
                                             }}
                                         >
                                             <InboxIcon sx={{ fontSize: 60, mb: 2 }} />
