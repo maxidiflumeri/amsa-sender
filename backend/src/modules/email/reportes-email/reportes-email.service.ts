@@ -424,8 +424,14 @@ export class ReportesEmailService {
                     select: {
                         id: true,
                         enviadoAt: true,
-                        campaña: { select: { id: true, nombre: true } }, // ACCION y TIPO_ACCION no existen en tu schema → quedarán vacíos
-                        contacto: { select: { id: true, email: true } },
+                        campaña: { select: { id: true, nombre: true } },
+                        contacto: {
+                            select: {
+                                id: true,
+                                email: true,
+                                datos: true // 👈 agregamos el JSON
+                            }
+                        },
                     },
                 },
             },
@@ -462,8 +468,16 @@ export class ReportesEmailService {
                 descripcion = this.clean(e.urlDestino || e.dominioDestino);
             }
 
-            const ID_CONTACTO =
-                e.reporte?.contacto?.id !== undefined ? String(e.reporte.contacto.id) : '';
+            // 👇 obtenemos ID_CONTACTO desde contacto.datos
+            let ID_CONTACTO = '';
+            try {
+                const datos = e.reporte?.contacto?.datos as any;
+                if (datos && typeof datos === 'object' && 'id_contacto' in datos) {
+                    ID_CONTACTO = String(datos['id_contacto']);
+                }
+            } catch (err) {
+                ID_CONTACTO = '';
+            }
 
             rows.push(
                 [
