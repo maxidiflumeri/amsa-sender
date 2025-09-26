@@ -19,7 +19,9 @@ import {
     Dialog,
     DialogTitle,
     DialogContent,
-    IconButton
+    IconButton,
+    LinearProgress,
+    Skeleton
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import api from '../api/axios';
@@ -43,6 +45,9 @@ export default function VerReportes() {
     const [mensajesContacto, setMensajesContacto] = useState([]);
     const [numeroActual, setNumeroActual] = useState(null);
     const [busquedaNumero, setBusquedaNumero] = useState('');
+    const [loadingReportes, setLoadingReportes] = useState(false);
+    const [loadingMensajes, setLoadingMensajes] = useState(false);
+
 
     useEffect(() => {
         api.get('/whatsapp/reportes/campanias-con-reportes')
@@ -54,15 +59,22 @@ export default function VerReportes() {
         if (!campañaSeleccionada) {
             setReportes([]);
             setMensajes([]);
+            setLoadingReportes(false);
+            setLoadingMensajes(false);
             return;
         }
 
+        setLoadingReportes(true);
         api.get(`/whatsapp/reportes?campañaId=${campañaSeleccionada.id}`)
             .then(res => setReportes(res.data))
-            .catch(err => console.error('Error cargando reportes', err));
+            .catch(err => console.error('Error cargando reportes', err))
+            .finally(() => setLoadingReportes(false));
+
+        setLoadingMensajes(true);
         api.get(`/whatsapp/mensajes?campañaId=${campañaSeleccionada.id}`)
             .then(res => setMensajes(res.data))
-            .catch(err => console.error('Error cargando reportes', err));
+            .catch(err => console.error('Error cargando reportes', err))
+            .finally(() => setLoadingMensajes(false));
     }, [campañaSeleccionada]);
 
     const abrirModalMensajes = async (numero) => {
@@ -152,7 +164,7 @@ export default function VerReportes() {
         });
 
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);        
+        link.href = URL.createObjectURL(blob);
         link.setAttribute('download', `reporte_campaña_${campañaSeleccionada?.id}_${campañaSeleccionada?.nombre}.csv`);
         document.body.appendChild(link);
         link.click();
@@ -184,6 +196,27 @@ export default function VerReportes() {
         link.click();
         document.body.removeChild(link);
     };
+
+    const SkeletonRowReportes = () => (
+        <TableRow>
+            <TableCell><Skeleton variant="text" width="80%" /></TableCell>
+            <TableCell><Skeleton variant="text" width="95%" /></TableCell>
+            <TableCell><Skeleton variant="rounded" width={90} height={28} /></TableCell>
+            <TableCell><Skeleton variant="text" width="70%" /></TableCell>
+            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+            <TableCell><Skeleton variant="rounded" width="100%" height={36} /></TableCell>
+            <TableCell align="center"><Skeleton variant="circular" width={32} height={32} /></TableCell>
+        </TableRow>
+    );
+
+    const SkeletonRowMensajes = () => (
+        <TableRow>
+            <TableCell><Skeleton variant="rounded" width={90} height={28} /></TableCell>
+            <TableCell><Skeleton variant="text" width="80%" /></TableCell>
+            <TableCell><Skeleton variant="text" width="95%" /></TableCell>
+            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+        </TableRow>
+    );
 
     return (
         <Box sx={{ py: 3 }}>
@@ -277,6 +310,8 @@ export default function VerReportes() {
 
                 {tab === 0 && (
                     <>
+                        {loadingReportes && <Box sx={{ mb: 1 }}><LinearProgress /></Box>}
+
                         <Table size={isMobile ? 'small' : 'medium'}>
                             <TableHead>
                                 <TableRow>
@@ -290,61 +325,77 @@ export default function VerReportes() {
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {datosPaginados.map((r, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell>{r.numero}</TableCell>
-                                        <TableCell>{r.mensaje}</TableCell>
-                                        <TableCell>{getEstadoChip(r.estado)}</TableCell>
-                                        <TableCell>{r.campaña?.nombre || '–'}</TableCell>
-                                        <TableCell>{r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : '–'}</TableCell>
-                                        <TableCell>
-                                            {r.datos ? (
-                                                <Box sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#263238' : '#f5f5f5', borderRadius: 2, px: 2, py: 1, fontSize: '0.85rem', fontFamily: 'monospace', maxHeight: 120, overflowY: 'auto' }}>
-                                                    {Object.entries(r.datos).map(([key, val]) => (
-                                                        <div key={key}><strong>{key}:</strong> {String(val)}</div>
-                                                    ))}
-                                                </Box>
-                                            ) : '–'}
-                                        </TableCell>
-                                        <TableCell>
-                                            <IconButton onClick={() => abrirModalMensajes(r.numero)}>
-                                                <ChatIcon />
-                                            </IconButton>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                {loadingReportes ? (
+                                    Array.from({ length: Math.min(rowsPerPage, 6) }).map((_, i) => (
+                                        <SkeletonRowReportes key={`sk-r-${i}`} />
+                                    ))
+                                ) : (
+                                    datosPaginados.map((r, i) => (
+                                        <TableRow key={i}>
+                                            <TableCell>{r.numero}</TableCell>
+                                            <TableCell>{r.mensaje}</TableCell>
+                                            <TableCell>{getEstadoChip(r.estado)}</TableCell>
+                                            <TableCell>{r.campaña?.nombre || '–'}</TableCell>
+                                            <TableCell>{r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : '–'}</TableCell>
+                                            <TableCell>
+                                                {r.datos ? (
+                                                    <Box sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#263238' : '#f5f5f5', borderRadius: 2, px: 2, py: 1, fontSize: '0.85rem', fontFamily: 'monospace', maxHeight: 120, overflowY: 'auto' }}>
+                                                        {Object.entries(r.datos).map(([key, val]) => (
+                                                            <div key={key}><strong>{key}:</strong> {String(val)}</div>
+                                                        ))}
+                                                    </Box>
+                                                ) : '–'}
+                                            </TableCell>
+                                            <TableCell>
+                                                <IconButton onClick={() => abrirModalMensajes(r.numero)}>
+                                                    <ChatIcon />
+                                                </IconButton>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
                             </TableBody>
                         </Table>
                     </>
                 )}
 
                 {tab === 1 && (
-                    <Table size={isMobile ? 'small' : 'medium'}>
-                        <TableHead>
-                            <TableRow>
-                                <TableCell>Tipo</TableCell>
-                                <TableCell>Número</TableCell>
-                                <TableCell>Mensaje</TableCell>
-                                <TableCell>Fecha</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {datosPaginados.map((m, i) => (
-                                <TableRow key={i}>
-                                    <TableCell>
-                                        <Chip
-                                            label={m.fromMe ? 'Enviado' : 'Recibido'}
-                                            color={m.fromMe ? 'primary' : 'secondary'}
-                                            size="small"
-                                        />
-                                    </TableCell>
-                                    <TableCell>{m.numero}</TableCell>
-                                    <TableCell>{m.mensaje}</TableCell>
-                                    <TableCell>{new Date(m.fecha).toLocaleString()}</TableCell>
+                    <>
+                        {loadingMensajes && <Box sx={{ mb: 1 }}><LinearProgress /></Box>}
+
+                        <Table size={isMobile ? 'small' : 'medium'}>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell>Tipo</TableCell>
+                                    <TableCell>Número</TableCell>
+                                    <TableCell>Mensaje</TableCell>
+                                    <TableCell>Fecha</TableCell>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                            </TableHead>
+                            <TableBody>
+                                {loadingMensajes ? (
+                                    Array.from({ length: Math.min(rowsPerPage, 6) }).map((_, i) => (
+                                        <SkeletonRowMensajes key={`sk-m-${i}`} />
+                                    ))
+                                ) : (
+                                    datosPaginados.map((m, i) => (
+                                        <TableRow key={i}>
+                                            <TableCell>
+                                                <Chip
+                                                    label={m.fromMe ? 'Enviado' : 'Recibido'}
+                                                    color={m.fromMe ? 'primary' : 'secondary'}
+                                                    size="small"
+                                                />
+                                            </TableCell>
+                                            <TableCell>{m.numero}</TableCell>
+                                            <TableCell>{m.mensaje}</TableCell>
+                                            <TableCell>{new Date(m.fecha).toLocaleString()}</TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </>
                 )}
 
                 <TablePagination

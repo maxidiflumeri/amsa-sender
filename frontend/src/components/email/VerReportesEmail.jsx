@@ -32,6 +32,7 @@ import {
   Typography,
   Drawer,
   Button,
+  Skeleton
 } from '@mui/material';
 import { DateRange } from '@mui/icons-material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -52,6 +53,9 @@ import "dayjs/locale/es";
 // Helpers de API (axios reales)
 // =====================================================
 import api from '../../api/axios';
+// tamaño y truncado homogéneo
+const ELLIPSIS_1LINE = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 };
+const CARD_MIN_HEIGHT = 320; // ajustá 280–340 si querés
 
 async function apiFetchOverview({ since, until, query, page = 0, size = 12 }) {
   const params = new URLSearchParams();
@@ -74,6 +78,58 @@ async function apiFetchOverview({ since, until, query, page = 0, size = 12 }) {
       })),
     })),
   };
+}
+
+function SkeletonSparklineCard() {
+  return (
+    <Card
+      sx={{
+        height: '100%',
+        width: '100%',
+        minHeight: CARD_MIN_HEIGHT,
+        borderRadius: 3,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        p: 0
+      }}
+    >
+      <CardHeader
+        sx={{ px: 2, py: 1.25, '& .MuiCardHeader-content': { minWidth: 0 } }}
+        title={<Skeleton variant="text" width="60%" height={28} />}
+        subheader={<Skeleton variant="text" width="40%" />}
+        action={
+          <Stack direction="row" spacing={1}>
+            <Skeleton variant="rounded" height={24} width={100} />
+            <Skeleton variant="rounded" height={24} width={90} />
+          </Stack>
+        }
+      />
+      <CardContent
+        sx={{
+          px: 2, pt: 0.5, pb: 2,
+          display: 'flex', flexDirection: 'column', gap: 1.5, flexGrow: 1
+        }}
+      >
+        <Box sx={{ height: 120 }}>
+          <Skeleton variant="rounded" width="100%" height="100%" />
+        </Box>
+
+        <Stack spacing={1} sx={{ mt: 1 }}>
+          <Skeleton variant="text" width="35%" />
+          <Skeleton variant="text" width="55%" />
+          <Skeleton variant="text" width="45%" />
+        </Stack>
+
+        <Box sx={{ flexGrow: 1 }} />
+
+        <Divider sx={{ my: 1.25 }} />
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Skeleton variant="rounded" width={120} height={32} />
+        </Box>
+      </CardContent>
+    </Card>
+  );
 }
 
 async function apiFetchCampaignDetail(campaniaId, { since, until, pageOpen = 0, sizeOpen = 10, pageClick = 0, sizeClick = 10, pageBounce = 0, sizeBounce = 10 } = {}) {
@@ -128,26 +184,55 @@ function Metric({ label, value, help }) {
 function SparklineCard({ title, subtitle, openRate, clickRate, enviados, data, onOpenDetail }) {
   const openPct = Math.round((openRate || 0) * 100);
   const clickPct = Math.round((clickRate || 0) * 100);
+
   return (
-    <Card sx={{ height: '100%', borderRadius: 3, overflow: 'hidden' }}>
+    <Card
+      sx={{
+        width: '100%',
+        height: '100%',
+        minHeight: CARD_MIN_HEIGHT,             // 🔒 alto uniforme
+        borderRadius: 3,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        p: 0                                      // compacta
+      }}
+    >
       <CardHeader
+        sx={{
+          px: 2, py: 1.25,                        // header más chico
+          '& .MuiCardHeader-content': { minWidth: 0 }
+        }}
         title={
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography variant="h6" sx={{ mr: 1 }}>{title}</Typography>
-            <Stack direction="row" spacing={1}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ minWidth: 0 }}>
+            <Typography variant="h6" sx={{ mr: 1, ...ELLIPSIS_1LINE }}>{title}</Typography>
+            <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
               <Chip size="small" label={`Aperturas ${openPct}%`} color={openPct >= 50 ? 'success' : 'default'} />
               <Chip size="small" label={`Clicks ${clickPct}%`} color={clickPct >= 10 ? 'primary' : 'default'} />
             </Stack>
           </Stack>
         }
-        subheader={<Typography variant="body2" color="text.secondary">{subtitle}</Typography>}
+        subheader={
+          <Typography variant="body2" color="text.secondary" sx={{ ...ELLIPSIS_1LINE }}>
+            {subtitle}
+          </Typography>
+        }
       />
-      <CardContent>
-        <Grid container spacing={2}>
+      <CardContent
+        sx={{
+          px: 2, pt: 0.5, pb: 2,                  // contenido compacto
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1.5,
+          flexGrow: 1,
+          minWidth: 0
+        }}
+      >
+        <Grid container spacing={1.5}>
           <Grid item xs={12} md={7}>
-            <Box sx={{ height: 140 }}>
+            <Box sx={{ height: 120 }}>           {/* altura fija del gráfico */}
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+                <AreaChart data={data} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gOpen" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="currentColor" stopOpacity={0.3} />
@@ -168,16 +253,21 @@ function SparklineCard({ title, subtitle, openRate, clickRate, enviados, data, o
             </Box>
           </Grid>
           <Grid item xs={12} md={5}>
-            <Stack spacing={1.25}>
+            <Stack spacing={1}>
               <Metric label="Enviados" value={enviados} />
               <Metric label="Tasa de apertura" value={`${openPct}%`} help="Aperturas únicas / Enviados" />
               <Metric label="Tasa de click" value={`${clickPct}%`} help="Clics únicos / Enviados" />
             </Stack>
           </Grid>
         </Grid>
-        <Divider sx={{ my: 2 }} />
+
+        <Box sx={{ flexGrow: 1 }} />             {/* empuja footer → altura pareja */}
+
+        <Divider sx={{ my: 1.25 }} />
         <Stack direction="row" justifyContent="flex-end">
-          <Button variant="outlined" size="small" startIcon={<BarChartIcon />} onClick={onOpenDetail}>Ver detalle</Button>
+          <Button variant="outlined" size="small" startIcon={<BarChartIcon />} onClick={onOpenDetail}>
+            Ver detalle
+          </Button>
         </Stack>
       </CardContent>
     </Card>
@@ -535,10 +625,10 @@ export default function CampaignEngagementPage() {
   function startEndOfDay(d) {
     const js = d.toDate(); // dayjs -> Date
     const start = new Date(js);
-    start.setHours(0, 0, 0, 0);    
+    start.setHours(0, 0, 0, 0);
     const end = new Date(js);
-    end.setHours(23, 59, 59, 999);    
-    
+    end.setHours(23, 59, 59, 999);
+
     return { desde: toLocalISOString(start, true), hasta: toLocalISOString(end) };
   }
 
@@ -750,21 +840,42 @@ export default function CampaignEngagementPage() {
 
       {tab === 0 && (
         <>
-          <Grid container spacing={2}>
-            {loading && (
-              <Grid item xs={12}><LinearProgress /></Grid>
-            )}
+          {loading && (
+            <>
+              <Box sx={{ mb: 2 }}><LinearProgress /></Box>
 
-            {!loading && overview.length === 0 && (
-              <Grid item xs={12}>
-                <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, textAlign: 'center' }}>
-                  <Typography variant="body1">Sin campañas para el período seleccionado.</Typography>
-                </Paper>
-              </Grid>
-            )}
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0,1fr))', md: 'repeat(3, minmax(0,1fr))' },
+                  gap: 1.5
+                }}
+              >
+                {Array.from({ length: size || 12 }).map((_, i) => (
+                  <Box key={`sk-${i}`} sx={{ display: 'flex', minWidth: 0 }}>
+                    <SkeletonSparklineCard />
+                  </Box>
+                ))}
+              </Box>
+            </>
+          )}
 
+          {!loading && overview.length === 0 && (
+            <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, textAlign: 'center' }}>
+              <Typography variant="body1">Sin campañas para el período seleccionado.</Typography>
+            </Paper>
+          )}
+
+          {/* 🔒 3 columnas; gap más chico para que se vean "más juntas" */}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0,1fr))', md: 'repeat(3, minmax(0,1fr))' },
+              gap: 1.5                                         // ↓ probá 1 si querés aún más juntas
+            }}
+          >
             {overview.map((c) => (
-              <Grid item xs={12} sm={6} lg={4} key={c.id}>
+              <Box key={c.id} sx={{ display: 'flex', minWidth: 0 }}>
                 <SparklineCard
                   title={c.nombre}
                   subtitle={`${c.enviados} enviados`}
@@ -774,28 +885,23 @@ export default function CampaignEngagementPage() {
                   data={c.sparkline}
                   onOpenDetail={() => openDetail(c)}
                 />
-              </Grid>
+              </Box>
             ))}
-          </Grid>
+          </Box>
 
           {!loading && total > 0 && (
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                <TablePagination
-                  component="div"
-                  count={total}
-                  page={page}
-                  onPageChange={(_, p) => setPage(p)}
-                  rowsPerPage={size}
-                  onRowsPerPageChange={(e) => {
-                    setSize(parseInt(e.target.value, 10));
-                    setPage(0);
-                  }}
-                  rowsPerPageOptions={[6, 12, 24, 48]}
-                  labelRowsPerPage="Tarjetas por página"
-                />
-              </Box>
-            </Grid>
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+              <TablePagination
+                component="div"
+                count={total}
+                page={page}
+                onPageChange={(_, p) => setPage(p)}
+                rowsPerPage={size}
+                onRowsPerPageChange={(e) => { setSize(parseInt(e.target.value, 10)); setPage(0); }}
+                rowsPerPageOptions={[6, 12, 24, 48]}
+                labelRowsPerPage="Tarjetas por página"
+              />
+            </Box>
           )}
         </>
       )}

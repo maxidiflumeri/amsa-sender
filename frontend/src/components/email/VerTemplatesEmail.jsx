@@ -18,7 +18,9 @@ import {
     DialogTitle,
     DialogContent,
     DialogActions,
-    useMediaQuery
+    useMediaQuery,
+    LinearProgress,
+    Skeleton
 } from '@mui/material';
 import {
     Visibility as VisibilityIcon,
@@ -54,19 +56,24 @@ const VerTemplatesEmail = () => {
     const [dupOpen, setDupOpen] = useState(false);
     const [dupName, setDupName] = useState('');
     const [dupLoading, setDupLoading] = useState(false);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         const fetchTemplates = async () => {
+            setLoading(true);                  // ⬅️ inicio
             try {
                 const { data } = await api.get('/email/templates');
                 setTemplates(data);
             } catch (error) {
                 console.error('Error al obtener los templates', error);
+            } finally {
+                setLoading(false);               // ⬅️ fin
             }
         };
 
         fetchTemplates();
     }, []);
+
 
     const handleEliminar = async () => {
         try {
@@ -89,6 +96,17 @@ const VerTemplatesEmail = () => {
         setDialogOpen(false);
         setSelectedTemplate(null);
     };
+
+    const SkeletonRow = () => (
+        <TableRow>
+            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
+            <TableCell><Skeleton variant="text" width="75%" /></TableCell>
+            <TableCell><Skeleton variant="text" width="40%" /></TableCell>
+            <TableCell align="right">
+                <Skeleton variant="rounded" width={120} height={32} sx={{ ml: 'auto' }} />
+            </TableCell>
+        </TableRow>
+    );
 
     // Duplicar - abre modal con nombre por defecto
     const openDuplicateModal = (tpl) => {
@@ -188,6 +206,8 @@ const VerTemplatesEmail = () => {
                         />
                     </Box>
 
+                    {loading && <Box sx={{ mb: 1 }}><LinearProgress /></Box>}
+
                     <TableContainer>
                         <Table>
                             <TableHead>
@@ -199,49 +219,50 @@ const VerTemplatesEmail = () => {
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {templatesFiltrados.map((tpl) => (
-                                    <TableRow key={tpl.id}>
-                                        <TableCell>{tpl.nombre}</TableCell>
-                                        <TableCell>{tpl.asunto}</TableCell>
-                                        <TableCell>
-                                            {tpl.creadoAt ? dayjs(tpl.creadoAt).format('DD/MM/YYYY HH:mm') : 'Sin fecha'}
-                                        </TableCell>
-                                        <TableCell align="right">
-                                            <Tooltip title="Vista previa">
-                                                <IconButton onClick={() => navigate(`/preview-template/${tpl.id}`)}>
-                                                    <VisibilityIcon />
-                                                </IconButton>
-                                            </Tooltip>
-                                            <Tooltip title="Editar">
-                                                <IconButton onClick={() => navigate(`/email/crearTemplate?id=${tpl.id}`)}>
-                                                    <EditIcon />
-                                                </IconButton>
-                                            </Tooltip>
-
-                                            {/* NUEVO: Duplicar */}
-                                            <Tooltip title="Duplicar">
-                                                <IconButton onClick={() => openDuplicateModal(tpl)}>
-                                                    <ContentCopyIcon />
-                                                </IconButton>
-                                            </Tooltip>
-
-                                            <Tooltip title="Eliminar">
-                                                <IconButton onClick={() => {
-                                                    setSelectedTemplate(tpl);
-                                                    setDialogOpen(true);
-                                                }}>
-                                                    <DeleteIcon color="error" />
-                                                </IconButton>
-                                            </Tooltip>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                                {templatesFiltrados.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={4} align="center">
-                                            No se encontraron templates.
-                                        </TableCell>
-                                    </TableRow>
+                                {loading ? (
+                                    // ⬅️ 6 filas fantasma mientras carga
+                                    Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={`sk-${i}`} />)
+                                ) : (
+                                    <>
+                                        {templatesFiltrados.map((tpl) => (
+                                            <TableRow key={tpl.id}>
+                                                <TableCell>{tpl.nombre}</TableCell>
+                                                <TableCell>{tpl.asunto}</TableCell>
+                                                <TableCell>
+                                                    {tpl.creadoAt ? dayjs(tpl.creadoAt).format('DD/MM/YYYY HH:mm') : 'Sin fecha'}
+                                                </TableCell>
+                                                <TableCell align="right">
+                                                    <Tooltip title="Vista previa">
+                                                        <IconButton onClick={() => navigate(`/preview-template/${tpl.id}`)}>
+                                                            <VisibilityIcon />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <Tooltip title="Editar">
+                                                        <IconButton onClick={() => navigate(`/email/crearTemplate?id=${tpl.id}`)}>
+                                                            <EditIcon />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <Tooltip title="Duplicar">
+                                                        <IconButton onClick={() => openDuplicateModal(tpl)}>
+                                                            <ContentCopyIcon />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <Tooltip title="Eliminar">
+                                                        <IconButton onClick={() => { setSelectedTemplate(tpl); setDialogOpen(true); }}>
+                                                            <DeleteIcon color="error" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {templatesFiltrados.length === 0 && (
+                                            <TableRow>
+                                                <TableCell colSpan={4} align="center">
+                                                    No se encontraron templates.
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </>
                                 )}
                             </TableBody>
                         </Table>

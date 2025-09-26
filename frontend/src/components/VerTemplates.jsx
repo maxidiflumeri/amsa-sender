@@ -16,12 +16,14 @@ import {
     InputAdornment,
     Card,
     CardContent,
-    CardActions,    
+    CardActions,
     Pagination,
     MenuItem,
     Select,
     FormControl,
-    InputLabel
+    InputLabel,
+    LinearProgress,
+    Skeleton
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -58,7 +60,7 @@ export default function VerTemplates() {
             setTemplates(res.data);
         } catch (err) {
             console.error('Error al cargar templates', err);
-        } finally {
+        } finally {            
             setLoading(false);
         }
     };
@@ -103,6 +105,25 @@ export default function VerTemplates() {
         const lineCount = text?.split('\n').length || 0;
         return lineCount > 3;
     };
+
+    const SkeletonCard = () => (
+        <Card variant="outlined" sx={{ borderRadius: 3, boxShadow: 3 }}>
+            <CardContent>
+                <Skeleton variant="text" width="40%" height={28} />
+                <Skeleton variant="text" width="90%" />
+                <Skeleton variant="text" width="85%" />
+                <Skeleton variant="text" width="80%" />
+            </CardContent>
+            <CardActions sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', px: 2, pb: 2 }}>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Skeleton variant="circular" width={36} height={36} />
+                    <Skeleton variant="circular" width={36} height={36} />
+                    <Skeleton variant="circular" width={36} height={36} />
+                </Box>
+                <Skeleton variant="rounded" width={100} height={32} />
+            </CardActions>
+        </Card>
+    );
 
     return (
         <Box
@@ -160,8 +181,24 @@ export default function VerTemplates() {
             </Box>
 
             {loading ? (
-                <Typography sx={{ p: 2 }}>Cargando templates...</Typography>
+                <>
+                    <Box sx={{ mb: 2 }}>
+                        <LinearProgress />
+                    </Box>
+
+                    <Box
+                        sx={{
+                            display: 'grid',
+                            gap: 2
+                        }}
+                    >
+                        {Array.from({ length: templatesPorPagina }).map((_, i) => (
+                            <SkeletonCard key={`sk-${i}`} />
+                        ))}
+                    </Box>
+                </>
             ) : templatesFiltrados.length === 0 ? (
+
                 <Typography sx={{ p: 2 }}>No hay templates que coincidan.</Typography>
             ) : (
                 <>
