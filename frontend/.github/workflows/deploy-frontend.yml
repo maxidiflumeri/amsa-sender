@@ -1,0 +1,80 @@
+
+name: Deploy Frontend to S3 + CloudFront
+
+on:
+  push:
+    branches: [ main ]   # cambialo si deployás otra rama
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC
+  contents: read
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096" # por si el build es pesado
+
+    defaults:
+      run:
+        working-directory: ./frontend  # ⚠️ cambiá si tu app no está en ./frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: ./frontend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      # (Opcional) .env de build con secrets:
+      # - name: Create .env
+      #   run: |
+      #     cat > .env <<EOF
+      #     VITE_API_URL=${{ secrets.VITE_API_URL }}
+      #     EOF
+
+      - name: Build
+        run: |
+          npm run build
+          if [ -d "dist" ]; then echo "OUT_DIR=dist" >> $GITHUB_ENV; else echo "OUT_DIR=build" >> $GITHUB_ENV; fi
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 1) Assets hasheados con cache largo (excluye index.html)
+      - name: Sync assets (long cache)
+        run: |
+          aws s3 sync "$OUT_DIR" "s3://${{ secrets.S3_BUCKET }}/" \
+            --delete \
+            --exclude "index.html" \
+            --cache-control "public,max-age=31536000,immutable"
+
+      # 2) index.html sin cache
+      - name: Upload index.html (no-cache)
+        run: |
+          aws s3 cp "$OUT_DIR/index.html" "s3://${{ secrets.S3_BUCKET }}/index.html" \
+            --content-type "text/html" \
+            --cache-control "no-store,no-cache,must-revalidate" \
+            --metadata-directive REPLACE
+
+      # 3) Invalidación mínima
+      - name: CloudFront Invalidation
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ secrets.CF_DISTRIBUTION_ID }}" \
+            --paths "/index.html" "/"

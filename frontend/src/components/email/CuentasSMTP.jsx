@@ -172,6 +172,7 @@ export default function CuentasSMTP() {
             variant="outlined"
             sx={{
                 height: '100%',
+                width: '100%',
                 minHeight: CARD_MIN_HEIGHT,
                 borderRadius: 2,
                 boxShadow: 1,
