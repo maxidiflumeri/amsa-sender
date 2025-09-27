@@ -33,18 +33,21 @@ export class ReportesWorkerService implements OnModuleInit, OnModuleDestroy {
         this.worker = new Worker(
             'reportesEmail',
             async (job: Job<{ tareaId: number }>) => {
-                this.logger.log(`Procesando reportesEmail jobId=${job.id} tareaId=${job.data?.tareaId}`);
-                await this.procesarTarea(job.data.tareaId);
+                return await this.procesarTarea(job); // devolvemos { skipped: boolean } | void
             },
-            { connection, concurrency: 1 }, // subí concurrency si querés paralelismo
+            { connection, concurrency: 1 },
         );
 
         this.worker.on('failed', (job, err) => {
             this.logger.error(`Job ${job?.id} falló: ${err?.message}`);
         });
 
-        this.worker.on('completed', (job) => {
-            this.logger.log(`Job ${job?.id} completado`);
+        this.worker.on('completed', (job, result: any) => {
+            if (result?.skipped) {
+                this.logger.debug(`Job ${job?.id} omitido (tarea pausada)`);
+            } else {
+                this.logger.log(`Job ${job?.id} completado`);
+            }
         });
 
         this.logger.log('ReportesWorker inicializado y escuchando cola "reportesEmail"');
@@ -55,9 +58,30 @@ export class ReportesWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     // ====== LÓGICA DEL JOB (igual a tu versión) ======
-    async procesarTarea(tareaId: number): Promise<void> {
+    // Cambiá la firma para recibir el job
+    async procesarTarea(job: Job<{ tareaId: number }>): Promise<{ skipped: boolean } | void> {
+        const tareaId = job.data.tareaId;
+
+        // Guard liviano: solo habilitada
+        const estado = await this.prisma.tareaProgramada.findUnique({
+            where: { id: tareaId },
+            select: { habilitada: true },
+        });
+
+        if (!estado?.habilitada) {
+            this.logger.debug(`[ReportesWorkerService] Ignoro job por tarea pausada tareaId=${tareaId}`);
+            return { skipped: true };
+        }
+
+        // Cargamos la tarea completa recién ahora
         const tarea = await this.prisma.tareaProgramada.findUnique({ where: { id: tareaId } });
-        if (!tarea || !tarea.habilitada) return;
+        if (!tarea) {
+            this.logger.warn(`[ReportesWorkerService] Tarea ${tareaId} no existe, omito`);
+            return { skipped: true };
+        }
+
+        // ✅ Log recién acá (tarea activa)
+        this.logger.log(`Procesando reportesEmail jobId=${job.id} tareaId=${tareaId}`);
 
         const ejec = await this.prisma.ejecucionTarea.create({
             data: { tareaId: tarea.id, estado: 'running', inicioEn: new Date() },
@@ -68,7 +92,6 @@ export class ReportesWorkerService implements OnModuleInit, OnModuleDestroy {
             const rep = cfg.reportes ?? { rebotes: true, acciones: true };
             const zone = tarea.zonaHoraria || 'America/Argentina/Buenos_Aires';
 
-            // AYER completo
             const startLocal = DateTime.now().setZone(zone).minus({ days: 1 }).startOf('day');
             const endLocal = startLocal.endOf('day');
             const desde = startLocal.toJSDate();
@@ -77,7 +100,7 @@ export class ReportesWorkerService implements OnModuleInit, OnModuleDestroy {
 
             const adjuntos: { filename: string; content: Buffer; contentType: string }[] = [];
 
-            if (rep.rebotes) {                
+            if (rep.rebotes) {
                 const r = await this.reportes.generarCsvRebotes({ desde, hasta });
                 const buf = Buffer.isBuffer(r) ? r : Buffer.from(r, 'utf8');
                 adjuntos.push({ filename: `rebotes_${yyyyMMdd}.csv`, content: buf, contentType: 'text/csv' });
@@ -99,7 +122,6 @@ export class ReportesWorkerService implements OnModuleInit, OnModuleDestroy {
             const fromName = process.env.MAIL_FROM_NAME || 'AMSA Sender';
             const from = `${fromName} <${fromEmail}>`;
 
-            // Crear transporter por job (igual a tu estilo actual)
             const transporter = nodemailer.createTransport({
                 host: this.smtpHost,
                 port: parseInt(this.smtpPort, 10),

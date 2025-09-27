@@ -1,5 +1,5 @@
 // src/scheduler/tareas.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -46,7 +46,7 @@ export class TareasService {
         const t = await this.prisma.tareaProgramada.findUnique({ where: { id } });
         const updated = await this.prisma.tareaProgramada.update({
             where: { id },
-            data: { habilitada: t!!.habilitada },
+            data: { habilitada: !t!!.habilitada },
         });
         await this.scheduler.upsertRepeatable(updated.id);
         return updated;
@@ -67,5 +67,17 @@ export class TareasService {
             orderBy: { id: 'desc' },
             take: 100,
         });
+    }
+
+    async eliminarTarea(id: number) {
+        const t = await this.prisma.tareaProgramada.findUnique({ where: { id } });
+        if(!t) {
+            throw new NotFoundException('Tarea no encontrada');
+        }
+
+        if(t.habilitada){
+            await this.alternar(id)
+        }
+        return await this.prisma.tareaProgramada.delete({ where: { id } });
     }
 }

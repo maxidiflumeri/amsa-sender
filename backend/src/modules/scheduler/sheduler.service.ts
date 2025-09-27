@@ -94,12 +94,26 @@ export class SchedulerService implements OnModuleInit {
         );
     }
 
-    private async removeRepeatablesByTaskId(id: number) {
-        const existentes: RepeatableJob[] = await this.reportesQueue.getRepeatableJobs();
-        await Promise.all(
-            existentes
-                .filter((rj) => (rj.id?.replace('tarea:', '') ?? '') === String(id))
-                .map((rj) => this.reportesQueue.removeRepeatableByKey(rj.key)),
-        );
+    // Elimina TODOS los repeatables cuyo jobId === tareaId para ese nombre
+    async removeRepeatablesByTaskId(tareaId: number, name = 'reportesEmail') {
+        const id = String(tareaId);
+
+        // A) repeatables
+        const reps = await this.reportesQueue.getRepeatableJobs();
+        for (const r of reps) {
+            // r.id = jobId; r.name = name; r.key = clave completa
+            if (r.name === name && r.id === id) {
+                await this.reportesQueue.removeRepeatableByKey(r.key);
+            }
+        }
+
+        // B) encolados pendientes (evita “ecos” después de pausar)
+        // Nota: getJobs() puede variar según bullmq; usa las funciones que tengas disponibles en tu versión
+        const pending = await this.reportesQueue.getJobs(['wait', 'delayed']);
+        for (const j of pending) {
+            if (j.name === name && j?.data?.tareaId === tareaId) {
+                await j.remove();
+            }
+        }
     }
 }

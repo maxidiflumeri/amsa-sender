@@ -1,5 +1,5 @@
 // src/scheduler/tareas.controller.ts
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { CrearTareaDto } from './dto/crear-tarea.dto';
 import { TareasService } from './tarea.service';
 
@@ -33,5 +33,10 @@ export class TareasController {
     @Get(':id/ejecuciones')
     ejecuciones(@Param('id') id: string) {
         return this.svc.ejecuciones(Number(id));
+    }
+
+    @Delete(':id')
+    eliminar(@Param('id') id: string) {
+        return this.svc.eliminarTarea(Number(id));
     }
 }

@@ -577,9 +577,7 @@ export class ReportesEmailService {
         desde?: Date;
         hasta?: Date;
     }): Promise<string> {
-        const { campaniaId, desde, hasta } = params;
-        console.log(desde)
-        console.log(hasta)
+        const { campaniaId, desde, hasta } = params;        
         const where: any = {
             ...(desde || hasta ? { fecha: { gte: desde ?? undefined, lte: hasta ?? undefined } } : {}),
             ...(campaniaId ? { reporte: { campañaId: campaniaId } } : {}),
