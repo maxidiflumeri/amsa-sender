@@ -1,69 +1,80 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuill } from 'react-quilljs';
+import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import DOMPurify from 'dompurify';
 import {
-    Box, Stack, Typography, Button, FormControl, InputLabel, Select, MenuItem, Paper, Switch, FormControlLabel
+    Box, Stack, Typography, Button,
+    FormControl, InputLabel, Select, MenuItem,
+    Paper, Switch, FormControlLabel
 } from '@mui/material';
 
-export default function HtmlTemplateEditor({
+export default function HTMLTemplateEditor({
     value,
     onChange,
     variables = [{ label: 'Fecha', token: '${DATE}' }],
     placeholder = 'Escribe tu contenido (puedes insertar variables)…',
 }) {
-    const modules = useMemo(() => ({
-        toolbar: [
-            [{ header: [1, 2, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ list: 'ordered' }, { list: 'bullet' }],
-            [{ align: [] }],
-            ['link', 'clean'],
-        ],
-    }), []);
+    // refs **válidos** (nunca condicionales)
+    const containerRef = useRef(null);
+    const quillRef = useRef(null);
+    const lastHtml = useRef('');
 
-    const { quill, quillRef } = useQuill({ theme: 'snow', modules, placeholder });
     const [showPreview, setShowPreview] = useState(true);
     const [selectedVar, setSelectedVar] = useState('');
-    const initialLoaded = useRef(false);
-    const lastEmitted = useRef(null);
 
-    // Montaje: setear HTML inicial una sola vez
+    // Instancia Quill una sola vez
     useEffect(() => {
-        if (quill && !initialLoaded.current) {
-            const html = value || '';
-            quill.clipboard.dangerouslyPasteHTML(html);
-            lastEmitted.current = html;
-            initialLoaded.current = true;
+        if (!containerRef.current || quillRef.current) return;
 
-            // Propagar cambios al padre
-            quill.on('text-change', () => {
-                const htmlNow = quill.root.innerHTML;
-                if (htmlNow !== lastEmitted.current) {
-                    lastEmitted.current = htmlNow;
-                    onChange?.(htmlNow);
-                }
-            });
+        const q = new Quill(containerRef.current, {
+            theme: 'snow',
+            placeholder,
+            modules: {
+                toolbar: [
+                    [{ header: [1, 2, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    [{ list: 'ordered' }, { list: 'bullet' }],
+                    [{ align: [] }],
+                    ['link', 'clean'],
+                ],
+            },
+        });
+
+        quillRef.current = q;
+
+        if (value) {
+            q.clipboard.dangerouslyPasteHTML(value);
+            lastHtml.current = value;
         }
-    }, [quill]);
 
-    // Si el valor externo cambia (e.g. reseteo del form), reflejarlo sin loop
+        q.on('text-change', () => {
+            const html = q.root.innerHTML;
+            if (html !== lastHtml.current) {
+                lastHtml.current = html;
+                onChange?.(html);
+            }
+        });
+    }, [placeholder, onChange, value]);
+
+    // Sincroniza cuando el padre cambia "value" (reset del form, editar)
     useEffect(() => {
-        if (quill && initialLoaded.current && typeof value === 'string' && value !== lastEmitted.current) {
-            quill.setContents([]); // limpiar
-            quill.clipboard.dangerouslyPasteHTML(value);
-            lastEmitted.current = value;
+        const q = quillRef.current;
+        if (!q) return;
+        if (typeof value === 'string' && value !== lastHtml.current) {
+            q.setContents([]);
+            q.clipboard.dangerouslyPasteHTML(value);
+            lastHtml.current = value;
         }
-    }, [value, quill]);
+    }, [value]);
 
     const insertVariable = (token) => {
-        if (!quill) return;
+        const q = quillRef.current;
+        if (!q) return;
         const t = token || selectedVar;
         if (!t) return;
-        const range = quill.getSelection(true);
-        const index = range ? range.index : quill.getLength();
-        quill.insertText(index, t);
-        quill.setSelection(index + t.length, 0);
+        const range = q.getSelection(true) || { index: q.getLength(), length: 0 };
+        q.insertText(range.index, t);
+        q.setSelection(range.index + t.length, 0);
     };
 
     const sanitized = useMemo(() => DOMPurify.sanitize(value || ''), [value]);
@@ -77,18 +88,32 @@ export default function HtmlTemplateEditor({
                 <Stack direction="row" spacing={1} alignItems="center">
                     <FormControl size="small" sx={{ minWidth: 200 }}>
                         <InputLabel>Insertar variable</InputLabel>
-                        <Select label="Insertar variable" value={selectedVar} onChange={(e) => setSelectedVar(e.target.value)}>
-                            {variables.map(v => <MenuItem key={v.token} value={v.token}>{v.label} — {v.token}</MenuItem>)}
+                        <Select
+                            label="Insertar variable"
+                            value={selectedVar}
+                            onChange={(e) => setSelectedVar(e.target.value)}
+                        >
+                            {variables.map(v => (
+                                <MenuItem key={v.token} value={v.token}>
+                                    {v.label} — {v.token}
+                                </MenuItem>
+                            ))}
                         </Select>
                     </FormControl>
-                    <Button variant="outlined" onClick={() => insertVariable(selectedVar)} disabled={!selectedVar}>Insertar</Button>
-                    <FormControlLabel control={<Switch checked={showPreview} onChange={(e) => setShowPreview(e.target.checked)} />} label="Vista previa" />
+                    <Button variant="outlined" onClick={() => insertVariable(selectedVar)} disabled={!selectedVar}>
+                        Insertar
+                    </Button>
+                    <FormControlLabel
+                        control={<Switch checked={showPreview} onChange={(e) => setShowPreview(e.target.checked)} />}
+                        label="Vista previa"
+                    />
                 </Stack>
             </Stack>
 
-            <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--mui-palette-divider, #e0e0e0)' }}>
-                <div ref={quillRef} />
-            </div>
+            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
+                {/* ref correcto (objeto ref), nunca .current ni booleanos */}
+                <div ref={containerRef} />
+            </Box>
 
             {showPreview && (
                 <Paper variant="outlined" sx={{ p: 2 }}>
@@ -98,10 +123,6 @@ export default function HtmlTemplateEditor({
                     <Box sx={{ '& p': { m: 0, mb: 1 } }} dangerouslySetInnerHTML={{ __html: sanitized }} />
                 </Paper>
             )}
-
-            <Typography variant="caption" color="text.secondary">
-                Tips: podés usar variables como <code>${'{DATE}'}</code>. Para contenido más avanzado, usá **Templates de Email** del sistema.
-            </Typography>
         </Stack>
     );
 }
