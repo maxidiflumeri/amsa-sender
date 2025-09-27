@@ -21,6 +21,7 @@ import VerReportesEmail from './components/email/VerReportesEmail';
 import DesuscripcionConfirmar from './components/email/DesuscripcionConfirmar';
 import DesuscripcionResultado from './components/email/DesuscripcionResultado';
 import VerDesuscripcionesEmail from './components/email/VerDesuscripcionesEmail';
+import TareasProgramadas from './components/TareasProgramadas';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -235,6 +236,7 @@ export default function App() {
                     <Route path="/reportes" element={<VerReportes />} />
                     <Route path="/templates" element={<VerTemplates />} />
                     <Route path="/metricas" element={<VerMetricas />} />
+                    <Route path="/config/tareas-programadas" element={<TareasProgramadas />} />
                     <Route path="/email/cuentas" element={<CuentasSMTP />} />
                     <Route path="/email/crearTemplate" element={<CrearTemplate />} />
                     <Route path="/email/templates" element={<VerTemplatesEmail />} />
