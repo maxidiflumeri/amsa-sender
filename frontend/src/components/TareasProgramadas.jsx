@@ -332,6 +332,8 @@ export default function TareasProgramadas() {
     const [histRows, setHistRows] = useState([]);
     const [saving, setSaving] = useState(false);
     const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' });
+    const [confirmarEliminacion, setConfirmarEliminacion] = useState(false);
+    const [tareaAEliminar, setTareaAEliminar] = useState(null);
 
     const paginated = useMemo(() => rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage), [rows, page, rowsPerPage]);
 
@@ -392,14 +394,22 @@ export default function TareasProgramadas() {
         }
     };
 
-    const remove = async (row) => {
-        if (!confirm(`¿Eliminar la tarea "${row.nombre}"?`)) return;
+    const confirmarEliminar = (campaña) => {
+        setTareaAEliminar(campaña);
+        setConfirmarEliminacion(true);
+    };
+
+    const remove = async () => {
+        if (!tareaAEliminar) return;
         try {
-            await api.delete(`/tareas-programadas/${row.id}`);
+            await api.delete(`/tareas-programadas/${tareaAEliminar.id}`);
             setSnack({ open: true, msg: 'Tarea eliminada', sev: 'success' });
             await fetchAll();
         } catch {
             setSnack({ open: true, msg: 'Error al eliminar tarea', sev: 'error' });
+        } finally {
+            setConfirmarEliminacion(false);
+            setTareaAEliminar(null);
         }
     };
 
@@ -473,7 +483,7 @@ export default function TareasProgramadas() {
                                     </Tooltip>
                                     <Tooltip title="Ejecutar ahora"><span><IconButton onClick={() => runNow(row)}><PlayCircleFilledWhiteIcon /></IconButton></span></Tooltip>
                                     <Tooltip title="Historial"><span><IconButton onClick={() => openHistorial(row)}><HistoryIcon /></IconButton></span></Tooltip>
-                                    <Tooltip title="Eliminar"><span><IconButton onClick={() => remove(row)} color="error"><DeleteIcon /></IconButton></span></Tooltip>
+                                    <Tooltip title="Eliminar"><span><IconButton onClick={() => confirmarEliminar(row)} color="error"><DeleteIcon /></IconButton></span></Tooltip>
                                 </Stack>
                             </TableCell>
                         </TableRow>
@@ -517,6 +527,29 @@ export default function TareasProgramadas() {
             <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))}>
                 <Alert severity={snack.sev} variant="filled" onClose={() => setSnack(s => ({ ...s, open: false }))}>{snack.msg}</Alert>
             </Snackbar>
+
+            <Dialog
+                open={confirmarEliminacion}
+                onClose={() => setConfirmarEliminacion(false)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>¿Eliminar tarea?</DialogTitle>
+                <DialogContent dividers>
+                    <Typography>
+                        ¿Estás seguro de que querés eliminar la tarea "{tareaAEliminar?.nombre}"?
+                        Esta acción eliminará sus contactos, pero los reportes se conservarán.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setConfirmarEliminacion(false)} color="inherit">
+                        Cancelar
+                    </Button>
+                    <Button onClick={remove} color="error" variant="contained">
+                        Eliminar
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Paper>
     );
 }
