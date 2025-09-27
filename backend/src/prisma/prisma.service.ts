@@ -1,19 +1,39 @@
 // src/prisma/prisma.service.ts
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger, INestApplication } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { EmailWorkerService } from 'src/workers/email-worker.service';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(PrismaService.name);
-    
+
     async onModuleInit() {
-        // Fuerza la zona horaria -03 en esta sesión del pool
+        // 1) Conectá primero
+        await this.$connect();
+
+        // 2) Seteá timezone en la sesión actual (afecta esta conexión del pool)
         await this.$executeRawUnsafe('SET time_zone = "-03:00"');
-        // (Opcional) Log rápido para verificar
+
+        // 3) Logueá una sola vez
         const [row]: any = await this.$queryRawUnsafe('SELECT @@session.time_zone tz');
         this.logger.log(`Prisma conectado con zona horaria: ${row.tz}`);
-        await this.$connect();
+    }
+
+    async enableShutdownHooks(app: INestApplication) {
+        const shutdown = async () => {
+            try {
+                await this.$disconnect();
+            } finally {
+                await app.close();
+            }
+        };
+
+        // Para Nest:
+        app.enableShutdownHooks();
+
+        // Señales y beforeExit del proceso (Node)
+        process.on('SIGINT', shutdown);
+        process.on('SIGTERM', shutdown);
+        process.on('beforeExit', shutdown);
     }
 
     async onModuleDestroy() {
