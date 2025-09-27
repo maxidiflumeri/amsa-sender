@@ -52,7 +52,6 @@ export class SchedulerService implements OnModuleInit {
         const t = await this.prisma.tareaProgramada.findUnique({ where: { id: tareaId } });
         if (!t) return;
 
-        // Si está deshabilitada, borrar su repeatable y salir
         if (!t.habilitada) {
             await this.removeRepeatablesByTaskId(tareaId);
             this.logger.log(`Desprogramada tarea (${tareaId}) por estar deshabilitada.`);
@@ -62,6 +61,7 @@ export class SchedulerService implements OnModuleInit {
         await this.addOrReplaceRepeatable(t.id, t.expresionCron, t.zonaHoraria);
         this.logger.log(`Reprogramada tarea (${t.id}) -> ${t.expresionCron} [${t.zonaHoraria}]`);
     }
+
 
     /**
      * Encola ejecución inmediata (manual) sin tocar el repeatable.
@@ -76,43 +76,53 @@ export class SchedulerService implements OnModuleInit {
 
     // ----------------- Helpers privados -----------------
 
-    private async addOrReplaceRepeatable(id: number, cron: string, tz?: string) {
-        await this.removeRepeatablesByTaskId(id); // limpiamos claves viejas por si cambió el cron/tz
-
-        const repeat: RepeatOptions = {
-            pattern: cron,
-            tz: tz || 'America/Argentina/Buenos_Aires',
-        };
+    async addOrReplaceRepeatable(id: number, cron: string, tz?: string) {
+        const name = this.jobNameFor('REPORTE_EMAIL_DIARIO');
+        // limpia cualquier schedule previo de esa tarea
+        await this.removeRepeatablesByTaskId(id);
 
         await this.reportesQueue.add(
-            'reportesEmail',
+            name,
             { tareaId: id },
-            {
-                jobId: `tarea:${id}`, // identificador estable
-                repeat,
-            },
+            { repeat: { pattern: cron, tz, jobId: String(id) } }
         );
     }
 
-    // Elimina TODOS los repeatables cuyo jobId === tareaId para ese nombre
-    async removeRepeatablesByTaskId(tareaId: number, name = 'reportesEmail') {
+    private jobNameFor(tipo: string) {
+        // ajustá según tu mapping real
+        return 'reportesEmail';
+    }
+
+    async removeRepeatablesByTaskId(tareaId: number) {
+        const name = this.jobNameFor(/* tipo si lo necesitás */ 'REPORTE_EMAIL_DIARIO');
         const id = String(tareaId);
 
-        // A) repeatables
+        // A) borrar SCHEDULES (la forma correcta)
         const reps = await this.reportesQueue.getRepeatableJobs();
         for (const r of reps) {
-            // r.id = jobId; r.name = name; r.key = clave completa
             if (r.name === name && r.id === id) {
                 await this.reportesQueue.removeRepeatableByKey(r.key);
             }
         }
 
-        // B) encolados pendientes (evita “ecos” después de pausar)
-        // Nota: getJobs() puede variar según bullmq; usa las funciones que tengas disponibles en tu versión
-        const pending = await this.reportesQueue.getJobs(['wait', 'delayed']);
-        for (const j of pending) {
-            if (j.name === name && j?.data?.tareaId === tareaId) {
+        // B) limpiar pendings, evitando instancias repeat:
+        const pendings = await this.reportesQueue.getJobs(['wait', 'delayed']);
+        for (const j of pendings) {
+            if (j.name !== name) continue;
+            if (j?.data?.tareaId !== tareaId) continue;
+
+            // ⚠️ NO intentes borrar instancias repeat
+            if (typeof j.id === 'string' && j.id.startsWith('repeat:')) {
+                this.logger.debug(`[Scheduler] Omito eliminar instancia repeat ${j.id} (tarea ${tareaId})`);
+                continue;
+            }
+
+            try {
                 await j.remove();
+            } catch (e: any) {
+                // si justo BullMQ te avisa que pertenece al scheduler, lo ignorás
+                if (!/belongs to a job scheduler/.test(e?.message)) throw e;
+                this.logger.debug(`[Scheduler] Omito ${j.id}: ${e.message}`);
             }
         }
     }

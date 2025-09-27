@@ -59,18 +59,21 @@ export class ReportesWorkerService implements OnModuleInit, OnModuleDestroy {
 
     // ====== LÓGICA DEL JOB (igual a tu versión) ======
     // Cambiá la firma para recibir el job
-    async procesarTarea(job: Job<{ tareaId: number }>): Promise<{ skipped: boolean } | void> {
+    async procesarTarea(job: Job<{ tareaId: number, force?: boolean }>): Promise<{ skipped: boolean } | void> {
         const tareaId = job.data.tareaId;
+        const force = job.data.force || false;
 
         // Guard liviano: solo habilitada
-        const estado = await this.prisma.tareaProgramada.findUnique({
-            where: { id: tareaId },
-            select: { habilitada: true },
-        });
+        if (!force) {
+            const estado = await this.prisma.tareaProgramada.findUnique({
+                where: { id: tareaId },
+                select: { habilitada: true },
+            });
 
-        if (!estado?.habilitada) {
-            this.logger.debug(`[ReportesWorkerService] Ignoro job por tarea pausada tareaId=${tareaId}`);
-            return { skipped: true };
+            if (!estado?.habilitada) {
+                this.logger.debug(`[ReportesWorkerService] Ignoro job por tarea pausada tareaId=${tareaId}`);
+                return { skipped: true };
+            }
         }
 
         // Cargamos la tarea completa recién ahora
@@ -92,7 +95,7 @@ export class ReportesWorkerService implements OnModuleInit, OnModuleDestroy {
             const rep = cfg.reportes ?? { rebotes: true, acciones: true };
             const zone = tarea.zonaHoraria || 'America/Argentina/Buenos_Aires';
 
-            const startLocal = DateTime.now().setZone(zone).minus({ days: 1 }).startOf('day');
+            const startLocal = DateTime.now().setZone(zone).startOf('day');
             const endLocal = startLocal.endOf('day');
             const desde = startLocal.toJSDate();
             const hasta = endLocal.toJSDate();
@@ -116,7 +119,7 @@ export class ReportesWorkerService implements OnModuleInit, OnModuleDestroy {
             const asuntoTpl = cfg.asuntoTpl ?? 'AMSA Sender – Reportes del ${DATE}';
             const htmlTpl = cfg.htmlTpl ?? `<p>Adjuntamos los reportes del <b>${yyyyMMdd}</b>.</p><p>— AMSA Sender</p>`;
             const asunto = asuntoTpl.replace('${DATE}', yyyyMMdd);
-            const html = htmlTpl;
+            const html = htmlTpl.replace('${DATE}', yyyyMMdd);
 
             const fromEmail = process.env.MAIL_FROM_EMAIL || 'reportes@anamayasa.com.ar';
             const fromName = process.env.MAIL_FROM_NAME || 'AMSA Sender';

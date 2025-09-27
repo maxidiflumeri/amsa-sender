@@ -178,14 +178,14 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
                         {preset === 'cada_x_minutos' && (
                             <TextField type="number" label="Cada (min)" value={cadaMin} onChange={(e) => setCadaMin(e.target.value)} fullWidth />
                         )}
-                        {(preset === 'cada_hora_al_minuto' || preset === 'diario_hora' || preset === 'semanal_dow_hora' || preset === 'mensual_dom_hora') && (
-                            <TextField select label="Minuto" value={minuto} onChange={(e) => setMinuto(e.target.value)} fullWidth>
-                                {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                            </TextField>
-                        )}
                         {(preset === 'diario_hora' || preset === 'semanal_dow_hora' || preset === 'mensual_dom_hora') && (
                             <TextField select label="Hora" value={hora} onChange={(e) => setHora(e.target.value)} fullWidth>
                                 {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
+                            </TextField>
+                        )}
+                        {(preset === 'cada_hora_al_minuto' || preset === 'diario_hora' || preset === 'semanal_dow_hora' || preset === 'mensual_dom_hora') && (
+                            <TextField select label="Minuto" value={minuto} onChange={(e) => setMinuto(e.target.value)} fullWidth>
+                                {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
                             </TextField>
                         )}
                         {preset === 'semanal_dow_hora' && (
@@ -320,6 +320,7 @@ function HistorialDialog({ open, onClose, loading, ejecuciones }) {
 }
 
 export default function TareasProgramadas() {
+    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [loading, setLoading] = useState(false);
     const [rows, setRows] = useState([]);
     const [page, setPage] = useState(0);
@@ -418,7 +419,19 @@ export default function TareasProgramadas() {
                 <Typography variant="h6">Tareas programadas</Typography>
                 <Stack direction="row" spacing={1}>
                     <Tooltip title="Refrescar"><IconButton onClick={fetchAll}><RefreshIcon /></IconButton></Tooltip>
-                    <Button startIcon={<AddIcon />} variant="contained" onClick={handleCreate}>Nueva tarea</Button>
+                    <Button sx={{
+                        borderRadius: 2,
+                        fontFamily: commonFont,
+                        textTransform: 'none',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#075E54',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                            backgroundColor: '#0b7b65',
+                            transform: 'scale(1.03)',
+                            boxShadow: 4,
+                        },
+                    }} startIcon={<AddIcon />} variant="contained" onClick={handleCreate}>Nueva tarea</Button>
                 </Stack>
             </Stack>
 
