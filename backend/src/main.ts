@@ -8,6 +8,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { webcrypto } from 'crypto';
 import * as bodyParser from 'body-parser';
+import { PrismaService } from './prisma/prisma.service';
 
 dotenv.config();
 
@@ -17,6 +18,8 @@ if (!(global as any).crypto) {
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
+    const prisma = app.get(PrismaService);
+    await prisma.enableShutdownHooks(app);
 
     // 🔴 Muy importante: agregar un parser de TEXTO para esta ruta
     app.use('/api/email/ses/webhook',

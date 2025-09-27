@@ -400,7 +400,7 @@ export class ReportesEmailService {
         hasta?: Date;
         tipo?: TipoFiltro;
     }): Promise<string> {
-        const { campaniaId, desde, hasta, tipo = 'all' } = params;
+        const { campaniaId, desde, hasta, tipo = 'all' } = params;        
 
         // Construyo el where para EmailEvento
         const where: any = {
@@ -577,8 +577,7 @@ export class ReportesEmailService {
         desde?: Date;
         hasta?: Date;
     }): Promise<string> {
-        const { campaniaId, desde, hasta } = params;
-
+        const { campaniaId, desde, hasta } = params;        
         const where: any = {
             ...(desde || hasta ? { fecha: { gte: desde ?? undefined, lte: hasta ?? undefined } } : {}),
             ...(campaniaId ? { reporte: { campañaId: campaniaId } } : {}),

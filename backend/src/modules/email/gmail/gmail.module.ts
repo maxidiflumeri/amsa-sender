@@ -4,11 +4,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { GmailService } from './gmail.service';
 import { GmailController } from './gmail.controller';
 import { AuthModule } from 'src/auth/auth.module';
-import { PrismaService } from 'src/prisma/prisma.service';
 
 @Module({
     imports: [ScheduleModule.forRoot(), AuthModule],
-    providers: [GmailService, PrismaService],
+    providers: [GmailService],
     controllers: [GmailController],
     exports: [GmailService],
 })

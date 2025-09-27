@@ -243,3 +243,56 @@ model EmailDesuscripciones {
   @@unique([tenantId, emailHash, scope, campaignId])
   @@map("EmailDesuscripciones")
 }
+
+enum TipoTareaProgramada {
+  REPORTE_EMAIL_DIARIO
+}
+
+enum EstadoEjecucionTarea {
+  queued
+  running
+  completed
+  failed
+  retrying
+}
+
+model TareaProgramada {
+  id              Int                     @id @default(autoincrement())
+  nombre          String
+  tipo            TipoTareaProgramada
+  habilitada      Boolean                 @default(true)
+  expresionCron   String                  // ej: "0 8 * * *"
+  zonaHoraria     String                  @default("America/Argentina/Buenos_Aires")
+  // Config específica (extensible)
+  // { "reportes": { "rebotes": true, "acciones": true }, "asuntoTpl": "...", "htmlTpl": "...", "s3Prefix": "daily/" }
+  configuracion   Json
+  destinatarios   Json                    // string[] como JSON
+  reintentosMax   Int                     @default(3)
+  backoffMs       Int                     @default(60000)
+  ultimaEjecucion DateTime?
+  proximaEjecucion DateTime?
+
+  creadoPorUsuarioId Int?
+  creadoEn        DateTime                @default(now())
+  actualizadoEn   DateTime                @updatedAt
+
+  ejecuciones     EjecucionTarea[]
+
+  @@map("TareaProgramada")
+}
+
+model EjecucionTarea {
+  id          Int                   @id @default(autoincrement())
+  tareaId     Int
+  tarea       TareaProgramada       @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+  inicioEn    DateTime
+  finEn       DateTime?
+  estado      EstadoEjecucionTarea
+  error       String?               @db.Text
+  // ej: [{ "archivo":"rebotes_2025-09-26.csv", "bytes":12345, "s3Key":"daily/..."}]
+  adjuntos    Json?
+  logs        Json?
+
+  @@index([tareaId])
+  @@map("EjecucionTarea")
+}

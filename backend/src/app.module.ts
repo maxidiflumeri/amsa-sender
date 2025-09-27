@@ -11,9 +11,10 @@ import { QueueModule } from './queues/queue.module';
 import { AuthModule } from './auth/auth.module';  
 import { EmailModule } from './modules/email/email.module';
 import { ConfiguracionModule } from './modules/configuracion/configuracion.module';
+import { SchedulerModule } from './modules/scheduler/scheduler.module';
 
 @Module({
-  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule, AuthModule, EmailModule, ConfiguracionModule],
+  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule, AuthModule, EmailModule, ConfiguracionModule, SchedulerModule],
   controllers: [AppController],
   providers: [AppService, SocketGateway, PubSubService],
 })

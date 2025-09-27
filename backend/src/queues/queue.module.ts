@@ -12,6 +12,9 @@ import { connection } from './bullmq.config';
         BullModule.registerQueue({
             name: 'emailsEnvios',
         }),
+        BullModule.registerQueue({
+            name: 'reportesEmail',
+        }),
     ],
     exports: [BullModule],
 })

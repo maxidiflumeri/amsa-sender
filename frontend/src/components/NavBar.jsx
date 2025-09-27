@@ -35,6 +35,8 @@ import ExpandMore from '@mui/icons-material/ExpandMore';
 import UnsubscribeIcon from '@mui/icons-material/Unsubscribe';
 import { Avatar, Menu, MenuItem } from '@mui/material';
 import logo from '../assets/amsasender.png'; // Asegúrate de que la ruta sea correcta
+import SettingsIcon from '@mui/icons-material/Settings';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 
 const drawerWidth = 220;
 
@@ -51,8 +53,12 @@ const emailItems = [
     { label: 'Cuentas SMTP', path: '/email/cuentas', icon: <LinkIcon /> },
     { label: 'Templates', path: '/email/templates', icon: <ArticleIcon /> },
     { label: 'Campañas', path: '/email/campanias', icon: <CampaignIcon /> },
-    { label: 'Reportes', path: '/email/reportes', icon: <BarChartIcon /> },    
+    { label: 'Reportes', path: '/email/reportes', icon: <BarChartIcon /> },
     { label: 'Desuscripciones', path: '/email/desuscripciones', icon: <UnsubscribeIcon /> },
+];
+
+const configItems = [
+    { label: 'Tareas programadas', path: '/config/tareas-programadas', icon: <ScheduleIcon /> },
 ];
 
 // Switch estilo iOS con íconos dentro del track
@@ -118,6 +124,7 @@ export default function Layout({ children, mode, toggleTheme }) {
     const open = Boolean(anchorEl);
     const [openWhatsapp, setOpenWhatsapp] = useState(false);
     const [openEmail, setOpenEmail] = useState(false);
+    const [openConfig, setOpenConfig] = useState(false);
 
     const handleMenuOpen = (event) => {
         setAnchorEl(event.currentTarget);
@@ -170,6 +177,14 @@ export default function Layout({ children, mode, toggleTheme }) {
 
         return () => clearTimeout(timeout);
     }, [collapsed]);
+
+    useEffect(() => {
+        setOpenConfig(location.pathname.startsWith('/config'));
+    }, [location.pathname]);
+
+    useEffect(() => {
+        setOpenEmail(location.pathname.startsWith('/email'));
+    }, [location.pathname]);
 
     const drawerContent = (
         <Box height="100%" display="flex" flexDirection="column">
@@ -320,6 +335,77 @@ export default function Layout({ children, mode, toggleTheme }) {
                     </ListItemButton>
                     <Collapse in={openEmail} timeout="auto" unmountOnExit>
                         {emailItems.map(({ label, path, icon }) => (
+                            <ListItem key={path} disablePadding>
+                                <Tooltip title={collapsed ? label : ''} placement="right">
+                                    <ListItemButton
+                                        component={RouterLink}
+                                        to={path}
+                                        selected={location.pathname === path}
+                                        onClick={isMobile ? handleDrawerToggle : undefined}
+                                        sx={{
+                                            pl: collapsed ? 0 : 4,
+                                            justifyContent: collapsed ? 'center' : 'flex-start',
+                                            '&.Mui-selected': {
+                                                backgroundColor: theme.palette.action.selected,
+                                                fontWeight: 'bold',
+                                            }
+                                        }}
+                                    >
+                                        <ListItemIcon
+                                            sx={{
+                                                minWidth: 'auto',
+                                                mr: collapsed ? 0 : 1.5,
+                                                justifyContent: collapsed ? 'center' : 'flex-start',
+                                                width: collapsed ? '100%' : 'auto',
+                                                display: 'flex',
+                                            }}
+                                        >
+                                            {icon}
+                                        </ListItemIcon>
+                                        {!collapsed && <ListItemText primary={label} />}
+                                    </ListItemButton>
+                                </Tooltip>
+                            </ListItem>
+                        ))}
+                    </Collapse>
+                    {/* Configuración */}
+                    <ListItemButton onClick={() => setOpenConfig(!openConfig)}>
+                        <ListItemIcon
+                            sx={{
+                                minWidth: 'auto',
+                                justifyContent: 'center',
+                                mr: collapsed ? 0 : 1.5,
+                                ...(collapsed && {
+                                    backgroundColor: '#ECEFF1',
+                                    borderRadius: '50%',
+                                    width: 36, height: 36,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#607d8b',
+                                    '& svg': { fontSize: 26 }
+                                }),
+                                ...(!collapsed && {
+                                    backgroundColor: '#ECEFF1',
+                                    borderRadius: '50%',
+                                    width: 36, height: 36,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#607d8b',
+                                    '& svg': { fontSize: 22 }
+                                }),
+                            }}
+                        >
+                            <SettingsIcon />
+                        </ListItemIcon>
+
+                        {!collapsed && (
+                            <ListItemText
+                                primary="Configuración"
+                                primaryTypographyProps={{ sx: { fontWeight: 'bold' } }}
+                            />
+                        )}
+                        {!collapsed && (openConfig ? <ExpandLess /> : <ExpandMore />)}
+                    </ListItemButton>
+                    <Collapse in={openConfig} timeout="auto" unmountOnExit>
+                        {configItems.map(({ label, path, icon }) => (
                             <ListItem key={path} disablePadding>
                                 <Tooltip title={collapsed ? label : ''} placement="right">
                                     <ListItemButton
