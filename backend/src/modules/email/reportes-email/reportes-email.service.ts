@@ -67,7 +67,12 @@ export class ReportesEmailService {
             this.prisma.campañaEmail.count({ where: whereCampaign }),
             this.prisma.campañaEmail.findMany({
                 where: whereCampaign,
-                select: { id: true, nombre: true, createdAt: true },
+                select: {
+                    id: true,
+                    nombre: true,
+                    createdAt: true,
+                    _count: { select: { contactos: true } }, // 👈 NUEVO
+                },
                 orderBy: { createdAt: 'desc' },
                 skip: page * size,
                 take: size,
@@ -80,12 +85,38 @@ export class ReportesEmailService {
 
         const campañaIds = campañas.map((c) => c.id);
 
+
+
         // --- Enviados por campaña (estado='enviado'). Si preferís por enviadoAt en rango, ajustá el where ---
         const enviados = await this.prisma.reporteEmail.groupBy({
             by: ['campañaId'],
             where: {
                 campañaId: { in: campañaIds },
                 estado: 'enviado',
+                // Si querés acotar por rango temporal del envío, usa enviadoAt:
+                // enviadoAt: { gte: since, lt: until },
+            },
+            _count: { _all: true },
+        });
+
+        // --- No enviados por Rebotes anteriores por campaña (estado='rebote'). Si preferís por enviadoAt en rango, ajustá el where ---
+        const rebotesPrevios = await this.prisma.reporteEmail.groupBy({
+            by: ['campañaId'],
+            where: {
+                campañaId: { in: campañaIds },
+                estado: 'omitido',
+                // Si querés acotar por rango temporal del envío, usa enviadoAt:
+                // enviadoAt: { gte: since, lt: until },
+            },
+            _count: { _all: true },
+        });
+
+        // --- No enviados por desuscriptos por campaña (estado='Desuscripto'). Si preferís por enviadoAt en rango, ajustá el where ---
+        const desuscriptos = await this.prisma.reporteEmail.groupBy({
+            by: ['campañaId'],
+            where: {
+                campañaId: { in: campañaIds },
+                estado: 'Desuscripto',
                 // Si querés acotar por rango temporal del envío, usa enviadoAt:
                 // enviadoAt: { gte: since, lt: until },
             },
@@ -152,18 +183,27 @@ export class ReportesEmailService {
 
         // --- Mapas auxiliares para mergear resultados ---
         const enviadosMap = Object.fromEntries(enviados.map((e) => [e.campañaId, e._count._all]));
+        const rebotesPreviosMap = Object.fromEntries(rebotesPrevios.map((e) => [e.campañaId, e._count._all]));
+        const desuscriptosMap = Object.fromEntries(desuscriptos.map((e) => [e.campañaId, e._count._all]));
         const abiertosMap = Object.fromEntries(abiertosUnicos.map((a) => [Number(a.campañaId), Number(a.abiertos)]));
         const clicsMap = Object.fromEntries(clicsUnicos.map((c) => [Number(c.campañaId), Number(c.clics)]));
 
         // --- Construcción de items finales en el mismo orden de campañas ---
         const items: OverviewItem[] = campañas.map((c) => {
             const enviados = enviadosMap[c.id] ?? 0;
+            const rebotesPrevios = rebotesPreviosMap[c.id] ?? 0;
+            const desuscriptos = desuscriptosMap[c.id] ?? 0;
             const abiertos = abiertosMap[c.id] ?? 0;
             const clics = clicsMap[c.id] ?? 0;
+            const totalContactos  = c._count?.contactos ?? 0; // 👈 NUEVO
+
             return {
                 id: c.id,
                 nombre: c.nombre,
+                totalContactos,
                 enviados,
+                rebotesPrevios,
+                desuscriptos,
                 abiertosUnicos: abiertos,
                 clicsUnicos: clics,
                 tasaApertura: enviados ? abiertos / enviados : 0,
@@ -400,7 +440,7 @@ export class ReportesEmailService {
         hasta?: Date;
         tipo?: TipoFiltro;
     }): Promise<string> {
-        const { campaniaId, desde, hasta, tipo = 'all' } = params;        
+        const { campaniaId, desde, hasta, tipo = 'all' } = params;
 
         // Construyo el where para EmailEvento
         const where: any = {
@@ -577,7 +617,7 @@ export class ReportesEmailService {
         desde?: Date;
         hasta?: Date;
     }): Promise<string> {
-        const { campaniaId, desde, hasta } = params;        
+        const { campaniaId, desde, hasta } = params;
         const where: any = {
             ...(desde || hasta ? { fecha: { gte: desde ?? undefined, lte: hasta ?? undefined } } : {}),
             ...(campaniaId ? { reporte: { campañaId: campaniaId } } : {}),
