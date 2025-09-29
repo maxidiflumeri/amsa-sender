@@ -26,7 +26,8 @@ import {
     Snackbar,
     IconButton,
     CircularProgress,
-    Backdrop
+    Backdrop,
+    Stack
 } from '@mui/material';
 import api from '../../api/axios';
 import { useTheme } from '@mui/material/styles';
@@ -44,6 +45,7 @@ import EnviarMailsModal from './EnviarMails';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import { io } from 'socket.io-client';
 import Skeleton from '@mui/material/Skeleton'
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 export default function VerCampañasEmail() {
     const isMobile = useMediaQuery('(max-width:768px)');
@@ -68,12 +70,39 @@ export default function VerCampañasEmail() {
     const [busquedaContacto, setBusquedaContacto] = useState('');
     const [mostrarCalendario, setMostrarCalendario] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [contactos, setContactos] = useState([]);
+    const [contactosTotal, setContactosTotal] = useState(0);
+    const [contactosPage, setContactosPage] = useState(1);
+    const [contactosSize, setContactosSize] = useState(1000000); // ajustá a gusto
+
+    const fetchContactos = async ({ campañaId, page = 1, size = contactosSize, q = '' }) => {
+        setLoadingContactos(true);
+        try {
+            const res = await api.get(`/email/campanias/${campañaId}/contactos`, {
+                params: { page, size, q }
+            });
+            setContactos(res.data.items);
+            setContactosTotal(res.data.total);
+            setContactosPage(res.data.page);
+        } catch (e) {
+            console.error('Error cargando contactos', e);
+            setContactos([]);
+            setContactosTotal(0);
+        } finally {
+            setLoadingContactos(false);
+        }
+    };
 
     const cargarCampanias = async (opts = { silent: false }) => {
         if (!opts.silent) setLoading(true);
         try {
-            const res = await api.get('/email/campanias');
-            setCampanias(res.data);
+            const res = await api.get('/email/campanias?lite=1');
+            // Normalizamos a contactosCount
+            const data = res.data.map(c => ({
+                ...c,
+                contactosCount: c._count?.contactos ?? 0,
+            }));
+            setCampanias(data);
         } catch (err) {
             console.error('Error al obtener campañas:', err);
         } finally {
@@ -129,11 +158,18 @@ export default function VerCampañasEmail() {
     );
 
     const descendingComparator = (a, b, orderBy) => {
-        let aVal = a[orderBy], bVal = b[orderBy];
-        if (["createdAt", "enviadoAt"].includes(orderBy)) {
+        let aVal = a[orderBy];
+        let bVal = b[orderBy];
+
+        if (orderBy === 'contactos') {
+            // cuando ordenás por "Contactos", usá el contador
+            aVal = a.contactosCount ?? a._count?.contactos ?? 0;
+            bVal = b.contactosCount ?? b._count?.contactos ?? 0;
+        } else if (['createdAt', 'enviadoAt', 'agendadoAt'].includes(orderBy)) {
             aVal = aVal ? new Date(aVal).getTime() : 0;
             bVal = bVal ? new Date(bVal).getTime() : 0;
         }
+
         return bVal < aVal ? -1 : bVal > aVal ? 1 : 0;
     };
 
@@ -195,16 +231,12 @@ export default function VerCampañasEmail() {
     };
 
     const handleAbrirDialogoContactos = async (campania) => {
-        setLoadingContactos(true);
-        // Simular pequeño delay, o cargar contactos si no están en el objeto
-        setTimeout(() => {
-            setCampañaSeleccionada(campania);
-            setLoadingContactos(false);
-        }, 400); // o el tiempo real de carga
+        setCampañaSeleccionada(campania);
+        await fetchContactos({ campañaId: campania.id, page: 1, size: contactosSize, q: '' });
     };
 
-    const contactosFiltrados = Array.isArray(campañaSeleccionada?.contactos)
-        ? campañaSeleccionada.contactos.filter((contacto) => {
+    const contactosFiltrados = Array.isArray(contactos)
+        ? contactos.filter((contacto) => {
             const query = busquedaContacto.toLowerCase();
             return (
                 contacto.email?.toLowerCase().includes(query) ||
@@ -256,23 +288,26 @@ export default function VerCampañasEmail() {
                             <CampaignIcon sx={{ fontSize: 32 }} />
                             <Typography ml={1} variant="h5" fontWeight="bold">Campañas Email</Typography>
                         </Box>
-                        <Button
-                            variant="contained"
-                            startIcon={<AddIcon />}
-                            onClick={() => setModalNueva(true)}
-                            sx={{
-                                borderRadius: 2,
-                                textTransform: 'none',
-                                backgroundColor: '#075E54',
-                                '&:hover': {
-                                    backgroundColor: '#0b7b65',
-                                    transform: 'scale(1.03)',
-                                    boxShadow: 4,
-                                },
-                            }}
-                        >
-                            Nueva campaña
-                        </Button>
+                        <Stack direction="row" spacing={1}>
+                            <Tooltip title="Refrescar"><IconButton onClick={cargarCampanias}><RefreshIcon /></IconButton></Tooltip>
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={() => setModalNueva(true)}
+                                sx={{
+                                    borderRadius: 2,
+                                    textTransform: 'none',
+                                    backgroundColor: '#075E54',
+                                    '&:hover': {
+                                        backgroundColor: '#0b7b65',
+                                        transform: 'scale(1.03)',
+                                        boxShadow: 4,
+                                    },
+                                }}
+                            >
+                                Nueva campaña
+                            </Button>
+                        </Stack>
                     </Box>
 
                     <Tabs value={tab} onChange={(_, newValue) => setTab(newValue)}>
@@ -369,7 +404,7 @@ export default function VerCampañasEmail() {
                                         >
                                             <TableCell>{c.nombre}</TableCell>
                                             <TableCell align="right" sx={{ maxWidth: 5 }}>
-                                                {c.contactos.length}
+                                                {c.contactosCount ?? c._count?.contactos ?? 0}
                                             </TableCell>
                                             <TableCell>
                                                 {c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}
@@ -551,7 +586,7 @@ export default function VerCampañasEmail() {
                             </Box>
                             <FixedSizeList
                                 width="100%"
-                                itemSize={800} // ajustá según el alto de cada ítem (puede ser 120-180)
+                                itemSize={750}
                                 itemCount={contactosFiltrados.length}
                                 itemData={contactosFiltrados}
                                 height={window.innerHeight - 300}
@@ -559,16 +594,12 @@ export default function VerCampañasEmail() {
                                 {({ index, style, data }) => {
                                     const contacto = data[index];
                                     return (
-                                        <div style={style} key={index}>
+                                        <div style={style} key={contacto.id}>
                                             <Box sx={{ px: 2, py: 1 }}>
                                                 <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
                                                     📧 Email: <code>{contacto.email}</code>
                                                 </Typography>
-                                                {contacto.datos?.nombre && (
-                                                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                                                        🧑🏽 Nombre: <code>{contacto.datos.nombre}</code>
-                                                    </Typography>
-                                                )}
+
                                                 {contacto.datos && Object.keys(contacto.datos).length > 0 && (
                                                     <Box>
                                                         <Typography variant="body2" sx={{ fontWeight: 'bold' }}>🧾 Datos:</Typography>

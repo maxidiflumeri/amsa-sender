@@ -9,7 +9,8 @@ import {
     UploadedFile,
     BadRequestException,
     Delete,
-    Param
+    Param,
+    Query
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { CampaniasEmailService } from './campanias-email.service';
@@ -47,9 +48,22 @@ export class CampaniasEmailController {
     }
 
     @Get()
-    async obtenerCampañas() {
+    async obtenerCampañas(@Query('lite') lite?: string) {
         this.logger.log('📥 GET / - Obtener todas las campañas');
+        if (lite === '1' || lite === 'true') {
+            return this.campaniasService.obtenerCampañasLite();
+        }
         return this.campaniasService.obtenerCampañas();
+    }
+
+    @Get(':id/contactos')
+    async getContactosPorCampania(
+        @Param('id') id: string,
+        @Query('page') page?: string,
+        @Query('size') size?: string,
+        @Query('q') q?: string,
+    ) {
+        return this.campaniasService.contactosPorCampania(Number(id), { page, size, q });
     }
 
     @Delete(':id')

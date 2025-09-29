@@ -18,4 +18,7 @@ export default defineConfig({
       'dayjs', 'react-quill', 'dompurify'
     ],
   },
+  preview: {
+    allowedHosts: ['ed4d01f3dc24.ngrok-free.app'], // tu dominio de ngrok
+  }
 })

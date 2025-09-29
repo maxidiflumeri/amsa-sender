@@ -19,6 +19,61 @@ export class CampaniasEmailService {
         });
     }
 
+    async obtenerCampañasLite() {
+        this.logger.log('🔍 Buscando campañas (lite)…');
+        return this.prisma.campañaEmail.findMany({
+            where: { archivada: false },
+            select: {
+                id: true,
+                nombre: true,
+                estado: true,
+                createdAt: true,
+                enviadoAt: true,
+                agendadoAt: true,
+                _count: { select: { contactos: true } }, // 👈 contador
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+    }
+
+    async contactosPorCampania(
+        campañaId: number,
+        opts: { page?: string | number; size?: string | number; q?: string } = {},
+    ) {
+        const pageNum = Math.max(Number(opts.page || 1), 1);
+        const sizeNum = Math.min(Math.max(Number(opts.size || 100), 1), 500);
+        const skip = (pageNum - 1) * sizeNum;
+
+        const where: any = { campañaId };
+        if (opts.q && String(opts.q).trim().length > 0) {
+            const q = String(opts.q).trim();
+            where.OR = [
+                { email: { contains: q, mode: 'insensitive' } },
+                // Si más adelante querés búsquedas en JSON (según motor/versión):
+                // { datos: { path: ['nombre'], string_contains: q } },
+            ];
+        }
+
+        this.logger.log(`📧 Contactos campaña=${campañaId} page=${pageNum} size=${sizeNum} q="${opts.q ?? ''}"`);
+
+        const [items, total] = await this.prisma.$transaction([
+            this.prisma.contactoEmail.findMany({
+                where,
+                skip,
+                take: sizeNum,
+                orderBy: { id: 'asc' },
+                select: {
+                    id: true,
+                    email: true,
+                    datos: true,
+                },
+            }),
+            this.prisma.contactoEmail.count({ where }),
+        ]);
+
+        return { items, total, page: pageNum, size: sizeNum };
+    }
+
     async crearCampañaEmail(dto: { nombre: string; userId: string; }, filePath: string) {
         this.logger.log(`📥 Creando campaña de email: ${dto.nombre}`);
         try {

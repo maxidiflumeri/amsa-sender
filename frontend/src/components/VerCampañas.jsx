@@ -26,7 +26,7 @@ import {
     useMediaQuery,
     Box,
     TextField,
-    Backdrop
+    Stack
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
@@ -47,6 +47,7 @@ import { useTheme } from '@mui/material/styles';
 import InboxIcon from '@mui/icons-material/Inbox';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import Skeleton from '@mui/material/Skeleton'
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 export default function VerCampañas() {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -303,26 +304,29 @@ export default function VerCampañas() {
                         <CampaignIcon sx={{ fontSize: 32 }} />
                         <Typography ml={1} variant="h5" fontWeight="bold">Campañas WhatsApp</Typography>
                     </Box>
-                    <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={() => setModalNueva(true)}
-                        sx={{
-                            borderRadius: 2,
-                            fontFamily: commonFont,
-                            textTransform: 'none',
-                            fontSize: '0.9rem',
-                            backgroundColor: '#075E54',
-                            transition: 'all 0.3s ease',
-                            '&:hover': {
-                                backgroundColor: '#0b7b65',
-                                transform: 'scale(1.03)',
-                                boxShadow: 4,
-                            },
-                        }}
-                    >
-                        Nueva campaña
-                    </Button>
+                    <Stack direction="row" spacing={1}>
+                        <Tooltip title="Refrescar"><IconButton onClick={cargarCampañas}><RefreshIcon /></IconButton></Tooltip>
+                        <Button
+                            variant="contained"
+                            startIcon={<AddIcon />}
+                            onClick={() => setModalNueva(true)}
+                            sx={{
+                                borderRadius: 2,
+                                fontFamily: commonFont,
+                                textTransform: 'none',
+                                fontSize: '0.9rem',
+                                backgroundColor: '#075E54',
+                                transition: 'all 0.3s ease',
+                                '&:hover': {
+                                    backgroundColor: '#0b7b65',
+                                    transform: 'scale(1.03)',
+                                    boxShadow: 4,
+                                },
+                            }}
+                        >
+                            Nueva campaña
+                        </Button>
+                    </Stack>
                 </Box>
 
                 <Tabs

@@ -10,7 +10,9 @@ import {
     Snackbar,
     useTheme,
     useMediaQuery,
-    IconButton
+    IconButton,
+    LinearProgress,
+    Skeleton,
 } from '@mui/material';
 import MuiAlert from '@mui/material/Alert';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -29,15 +31,23 @@ export default function EstadoSesiones() {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const [sesiones, setSesiones] = useState([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(false);        // solo para "Limpiar Sesiones"
+    const [loadingList, setLoadingList] = useState(true); // para carga/refresco de la lista
     const [feedback, setFeedback] = useState({ open: false, type: 'success', message: '' });
     const [sesionAEliminar, setSesionAEliminar] = useState(null);
     const [confirmarLimpiar, setConfirmarLimpiar] = useState(false);
     const navigate = useNavigate();
 
     const cargarSesiones = async () => {
-        const res = await api.get('/whatsapp/sesiones/status');
-        setSesiones(res.data);
+        try {
+            setLoadingList(true);
+            const res = await api.get('/whatsapp/sesiones/status');
+            setSesiones(res.data || []);
+        } catch (e) {
+            setFeedback({ open: true, type: 'error', message: 'No se pudieron cargar las sesiones' });
+        } finally {
+            setLoadingList(false);
+        }
     };
 
     useEffect(() => {
@@ -45,17 +55,14 @@ export default function EstadoSesiones() {
     }, []);
 
     useEffect(() => {
-        const socket = io(import.meta.env.VITE_HOST_SOCKET); // cambiar si tenés otro host            
-
-        socket.on('estado_sesion', ({ estado, qr, ani, sessionId }) => {
-            if (estado == 'desconectado') {
+        const socket = io(import.meta.env.VITE_HOST_SOCKET); // cambiar si tenés otro host
+        const onEstado = ({ estado }) => {
+            // ante cambios relevantes, refrescamos
+            if (estado === 'desconectado' || estado === 'conectado') {
                 cargarSesiones();
             }
-            if (estado == 'conectado') {
-                cargarSesiones();
-            }
-        });
-
+        };
+        socket.on('estado_sesion', onEstado);
         return () => socket.disconnect();
     }, []);
 
@@ -76,6 +83,30 @@ export default function EstadoSesiones() {
         }
     };
 
+    // Render de Skeleton Cards
+    const SkeletonCard = () => (
+        <Card
+            variant="outlined"
+            sx={{
+                p: 2,
+                borderRadius: 2,
+                boxShadow: 1,
+                background: theme.palette.mode === 'light'
+                    ? 'linear-gradient(to right, #f0f4f8, #e8f0fe)'
+                    : '#2c2c2c',
+            }}
+        >
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Skeleton variant="circular" width={100} height={12} sx={{ mr: 2 }} />
+                <Box sx={{ flex: 1 }}>
+                    <Skeleton variant="text" width="100%" height={24} />
+                    <Skeleton variant="text" width="100%" height={20} />
+                    <Skeleton variant="text" width="100%" height={20} />
+                </Box>
+            </Box>
+        </Card>
+    );
+
     return (
         <Box
             sx={{
@@ -92,22 +123,21 @@ export default function EstadoSesiones() {
                 justifyContent="space-between"
                 alignItems={{ xs: 'flex-start', sm: 'center' }}
                 gap={2}
-                mb={3}
+                mb={1}
             >
                 <Box display="flex" alignItems="center">
                     <DashboardIcon sx={{ fontSize: 32 }} />
                     <Typography ml={1} variant="h5" fontWeight="bold">Sesiones activas</Typography>
-                </Box>                
+                </Box>
                 <Button
                     sx={{
-
                         borderRadius: 2,
                         fontFamily: commonFont,
                         textTransform: 'none',
                         fontSize: '0.9rem',
                         transition: 'all 0.3s ease',
                         '&:hover': {
-                            backgroundColor: theme.palette.error.dark, // más integrado al tema
+                            backgroundColor: theme.palette.error.dark,
                             transform: 'scale(1.03)',
                             boxShadow: 4,
                         },
@@ -115,15 +145,28 @@ export default function EstadoSesiones() {
                     variant="contained"
                     color="error"
                     onClick={() => setConfirmarLimpiar(true)}
-                    disabled={loading}
+                    disabled={loading || loadingList}
                 >
                     {loading ? <CircularProgress size={20} /> : 'Limpiar Sesiones'}
                 </Button>
             </Box>
 
+            {/* LinearProgress cuando se está cargando la lista */}
+            {loadingList && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
+
             {/* Tarjetas */}
-            <Grid container spacing={2}>
-                {sesiones.length === 0 && !loading && (
+            <Grid sx={{ mt: 2}} container spacing={2}>
+                {/* Skeletons */}
+                {loadingList &&
+                    Array.from({ length: 6 }).map((_, i) => (
+                        <Grid item xs={12} sm={6} md={4} key={`sk-${i}`}>
+                            <SkeletonCard />
+                        </Grid>
+                    ))
+                }
+
+                {/* Empty state (sólo si NO está cargando y NO hay sesiones) */}
+                {!loadingList && sesiones.length === 0 && !loading && (
                     <Box
                         minHeight="25vh"
                         textAlign="center"
@@ -140,6 +183,8 @@ export default function EstadoSesiones() {
                             backgroundColor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#f9f9f9',
                             color: theme.palette.text.secondary,
                             mx: 'auto',
+                            width: '100%',
+                            mt: 1
                         }}
                     >
                         <img
@@ -179,7 +224,8 @@ export default function EstadoSesiones() {
                     </Box>
                 )}
 
-                {sesiones.map((s) => (
+                {/* Cards reales */}
+                {!loadingList && sesiones.map((s) => (
                     <Grid item xs={12} sm={6} md={4} key={s.id}>
                         <Card
                             variant="outlined"
@@ -200,6 +246,7 @@ export default function EstadoSesiones() {
                             <IconButton
                                 size="small"
                                 onClick={() => setSesionAEliminar(s)}
+                                disabled={loadingList}
                                 sx={{
                                     position: 'absolute',
                                     top: 6,
@@ -251,7 +298,7 @@ export default function EstadoSesiones() {
                             try {
                                 await api.delete(`/whatsapp/sesiones/${sesionAEliminar.id}`);
                                 setFeedback({ open: true, type: 'success', message: 'Sesión eliminada exitosamente' });
-                                cargarSesiones();
+                                await cargarSesiones();
                             } catch (error) {
                                 setFeedback({ open: true, type: 'error', message: 'Error al eliminar sesión' });
                             } finally {
