@@ -460,30 +460,44 @@ export default function Layout({ children, mode, toggleTheme }) {
             <CssBaseline />
 
             {/* AppBar */}
+            {/* AppBar */}
             <AppBar position="fixed" sx={{ zIndex: theme.zIndex.drawer + 1, backgroundColor: '#075E54' }}>
                 <Toolbar
                     sx={{
                         px: 2,
                         display: 'flex',
-                        justifyContent: 'space-between',
                         alignItems: 'center',
                         minWidth: 0,
-                        overflow: 'hidden',
-                        flexWrap: 'wrap',
                         gap: 1,
                     }}
                 >
-                    <Box display="flex" alignItems="center" gap={1}>
-                        <img src={logo} alt="amsasender logo" style={{ height: '60px' }} />
-                        <Typography variant="h6" fontWeight="bold" color="#fff">
-                            AMSA Sender
-                        </Typography>
+                    {/* Izquierda: menú + marca */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexGrow: 1 }}>
+                        {isMobile && (
+                            <IconButton color="inherit" onClick={handleDrawerToggle} aria-label="Abrir menú">
+                                <FiMenu size={24} />
+                            </IconButton>
+                        )}
+
+                        <Box display="flex" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
+                            <img
+                                src={logo}
+                                alt="amsasender logo"
+                                style={{ height: isMobile ? 40 : 60 }}
+                            />
+                            <Typography
+                                variant="h6"
+                                fontWeight="bold"
+                                color="#fff"
+                                noWrap
+                                sx={{ maxWidth: { xs: '55vw', sm: 'unset' } }}
+                            >
+                                AMSA Sender
+                            </Typography>
+                        </Box>
                     </Box>
-                    {isMobile && (
-                        <IconButton color="inherit" onClick={handleDrawerToggle}>
-                            <FiMenu size={24} />
-                        </IconButton>
-                    )}
+
+                    {/* Derecha: avatar / menú usuario */}
                     <Box display="flex" alignItems="center" gap={2}>
                         <Tooltip title={user?.nombre || ''}>
                             <IconButton onClick={handleMenuOpen} color="inherit">

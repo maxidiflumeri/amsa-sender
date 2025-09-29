@@ -32,7 +32,8 @@ import {
     Typography,
     Drawer,
     Button,
-    Skeleton
+    Skeleton,
+    useMediaQuery
 } from '@mui/material';
 import { DateRange } from '@mui/icons-material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -152,16 +153,9 @@ async function apiFetchCampaignDetail(campaniaId, { since, until, pageOpen = 0, 
 
 // ⬇️ NUEVO: eventos por fecha (reemplaza el "today")
 async function apiFetchEventsByDate({ date, limit = 200, afterId } = {}) {
-    // Si ya tenés un endpoint /email/reportes/events?date=YYYY-MM-DD lo usamos:
-    // const { data } = await api.get('/email/reportes/events', { params: { date, limit, afterId } });
-    // return data;
-
-    // Si aún no existe, podés seguir usando el actual de "today" mientras adaptás backend:
-    // pero idealmente movelo al endpoint por fecha.
     const params = new URLSearchParams();
     params.append('limit', String(limit));
     if (afterId) params.append('afterId', String(afterId));
-    // TEMP: endpoint actual "today" (mientras migrás backend)
     const { data } = await api.get(`/email/reportes/events/by-date`, { params: { date, limit, afterId } });
     return data;
 }
@@ -182,6 +176,8 @@ function Metric({ label, value, help }) {
 }
 
 function SparklineCard({ title, subtitle, openRate, clickRate, enviados, rebotesPrevios, desuscriptos, data, onOpenDetail }) {
+    const isMobile = useMediaQuery('(max-width:768px)');
+    const isTablet = useMediaQuery('(max-width:1024px)');
     const openPct = Math.round((openRate || 0) * 100);
     const clickPct = Math.round((clickRate || 0) * 100);
 
@@ -190,22 +186,27 @@ function SparklineCard({ title, subtitle, openRate, clickRate, enviados, rebotes
             sx={{
                 width: '100%',
                 height: '100%',
-                minHeight: CARD_MIN_HEIGHT,             // 🔒 alto uniforme
+                minHeight: { xs: CARD_MIN_HEIGHT - 20, md: CARD_MIN_HEIGHT },
                 borderRadius: 3,
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
-                p: 0                                      // compacta
+                p: 0
             }}
         >
             <CardHeader
                 sx={{
-                    px: 2, py: 1.25,                        // header más chico
+                    px: 2, py: { xs: 1, md: 1.25 },
                     '& .MuiCardHeader-content': { minWidth: 0 }
                 }}
                 title={
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ minWidth: 0 }}>
-                        <Typography variant="h6" sx={{ mr: 1, ...ELLIPSIS_1LINE }}>{title}</Typography>
+                        <Typography
+                            variant={isMobile ? 'subtitle1' : 'h6'}
+                            sx={{ mr: 1, ...ELLIPSIS_1LINE }}
+                        >
+                            {title}
+                        </Typography>
                         <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
                             <Chip size="small" label={`Aperturas ${openPct}%`} color={openPct >= 50 ? 'success' : 'default'} />
                             <Chip size="small" label={`Clicks ${clickPct}%`} color={clickPct >= 10 ? 'primary' : 'default'} />
@@ -220,7 +221,7 @@ function SparklineCard({ title, subtitle, openRate, clickRate, enviados, rebotes
             />
             <CardContent
                 sx={{
-                    px: 2, pt: 0.5, pb: 2,                  // contenido compacto
+                    px: 2, pt: 0.5, pb: 2,
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 1.5,
@@ -230,7 +231,7 @@ function SparklineCard({ title, subtitle, openRate, clickRate, enviados, rebotes
             >
                 <Grid container spacing={1.5}>
                     <Grid item xs={12} md={7}>
-                        <Box sx={{ height: 120 }}>           {/* altura fija del gráfico */}
+                        <Box sx={{ height: { xs: 110, sm: 120 } }}>
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart data={data} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
                                     <defs>
@@ -263,11 +264,11 @@ function SparklineCard({ title, subtitle, openRate, clickRate, enviados, rebotes
                     </Grid>
                 </Grid>
 
-                <Box sx={{ flexGrow: 1 }} />             {/* empuja footer → altura pareja */}
+                <Box sx={{ flexGrow: 1 }} />
 
                 <Divider sx={{ my: 1.25 }} />
                 <Stack direction="row" justifyContent="flex-end">
-                    <Button variant="outlined" size="small" startIcon={<BarChartIcon />} onClick={onOpenDetail}>
+                    <Button variant="outlined" size={isMobile ? 'small' : 'medium'} startIcon={<BarChartIcon />} onClick={onOpenDetail}>
                         Ver detalle
                     </Button>
                 </Stack>
@@ -277,14 +278,22 @@ function SparklineCard({ title, subtitle, openRate, clickRate, enviados, rebotes
 }
 
 function EventsTable({ rows, columns, page, rowsPerPage, onPageChange, onRowsPerPageChange, emptyLabel }) {
+    const isMobile = useMediaQuery('(max-width:768px)');
     const start = page * rowsPerPage;
     const end = start + rowsPerPage;
     const paginated = rows.slice(start, end);
 
     return (
         <>
-            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-                <Table size="small">
+            <TableContainer
+                component={Paper}
+                variant="outlined"
+                sx={{
+                    borderRadius: 2,
+                    overflowX: 'auto'
+                }}
+            >
+                <Table size={isMobile ? 'small' : 'medium'} stickyHeader sx={{ minWidth: 600 }}>
                     <TableHead>
                         <TableRow>
                             {columns.map(col => (
@@ -305,7 +314,7 @@ function EventsTable({ rows, columns, page, rowsPerPage, onPageChange, onRowsPer
                         {paginated.map((row) => (
                             <TableRow key={row.id} hover>
                                 {columns.map(col => (
-                                    <TableCell key={col.key}>
+                                    <TableCell key={col.key} sx={{ wordBreak: 'break-word' }}>
                                         {typeof col.render === 'function' ? col.render(row[col.key], row) : (row[col.key] ?? '-')}
                                     </TableCell>
                                 ))}
@@ -322,13 +331,19 @@ function EventsTable({ rows, columns, page, rowsPerPage, onPageChange, onRowsPer
                 onPageChange={(_, p) => onPageChange(p)}
                 rowsPerPage={rowsPerPage}
                 onRowsPerPageChange={(e) => onRowsPerPageChange(parseInt(e.target.value, 10))}
-                rowsPerPageOptions={[10, 25, 50]}
+                rowsPerPageOptions={isMobile ? [10, 25, 50] : [10, 25, 50, 100]}
+                sx={{
+                    '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                        fontSize: { xs: 12, sm: 14 }
+                    }
+                }}
             />
         </>
     );
 }
 
 function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
+    const isMobile = useMediaQuery('(max-width:768px)');
     const [tab, setTab] = useState(0);
     const [pageOpen, setPageOpen] = useState(0);
     const [pageClick, setPageClick] = useState(0);
@@ -354,7 +369,7 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
         { key: 'email', label: 'Email' },
         {
             key: 'url', label: 'URL', render: v => (
-                <Link href={v} target="_blank" rel="noopener noreferrer">
+                <Link href={v} target="_blank" rel="noopener noreferrer" sx={{ wordBreak: 'break-all' }}>
                     {v}<OpenInNewIcon sx={{ ml: 0.5, fontSize: 16 }} />
                 </Link>
             )
@@ -373,12 +388,12 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
             render: (v, row) => (
                 <Box
                     sx={{
-                        maxWidth: { xs: 280, sm: 420, md: 680 },   // ajustá a gusto
+                        maxWidth: { xs: 280, sm: 420, md: 680 },
                         whiteSpace: 'normal',
                         wordBreak: 'break-word',
-                        overflowWrap: 'anywhere',                  // fuerza corte en palabras largas
+                        overflowWrap: 'anywhere',
                         display: '-webkit-box',
-                        WebkitLineClamp: 3,                        // 3 líneas visibles
+                        WebkitLineClamp: 3,
                         WebkitBoxOrient: 'vertical',
                         overflow: 'hidden',
                     }}
@@ -454,15 +469,19 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
                     zIndex: (theme) => theme.zIndex.drawer + 2,
                     '& .MuiPaper-root': {
                         width: { xs: '100%', md: 640 },
+                        maxWidth: '100%',
+                        height: { xs: '100dvh', md: 'auto' }
                     },
                 }}
                 ModalProps={{ keepMounted: true }}
             >
-                <Box sx={{ p: 2 }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between">
-                        <Box>
-                            <Typography variant="h6">Detalle de campaña</Typography>
-                            <Typography variant="body2" color="text.secondary">{campania?.nombre}</Typography>
+                <Box sx={{ p: { xs: 1.5, md: 2 } }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
+                        <Box sx={{ minWidth: 0 }}>
+                            <Typography variant={isMobile ? 'subtitle1' : 'h6'} noWrap>Detalle de campaña</Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ ...ELLIPSIS_1LINE }}>
+                                {campania?.nombre}
+                            </Typography>
                         </Box>
                         <IconButton onClick={onClose}><CloseIcon /></IconButton>
                     </Stack>
@@ -477,20 +496,27 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
 
                     {detail && (
                         <>
-                            <Grid container spacing={2}>
-                                <Grid item xs={6} sm={4}><Chip label={`Enviados ${detail.resumen.enviados}`} /></Grid>
-                                <Grid item xs={6} sm={4}><Chip color="success" label={`Aperturas únicas ${detail.resumen.abiertosUnicos}`} /></Grid>
-                                <Grid item xs={6} sm={4}><Chip color="primary" label={`Clicks únicos ${detail.resumen.clicsUnicos}`} /></Grid>
-                                <Grid item xs={6} sm={4}><Chip color="warning" label={`Rebotes ${detail.resumen.rebotes}`} /></Grid>
+                            <Grid container spacing={1.5}>
+                                <Grid item xs={6} sm={4}><Chip size={isMobile ? 'small' : 'medium'} label={`Enviados ${detail.resumen.enviados}`} /></Grid>
+                                <Grid item xs={6} sm={4}><Chip size={isMobile ? 'small' : 'medium'} color="success" label={`Aperturas únicas ${detail.resumen.abiertosUnicos}`} /></Grid>
+                                <Grid item xs={6} sm={4}><Chip size={isMobile ? 'small' : 'medium'} color="primary" label={`Clicks únicos ${detail.resumen.clicsUnicos}`} /></Grid>
+                                <Grid item xs={6} sm={4}><Chip size={isMobile ? 'small' : 'medium'} color="warning" label={`Rebotes ${detail.resumen.rebotes}`} /></Grid>
                                 {detail.resumen.primeroAbierto && (
-                                    <Grid item xs={12}><Chip variant="outlined" label={`Primera apertura ${new Date(detail.resumen.primeroAbierto).toLocaleString()}`} /></Grid>
+                                    <Grid item xs={12}><Chip size="small" variant="outlined" label={`Primera apertura ${new Date(detail.resumen.primeroAbierto).toLocaleString()}`} /></Grid>
                                 )}
                                 {detail.resumen.primeroClick && (
-                                    <Grid item xs={12}><Chip variant="outlined" label={`Primer click ${new Date(detail.resumen.primeroClick).toLocaleString()}`} /></Grid>
+                                    <Grid item xs={12}><Chip size="small" variant="outlined" label={`Primer click ${new Date(detail.resumen.primeroClick).toLocaleString()}`} /></Grid>
                                 )}
                             </Grid>
 
-                            <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mt: 2 }}>
+                            <Tabs
+                                value={tab}
+                                onChange={(_, v) => setTab(v)}
+                                sx={{ mt: 2 }}
+                                variant="scrollable"
+                                allowScrollButtonsMobile
+                                scrollButtons={isMobile ? 'auto' : false}
+                            >
                                 <Tab label={`Aperturas (${detail.aperturas.length})`} />
                                 <Tab label={`Clicks (${detail.clicks.length})`} />
                                 <Tab label={`Rebotes (${detail.rebotes?.length ?? 0})`} />
@@ -543,6 +569,8 @@ function RightDetailDrawer({ open, onClose, campania, detail, onPaginate }) {
 // Página principal
 // =====================================================
 export default function CampaignEngagementPage() {
+    const isMobile = useMediaQuery('(max-width:768px)');
+    const isTablet = useMediaQuery('(max-width:1024px)');
     const [tab, setTab] = useState(0);
     const [query, setQuery] = useState('');
     const [range, setRange] = useState('hoy'); // hoy | 7d | 30d
@@ -575,7 +603,6 @@ export default function CampaignEngagementPage() {
         const start = pageRebotes * rppRebotes;
         return rebotes.slice(start, start + rppRebotes);
     }, [rebotes, pageRebotes, rppRebotes]);
-
 
     // ⬇️ NUEVO: fecha seleccionada para eventos
     const [selectedDate, setSelectedDate] = useState(dayjs()); // default hoy
@@ -702,7 +729,7 @@ export default function CampaignEngagementPage() {
 
             const cd = res.headers?.['content-disposition'] || '';
             const match = /filename="?([^"]+)"?/i.exec(cd);
-            const fallbackName = `actividades_${selectedDate.format('YYYY-MM-DD')}.csv`;
+            const fallbackName = `actividades_${selectedDate.format('YYYY-MM-DD')}.csv'`;
             const filename = match?.[1] || fallbackName;
 
             const blobUrl = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8;' }));
@@ -771,13 +798,27 @@ export default function CampaignEngagementPage() {
 
     return (
         <Box sx={{ p: { xs: 2, md: 3 } }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                <Box display="flex" alignItems="center">
-                    <BarChartIcon sx={{ fontSize: 32 }} />
-                    <Typography ml={1} variant="h5" fontWeight="bold">Reportes de Email</Typography>
+            {/* Header responsive con filtros */}
+            <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                sx={{ mb: 2, gap: 1.5, flexWrap: 'wrap' }}
+            >
+                <Box display="flex" alignItems="center" sx={{ minWidth: 0 }}>
+                    <BarChartIcon sx={{ fontSize: { xs: 26, md: 32 } }} />
+                    <Typography ml={1} variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" noWrap>
+                        Reportes de Email
+                    </Typography>
                 </Box>
-                <Stack direction="row" spacing={1}>
+                <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ width: { xs: '100%', sm: 'auto' } }}
+                    justifyContent={{ xs: 'stretch', sm: 'flex-end' }}
+                >
                     <TextField
+                        fullWidth={isMobile}
                         size="small"
                         placeholder="Buscar campaña…"
                         value={query}
@@ -797,6 +838,7 @@ export default function CampaignEngagementPage() {
                         }}
                     />
                     <TextField
+                        fullWidth={isMobile}
                         size="small"
                         select
                         value={range}
@@ -813,6 +855,7 @@ export default function CampaignEngagementPage() {
                         <option value="30d">Últimos 30 días</option>
                     </TextField>
                     <Button
+                        fullWidth={isMobile}
                         variant="contained"
                         sx={{
                             borderRadius: 2,
@@ -820,7 +863,7 @@ export default function CampaignEngagementPage() {
                             backgroundColor: '#075E54',
                             '&:hover': {
                                 backgroundColor: '#0b7b65',
-                                transform: 'scale(1.03)',
+                                transform: { md: 'scale(1.03)' },
                                 boxShadow: 4,
                             },
                         }}
@@ -834,7 +877,14 @@ export default function CampaignEngagementPage() {
                 </Stack>
             </Stack>
 
-            <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+            <Tabs
+                value={tab}
+                onChange={(_, v) => setTab(v)}
+                sx={{ mb: 2 }}
+                variant="scrollable"
+                allowScrollButtonsMobile
+                scrollButtons={isMobile ? 'auto' : false}
+            >
                 <Tab label="Resumen por campaña" />
                 <Tab label="Aperturas y clics (por fecha)" />
                 <Tab label="Rebotes (por fecha)" />
@@ -849,7 +899,11 @@ export default function CampaignEngagementPage() {
                             <Box
                                 sx={{
                                     display: 'grid',
-                                    gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0,1fr))', md: 'repeat(3, minmax(0,1fr))' },
+                                    gridTemplateColumns: {
+                                        xs: '1fr',
+                                        sm: 'repeat(2, minmax(0,1fr))',
+                                        md: 'repeat(3, minmax(0,1fr))'
+                                    },
                                     gap: 1.5
                                 }}
                             >
@@ -868,12 +922,16 @@ export default function CampaignEngagementPage() {
                         </Paper>
                     )}
 
-                    {/* 🔒 3 columnas; gap más chico para que se vean "más juntas" */}
+                    {/* Grid responsiva de tarjetas */}
                     <Box
                         sx={{
                             display: 'grid',
-                            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0,1fr))', md: 'repeat(3, minmax(0,1fr))' },
-                            gap: 1.5                                         // ↓ probá 1 si querés aún más juntas
+                            gridTemplateColumns: {
+                                xs: '1fr',
+                                sm: 'repeat(2, minmax(0,1fr))',
+                                md: 'repeat(3, minmax(0,1fr))'
+                            },
+                            gap: 1.5
                         }}
                     >
                         {overview.map((c) => (
@@ -913,10 +971,11 @@ export default function CampaignEngagementPage() {
             {tab === 1 && (
                 <Card sx={{ borderRadius: 3 }}>
                     <CardHeader
+                        titleTypographyProps={{ variant: isMobile ? 'subtitle1' : 'h6' }}
                         title={`Eventos del ${selectedDate.format('YYYY-MM-DD')}`}
                         subheader="Aperturas y clics más recientes en todas las campañas"
                         action={
-                            <Stack direction="row" spacing={1} alignItems="center">
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
                                 <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
                                     <DatePicker
                                         label="Fecha"
@@ -944,8 +1003,12 @@ export default function CampaignEngagementPage() {
 
                         {!loadingEvents && (
                             <>
-                                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-                                    <Table size="small">
+                                <TableContainer
+                                    component={Paper}
+                                    variant="outlined"
+                                    sx={{ borderRadius: 2, overflowX: 'auto' }}
+                                >
+                                    <Table size={isMobile ? 'small' : 'medium'} stickyHeader sx={{ minWidth: 700 }}>
                                         <TableHead>
                                             <TableRow>
                                                 <TableCell>Hora</TableCell>
@@ -967,14 +1030,16 @@ export default function CampaignEngagementPage() {
                                             {paginatedEvents.map(ev => (
                                                 <TableRow key={ev.id} hover>
                                                     <TableCell>{new Date(ev.timestamp).toLocaleTimeString()}</TableCell>
-                                                    <TableCell>{ev.campañaNombre ?? `Campaña ${ev.campañaId}`}</TableCell>
-                                                    <TableCell>{ev.email}</TableCell>
+                                                    <TableCell sx={{ ...ELLIPSIS_1LINE, maxWidth: { xs: 160, sm: 'none' } }}>
+                                                        {ev.campañaNombre ?? `Campaña ${ev.campañaId}`}
+                                                    </TableCell>
+                                                    <TableCell sx={{ wordBreak: 'break-all' }}>{ev.email}</TableCell>
                                                     <TableCell>
                                                         <Chip size="small" label={ev.tipo} color={ev.tipo === 'OPEN' ? 'success' : 'primary'} />
                                                     </TableCell>
                                                     <TableCell>
                                                         {ev.url ? (
-                                                            <Link href={ev.url} target="_blank" rel="noopener noreferrer">
+                                                            <Link href={ev.url} target="_blank" rel="noopener noreferrer" sx={{ wordBreak: 'break-all' }}>
                                                                 {ev.url}<OpenInNewIcon sx={{ ml: 0.5, fontSize: 16 }} />
                                                             </Link>
                                                         ) : '-'}
@@ -1006,10 +1071,11 @@ export default function CampaignEngagementPage() {
             {tab === 2 && (
                 <Card sx={{ borderRadius: 3 }}>
                     <CardHeader
+                        titleTypographyProps={{ variant: isMobile ? 'subtitle1' : 'h6' }}
                         title={`Rebotes del ${selectedDate.format('YYYY-MM-DD')}`}
                         subheader="Rebotes más recientes en todas las campañas"
                         action={
-                            <Stack direction="row" spacing={1} alignItems="center">
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
                                 <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
                                     <DatePicker
                                         label="Fecha"
@@ -1040,23 +1106,23 @@ export default function CampaignEngagementPage() {
                                 <TableContainer
                                     component={Paper}
                                     variant="outlined"
-                                    sx={{ borderRadius: 2, overflowX: 'auto' }}   // scroll horizontal defensivo
+                                    sx={{ borderRadius: 2, overflowX: 'auto' }}
                                 >
                                     <Table
-                                        size="small"
+                                        size={isMobile ? 'small' : 'medium'}
+                                        stickyHeader
                                         sx={{
-                                            tableLayout: 'fixed',                      // evita que crezca por strings largas
-                                            minWidth: 900,                             // ajustá si querés
-                                            '& td, & th': { fontSize: '0.9rem' },     // opcional: tipografía más chica
+                                            tableLayout: 'fixed',
+                                            minWidth: 900,
+                                            '& td, & th': { fontSize: { xs: '0.85rem', sm: '0.9rem' } },
                                         }}
                                     >
-                                        {/* ancho sugerido por columna */}
                                         <colgroup>
-                                            <col style={{ width: 110 }} />            {/* Hora */}
-                                            <col style={{ width: 180 }} />            {/* Campaña */}
-                                            <col style={{ width: 240 }} />            {/* Email */}
-                                            <col style={{ width: 90 }} />             {/* Código */}
-                                            <col />                                   {/* Descripción (toma el resto) */}
+                                            <col style={{ width: 110 }} />
+                                            <col style={{ width: 180 }} />
+                                            <col style={{ width: 240 }} />
+                                            <col style={{ width: 90 }} />
+                                            <col />
                                         </colgroup>
 
                                         <TableHead>
@@ -1083,11 +1149,12 @@ export default function CampaignEngagementPage() {
                                             {paginatedRebotes.map((rb) => (
                                                 <TableRow key={rb.id} hover>
                                                     <TableCell>{new Date(rb.timestamp).toLocaleTimeString()}</TableCell>
-                                                    <TableCell>{rb.campañaNombre ?? (rb.campañaId ? `Campaña ${rb.campañaId}` : '-')}</TableCell>
-                                                    <TableCell>{rb.email}</TableCell>
+                                                    <TableCell sx={{ ...ELLIPSIS_1LINE, maxWidth: { xs: 160, sm: 'none' } }}>
+                                                        {rb.campañaNombre ?? (rb.campañaId ? `Campaña ${rb.campañaId}` : '-')}
+                                                    </TableCell>
+                                                    <TableCell sx={{ wordBreak: 'break-all' }}>{rb.email}</TableCell>
                                                     <TableCell>{rb.codigo ?? '-'}</TableCell>
 
-                                                    {/* DESCRIPCIÓN CLAMP + VER MÁS */}
                                                     <TableCell
                                                         sx={{
                                                             whiteSpace: 'normal',
@@ -1096,7 +1163,6 @@ export default function CampaignEngagementPage() {
                                                             p: 1,
                                                         }}
                                                     >
-                                                        {/* Texto clamped a 3 líneas */}
                                                         <Box
                                                             sx={{
                                                                 display: '-webkit-box',
@@ -1108,7 +1174,6 @@ export default function CampaignEngagementPage() {
                                                             {rb.descripcion ?? '-'}
                                                         </Box>
 
-                                                        {/* Botón fuera del clamp (si el texto es largo) */}
                                                         {rb.descripcion && rb.descripcion.length > 120 && (
                                                             <Box sx={{ mt: 0.5, textAlign: 'right' }}>
                                                                 <Button

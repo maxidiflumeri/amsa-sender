@@ -10,12 +10,16 @@ import {
     MenuItem,
     Button,
     Snackbar,
-    Grid
+    Grid,
+    useMediaQuery
 } from '@mui/material';
 import MuiAlert from '@mui/material/Alert';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 const PreviewTemplate = () => {
+    const isMobile = useMediaQuery('(max-width:768px)');
+    const isTablet = useMediaQuery('(max-width:1024px)');
+
     const { id } = useParams();
     const [html, setHtml] = useState('');
     const [asunto, setAsunto] = useState('');
@@ -87,24 +91,42 @@ const PreviewTemplate = () => {
         }
     };
 
-    if (loading) return <CircularProgress />;
+    if (loading) {
+        return (
+            <Box sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
+                <CircularProgress />
+            </Box>
+        );
+    }
 
     return (
         <>
-
-            <Box p={2}>
-                <Typography variant="h5" gutterBottom>
-                    Vista previa del template: {template.nombre}
+            <Box sx={{ p: { xs: 2, md: 3 } }}>
+                <Typography
+                    variant={isMobile ? 'h6' : 'h5'}
+                    gutterBottom
+                    sx={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                >
+                    Vista previa del template: {template?.nombre ?? '—'}
                 </Typography>
 
-                <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+                <Paper
+                    variant="outlined"
+                    sx={{
+                        mt: 2,
+                        p: { xs: 2, md: 3 },
+                        borderRadius: 3
+                    }}
+                >
                     <Grid container spacing={2} justifyContent="center">
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                            <Box mt={3} display="flex" flexDirection="column" gap={2}>
+                        {/* panel de envío */}
+                        <Grid item xs={12} sm={10} md={7} lg={6}>
+                            <Box mt={1} display="flex" flexDirection="column" gap={2}>
                                 <TextField
                                     label="Cuenta SMTP"
                                     select
                                     fullWidth
+                                    size={isMobile ? 'small' : 'medium'}
                                     value={smtpId}
                                     onChange={(e) => setSmtpId(e.target.value)}
                                 >
@@ -119,6 +141,7 @@ const PreviewTemplate = () => {
                                     label="Campaña (usar datos reales)"
                                     select
                                     fullWidth
+                                    size={isMobile ? 'small' : 'medium'}
                                     value={campaniaId}
                                     onChange={async (e) => {
                                         const idSeleccionado = e.target.value;
@@ -126,15 +149,14 @@ const PreviewTemplate = () => {
 
                                         try {
                                             const contacto = campanias.find(c => c.id === idSeleccionado)?.contactos[0];
-
                                             const { data: previewReal } = await api.post('/email/templates/preview', {
                                                 html: template.html,
-                                                datos: contacto.datos,
+                                                datos: contacto?.datos,
                                                 asunto: template.asunto
                                             });
 
                                             setHtml(previewReal.html);
-                                            setAsunto(previewReal.asunto);                                            
+                                            setAsunto(previewReal.asunto);
                                         } catch (err) {
                                             console.error('Error generando preview con datos reales', err);
                                             setHtml('<p>Error generando la vista previa con datos reales.</p>');
@@ -151,36 +173,65 @@ const PreviewTemplate = () => {
                                 <TextField
                                     label="Email de destino"
                                     fullWidth
+                                    size={isMobile ? 'small' : 'medium'}
                                     value={destino}
                                     onChange={(e) => setDestino(e.target.value)}
+                                    placeholder="usuario@dominio.com"
                                 />
 
                                 <Button
+                                    fullWidth={isMobile}
                                     variant="contained"
                                     color="primary"
                                     onClick={handleEnviar}
                                     disabled={enviando || !smtpId || !destino}
-                                    startIcon={
-                                        enviando ? (
-                                            <CircularProgress size={18} color="inherit" />
-                                        ) : null
-                                    }
+                                    startIcon={enviando ? <CircularProgress size={18} color="inherit" /> : null}
+                                    sx={{
+                                        borderRadius: 2,
+                                        textTransform: 'none'
+                                    }}
                                 >
                                     {enviando ? 'Enviando...' : 'Enviar Email'}
                                 </Button>
-
                             </Box>
                         </Grid>
                     </Grid>
+
                     {/* Asunto renderizado */}
-                    <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2, mt: 5 }}>
+                    <Typography
+                        variant="subtitle1"
+                        fontWeight="bold"
+                        sx={{ mb: 2, mt: 4 }}
+                    >
                         <strong>Asunto:</strong> {asunto || 'Sin asunto'}
                     </Typography>
 
-                    {/* Contenido del email */}
-                    <div dangerouslySetInnerHTML={{ __html: html }} />
-                </Paper >
-            </Box >
+                    {/* Contenido del email (responsive/seguro) */}
+                    <Box
+                        sx={{
+                            // hace que el contenido HTML embebido no rompa el layout
+                            border: (theme) => `1px solid ${theme.palette.divider}`,
+                            borderRadius: 2,
+                            p: { xs: 1.5, md: 2 },
+                            bgcolor: 'background.paper',
+                            overflowX: 'auto',
+                            // reglas de responsividad internas:
+                            '& img': { maxWidth: '100%', height: 'auto' },
+                            '& table': {
+                                width: '100%',
+                                display: 'block',
+                                overflowX: 'auto',
+                                borderCollapse: 'collapse'
+                            },
+                            '& td, & th': { wordBreak: 'break-word' },
+                            '& a': { wordBreak: 'break-all' }
+                        }}
+                    >
+                        <div dangerouslySetInnerHTML={{ __html: html }} />
+                    </Box>
+                </Paper>
+            </Box>
+
             <Snackbar
                 open={feedback.open}
                 autoHideDuration={3000}

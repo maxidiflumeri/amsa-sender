@@ -33,6 +33,7 @@ import {
     Snackbar,
     Alert,
     Divider,
+    useMediaQuery
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -46,6 +47,9 @@ import UnsubscribeIcon from '@mui/icons-material/Unsubscribe';
 import api from '../../api/axios';
 
 export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25 }) {
+    const isMobile = useMediaQuery('(max-width:768px)');
+    const isTablet = useMediaQuery('(max-width:1024px)');
+
     const [rows, setRows] = useState([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(0);
@@ -194,21 +198,54 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
     return (
         <Card sx={{ my: 3 }} elevation={3}>
             <CardHeader
-                avatar={<UnsubscribeIcon sx={{ fontSize: 32 }} />}
+                avatar={<UnsubscribeIcon sx={{ fontSize: { xs: 26, md: 32 } }} />}
                 title="Desuscripciones"
                 titleTypographyProps={{
-                    variant: 'h5', // h4/h5/h6 según prefieras
+                    variant: isMobile ? 'h6' : 'h5',
                     sx: {
-                        fontWeight: "bold",
-                        fontSize: { xs: 22, sm: 24, md: 26 }, // tamaño responsive                      
+                        fontWeight: 'bold',
+                        fontSize: { xs: 20, sm: 22, md: 26 },
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
                     },
                 }}
                 subheader="Listado de emails desuscriptos (globales y por campaña)"
+                subheaderTypographyProps={{
+                    sx: {
+                        display: { xs: 'none', sm: 'block' }, // 👈 oculto en XS
+                        whiteSpace: 'normal',
+                    },
+                }}
+                sx={{
+                    '& .MuiCardHeader-content': { minWidth: 0, gridArea: { xs: 'content' } },
+                    '& .MuiCardHeader-avatar': { gridArea: { xs: 'avatar' } },
+                    '& .MuiCardHeader-action': {
+                        gridArea: { xs: 'action' },
+                        alignSelf: { xs: 'stretch', sm: 'center' },
+                        ml: { xs: 0, sm: 1 },
+                        mt: { xs: 1, sm: 0 },
+                        width: { xs: '100%', sm: 'auto' },
+                    },
+                    display: { xs: 'grid', sm: 'flex' },              // 👈 grid en XS
+                    gridTemplateColumns: { xs: 'auto 1fr' },
+                    gridTemplateAreas: { xs: `"avatar content" "action action"` },
+                    alignItems: { xs: 'start', sm: 'center' },
+                    rowGap: { xs: 0.5, sm: 0 },
+                }}
                 action={
-                    <Stack direction="row" spacing={1}>
+                    <Stack
+                        direction="row"
+                        spacing={1}
+                        useFlexGap
+                        flexWrap="wrap"
+                        sx={{ width: { xs: '100%', sm: 'auto' } }}
+                    >
                         <Tooltip title="Agregar desuscripción manual">
                             <span>
                                 <Button
+                                    size="small"                // 👈 más compacto en móvil
+                                    fullWidth={isMobile}        // 👈 ocupa todo el ancho en XS
                                     variant="contained"
                                     sx={{
                                         borderRadius: 2,
@@ -216,19 +253,23 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
                                         backgroundColor: '#075E54',
                                         '&:hover': {
                                             backgroundColor: '#0b7b65',
-                                            transform: 'scale(1.03)',
+                                            transform: { md: 'scale(1.03)' },
                                             boxShadow: 4,
                                         },
                                     }}
                                     startIcon={<AddIcon />}
-                                    onClick={() => setOpenAdd(true)}>
+                                    onClick={() => setOpenAdd(true)}
+                                >
                                     Agregar
                                 </Button>
                             </span>
                         </Tooltip>
+
                         <Tooltip title="Limpiar todas las desuscripciones">
                             <span>
                                 <Button
+                                    size="small"                // 👈 compacto
+                                    fullWidth={isMobile}        // 👈 ocupa todo el ancho en XS
                                     variant="outlined"
                                     color="error"
                                     startIcon={<CleaningServicesIcon />}
@@ -241,11 +282,25 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
                     </Stack>
                 }
             />
+            {/* Subheader solo XS para que no se corte */}
+            <Box
+                sx={{
+                    display: { xs: 'block', sm: 'none' },
+                    px: 2,
+                    mt: -0.5,
+                    mb: 1,
+                    color: 'text.secondary',
+                    fontSize: 14,
+                }}
+            >
+                Listado de emails desuscriptos (globales y por campaña)
+            </Box>
             <Divider />
-            <CardContent>
+            <CardContent sx={{ p: { xs: 2, md: 3 } }}>
                 <Stack spacing={2}>
                     <TextField
                         fullWidth
+                        size={isMobile ? 'small' : 'medium'}
                         placeholder="Buscar por email…"
                         value={query}
                         onChange={(e) => onChangeQuery(e.target.value)}
@@ -266,18 +321,27 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
                     />
 
                     <Box position="relative">
-                        {loading && <LinearProgress sx={{ position: 'absolute', top: -8, left: 0, right: 0 }} />}
-                        <TableContainer>
-                            <Table size="small">
+                        {loading && <LinearProgress sx={{ position: 'absolute', top: -8, left: 0, right: 0, borderRadius: 1 }} />}
+
+                        {/* Contenedor con scroll horizontal y header sticky */}
+                        <TableContainer
+                            component={Box}
+                            sx={{
+                                overflowX: 'auto',
+                                borderRadius: 2,
+                                border: (theme) => `1px solid ${theme.palette.divider}`
+                            }}
+                        >
+                            <Table size={isMobile ? 'small' : 'small'} stickyHeader sx={{ minWidth: 800 }}>
                                 <TableHead>
                                     <TableRow>
-                                        <TableCell>Email</TableCell>
-                                        <TableCell>Scope</TableCell>
-                                        <TableCell>Campaña</TableCell>
-                                        <TableCell>Motivo</TableCell>
-                                        <TableCell>Fuente</TableCell>
-                                        <TableCell>Fecha</TableCell>
-                                        <TableCell align="right">Acciones</TableCell>
+                                        <TableCell sx={{ minWidth: 220 }}>Email</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Scope</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Campaña</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Motivo</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Fuente</TableCell>
+                                        <TableCell sx={{ minWidth: 170 }}>Fecha</TableCell>
+                                        <TableCell align="right" sx={{ minWidth: 110 }}>Acciones</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -291,17 +355,50 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
 
                                     {rows.map((r) => (
                                         <TableRow key={r.id} hover>
-                                            <TableCell>{r.email}</TableCell>
-                                            <TableCell>
+                                            <TableCell sx={{ maxWidth: { xs: 260, sm: 'unset' } }}>
+                                                <Box sx={{ fontWeight: 500, wordBreak: 'break-all' }}>{r.email}</Box>
+
+                                                {/* Sub-info compacta solo en mobile cuando ocultamos columnas */}
+                                                <Box sx={{ display: { xs: 'block', sm: 'none' }, mt: 0.5 }}>
+                                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+                                                        <Chip size="small" variant="outlined" label={r.scope === 'campaign' ? 'campaign' : 'global'} />
+                                                        {r.scope === 'campaign' && (
+                                                            <Chip size="small" variant="outlined" label={`Campaña ${r.campaignId || '—'}`} />
+                                                        )}
+                                                    </Stack>
+                                                    <Box sx={{ mt: 0.25, color: 'text.secondary', fontSize: 12 }}>
+                                                        {new Date(r.createdAt).toLocaleString('es-AR')}
+                                                    </Box>
+                                                </Box>
+                                            </TableCell>
+
+                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                                                 <Chip size="small" label={r.scope === 'campaign' ? 'campaign' : 'global'} variant="outlined" />
                                             </TableCell>
-                                            <TableCell>{r.scope === 'campaign' ? (r.campaignId || '—') : '—'}</TableCell>
-                                            <TableCell>{r.reason || '—'}</TableCell>
-                                            <TableCell>{r.source || '—'}</TableCell>
-                                            <TableCell>{new Date(r.createdAt).toLocaleString('es-AR')}</TableCell>
-                                            <TableCell align="right">
+
+                                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {r.scope === 'campaign' ? (r.campaignId || '—') : '—'}
+                                            </TableCell>
+
+                                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {r.reason || '—'}
+                                            </TableCell>
+
+                                            <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' }, maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {r.source || '—'}
+                                            </TableCell>
+
+                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                                                {new Date(r.createdAt).toLocaleString('es-AR')}
+                                            </TableCell>
+
+                                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                                                 <Tooltip title="Eliminar desuscripción">
-                                                    <IconButton color="error" onClick={() => setConfirmDeleteId(r.id)}>
+                                                    <IconButton
+                                                        color="error"
+                                                        size={isMobile ? 'small' : 'medium'}
+                                                        onClick={() => setConfirmDeleteId(r.id)}
+                                                    >
                                                         <DeleteOutlineIcon />
                                                     </IconButton>
                                                 </Tooltip>
@@ -322,15 +419,27 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
                                 setRowsPerPage(parseInt(e.target.value, 10));
                                 setPage(0);
                             }}
-                            rowsPerPageOptions={[10, 25, 50, 100]}
+                            rowsPerPageOptions={isMobile ? [10, 25, 50] : [10, 25, 50, 100]}
                             labelRowsPerPage="Filas por página"
+                            sx={{
+                                '.MuiTablePagination-toolbar': { px: { xs: 0.5, sm: 2 } },
+                                '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                                    fontSize: { xs: 12, sm: 14 }
+                                }
+                            }}
                         />
                     </Box>
                 </Stack>
             </CardContent>
 
             {/* Dialog Eliminar */}
-            <Dialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)} maxWidth="xs" fullWidth>
+            <Dialog
+                open={!!confirmDeleteId}
+                onClose={() => setConfirmDeleteId(null)}
+                maxWidth="xs"
+                fullWidth
+                PaperProps={{ sx: { maxHeight: { xs: '90vh', md: '80vh' } } }}
+            >
                 <DialogTitle>Eliminar desuscripción</DialogTitle>
                 <DialogContent>¿Seguro que querés eliminar esta desuscripción?</DialogContent>
                 <DialogActions>
@@ -342,7 +451,13 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
             </Dialog>
 
             {/* Dialog Limpiar todas */}
-            <Dialog open={confirmClearAll} onClose={() => setConfirmClearAll(false)} maxWidth="xs" fullWidth>
+            <Dialog
+                open={confirmClearAll}
+                onClose={() => setConfirmClearAll(false)}
+                maxWidth="xs"
+                fullWidth
+                PaperProps={{ sx: { maxHeight: { xs: '90vh', md: '80vh' } } }}
+            >
                 <DialogTitle>Limpiar todas las desuscripciones</DialogTitle>
                 <DialogContent>Esto eliminará todas las desuscripciones del tenant actual. ¿Deseás continuar?</DialogContent>
                 <DialogActions>
@@ -354,7 +469,13 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
             </Dialog>
 
             {/* Dialog Agregar manual */}
-            <Dialog open={openAdd} onClose={() => setOpenAdd(false)} maxWidth="sm" fullWidth>
+            <Dialog
+                open={openAdd}
+                onClose={() => setOpenAdd(false)}
+                maxWidth="sm"
+                fullWidth
+                PaperProps={{ sx: { maxHeight: { xs: '92vh', md: '85vh' } } }}
+            >
                 <DialogTitle>Agregar desuscripción</DialogTitle>
 
                 <DialogContent sx={{ pt: 1 }}>
@@ -367,6 +488,7 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
                             onChange={(e) => setAddEmail(e.target.value)}
                             placeholder="usuario@dominio.com"
                             autoFocus
+                            size={isMobile ? 'small' : 'medium'}
                         />
 
                         {/* Fila 2: Scope centrado */}
@@ -376,7 +498,7 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
                                 row
                                 value={addScope}
                                 onChange={(_, v) => setAddScope(v)}
-                                sx={{ justifyContent: 'center' }}  // centra horizontalmente
+                                sx={{ justifyContent: 'center' }}
                             >
                                 <FormControlLabel value="global" control={<Radio />} label="Global" />
                                 <FormControlLabel value="campaign" control={<Radio />} label="Por campaña" />
@@ -390,12 +512,13 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
                                 label="Campaign ID"
                                 value={addCampaignId}
                                 onChange={(e) => setAddCampaignId(e.target.value)}
+                                size={isMobile ? 'small' : 'medium'}
                             />
                         )}
                     </Stack>
                 </DialogContent>
 
-                <DialogActions>
+                <DialogActions sx={{ px: { xs: 2, md: 3 }, pb: { xs: 2, md: 3 } }}>
                     <Button onClick={() => setOpenAdd(false)}>Cancelar</Button>
                     <Button variant="contained" onClick={handleAdd} disabled={submitting}>
                         {submitting ? 'Guardando…' : 'Guardar'}

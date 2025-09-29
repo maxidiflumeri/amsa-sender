@@ -49,6 +49,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 
 export default function VerCampañasEmail() {
     const isMobile = useMediaQuery('(max-width:768px)');
+    const isTablet = useMediaQuery('(max-width:1024px)');
     const theme = useTheme();
     const [campanias, setCampanias] = useState([]);
     const [tab, setTab] = useState(0);
@@ -259,13 +260,25 @@ export default function VerCampañasEmail() {
 
     const SkeletonRow = () => (
         <TableRow>
-            <TableCell><Skeleton variant="text" width="80%" /></TableCell>
-            <TableCell align="right"><Skeleton variant="text" width={40} /></TableCell>
-            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
-            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
-            <TableCell><Skeleton variant="rounded" width={100} height={28} /></TableCell>
-            <TableCell><Skeleton variant="text" width="70%" /></TableCell>
+            <TableCell sx={{ maxWidth: 220 }}>
+                <Skeleton variant="text" width="80%" />
+            </TableCell>
+            <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                <Skeleton variant="text" width={40} />
+            </TableCell>
+            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                <Skeleton variant="text" width="60%" />
+            </TableCell>
+            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                <Skeleton variant="text" width="60%" />
+            </TableCell>
             <TableCell>
+                <Skeleton variant="rounded" width={100} height={28} />
+            </TableCell>
+            <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                <Skeleton variant="text" width="70%" />
+            </TableCell>
+            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                 <Skeleton variant="rounded" height={8} />
                 <Skeleton variant="text" width="50%" />
             </TableCell>
@@ -282,15 +295,41 @@ export default function VerCampañasEmail() {
     return (
         <>
             <Box sx={{ py: 3 }}>
-                <Paper elevation={3} sx={{ p: isMobile ? 2 : 4 }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                        <Box display="flex" alignItems="center">
-                            <CampaignIcon sx={{ fontSize: 32 }} />
-                            <Typography ml={1} variant="h5" fontWeight="bold">Campañas Email</Typography>
+                <Paper elevation={3} sx={{ p: { xs: 2, md: 4 } }}>
+                    {/* Header */}
+                    <Box
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems={{ xs: 'stretch', sm: 'center' }}
+                        gap={2}
+                        mb={2}
+                        flexWrap="wrap"
+                    >
+                        <Box display="flex" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
+                            <CampaignIcon sx={{ fontSize: { xs: 26, md: 32 }, flexShrink: 0 }} />
+                            <Typography
+                                ml={0.5}
+                                variant={isMobile ? 'h6' : 'h5'}
+                                fontWeight="bold"
+                                noWrap
+                            >
+                                Campañas Email
+                            </Typography>
                         </Box>
-                        <Stack direction="row" spacing={1}>
-                            <Tooltip title="Refrescar"><IconButton onClick={cargarCampanias}><RefreshIcon /></IconButton></Tooltip>
+
+                        <Stack
+                            direction="row"
+                            spacing={1}
+                            sx={{ width: { xs: '100%', sm: 'auto' } }}
+                            justifyContent={{ xs: 'flex-end', sm: 'flex-end' }}
+                        >
+                            <Tooltip title="Refrescar">
+                                <IconButton onClick={cargarCampanias} size={isMobile ? 'small' : 'medium'}>
+                                    <RefreshIcon />
+                                </IconButton>
+                            </Tooltip>
                             <Button
+                                fullWidth={isMobile}
                                 variant="contained"
                                 startIcon={<AddIcon />}
                                 onClick={() => setModalNueva(true)}
@@ -300,7 +339,7 @@ export default function VerCampañasEmail() {
                                     backgroundColor: '#075E54',
                                     '&:hover': {
                                         backgroundColor: '#0b7b65',
-                                        transform: 'scale(1.03)',
+                                        transform: { md: 'scale(1.03)' },
                                         boxShadow: 4,
                                     },
                                 }}
@@ -310,7 +349,21 @@ export default function VerCampañasEmail() {
                         </Stack>
                     </Box>
 
-                    <Tabs value={tab} onChange={(_, newValue) => setTab(newValue)}>
+                    {/* Tabs responsivas */}
+                    <Tabs
+                        value={tab}
+                        onChange={(_, newValue) => setTab(newValue)}
+                        variant="scrollable"
+                        allowScrollButtonsMobile
+                        scrollButtons={isMobile ? 'auto' : false}
+                        sx={{
+                            '& .MuiTab-root': {
+                                minHeight: 40,
+                                textTransform: 'none',
+                                fontSize: { xs: 13, sm: 14 }
+                            }
+                        }}
+                    >
                         <Tab label={`Pendientes (${pendientes.length})`} />
                         <Tab label={`Agendadas (${agendadas.length})`} />
                         <Tab label={`Procesando (${procesando.length})`} />
@@ -319,9 +372,11 @@ export default function VerCampañasEmail() {
 
                     {loading && <LinearProgress sx={{ mt: 1, borderRadius: 1 }} />}
 
+                    {/* Buscador */}
                     <Box my={2}>
                         <TextField
                             fullWidth
+                            size={isMobile ? 'small' : 'medium'}
                             label="Buscar campañas"
                             value={filtroTexto}
                             onChange={(e) => setFiltroTexto(e.target.value)}
@@ -329,188 +384,279 @@ export default function VerCampañasEmail() {
                         />
                     </Box>
 
-                    <Table size={isMobile ? 'small' : 'medium'}>
-                        <TableHead>
-                            <TableRow>
-                                <TableCell>
-                                    <TableSortLabel
-                                        active={orderBy === 'nombre'}
-                                        direction={orderBy === 'nombre' ? order : 'asc'}
-                                        onClick={() => handleRequestSort('nombre')}
-                                    >
-                                        Nombre
-                                    </TableSortLabel>
-                                </TableCell>
-                                <TableCell align="right">
-                                    <TableSortLabel
-                                        active={orderBy === 'contactos'}
-                                        direction={orderBy === 'contactos' ? order : 'asc'}
-                                        onClick={() => handleRequestSort('contactos')}
-                                    >
-                                        Contactos
-                                    </TableSortLabel>
-                                </TableCell>
-                                <TableCell>
-                                    <TableSortLabel
-                                        active={orderBy === 'createdAt'}
-                                        direction={orderBy === 'createdAt' ? order : 'asc'}
-                                        onClick={() => handleRequestSort('createdAt')}
-                                    >
-                                        Creado
-                                    </TableSortLabel>
-                                </TableCell>
-                                <TableCell>
-                                    <TableSortLabel
-                                        active={orderBy === 'enviadoAt'}
-                                        direction={orderBy === 'enviadoAt' ? order : 'asc'}
-                                        onClick={() => handleRequestSort('enviadoAt')}
-                                    >
-                                        Enviado
-                                    </TableSortLabel>
-                                </TableCell>
-                                <TableCell>
-                                    <TableSortLabel
-                                        active={orderBy === 'estado'}
-                                        direction={orderBy === 'estado' ? order : 'asc'}
-                                        onClick={() => handleRequestSort('estado')}
-                                    >
-                                        Estado
-                                    </TableSortLabel>
-                                </TableCell>
-                                <TableCell>
-                                    <TableSortLabel
-                                        active={orderBy === 'agendadoAt'}
-                                        direction={orderBy === 'agendadoAt' ? order : 'asc'}
-                                        onClick={() => handleRequestSort('agendadoAt')}
-                                    >
-                                        Agendada para
-                                    </TableSortLabel>
-                                </TableCell>
-                                <TableCell>Progreso</TableCell>
-                                <TableCell>Acciones</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {loading
-                                ? Array.from({ length: rowsPerPage }).map((_, i) => (
-                                    <SkeletonRow key={`sk-${i}`} />
-                                ))
-                                : campaniasPaginadas.map((c) => (
-                                    <React.Fragment key={c.id}>
-                                        <TableRow
-                                            hover
-                                            onClick={() => handleAbrirDialogoContactos(c)}
-                                            sx={{ cursor: 'pointer' }}
-                                        >
-                                            <TableCell>{c.nombre}</TableCell>
-                                            <TableCell align="right" sx={{ maxWidth: 5 }}>
-                                                {c.contactosCount ?? c._count?.contactos ?? 0}
-                                            </TableCell>
-                                            <TableCell>
-                                                {c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}
-                                            </TableCell>
-                                            <TableCell>
-                                                {c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–'}
-                                            </TableCell>
-                                            <TableCell>
-                                                {c.estado === 'procesando' && <Chip label="Procesando" color="info" />}
-                                                {c.estado === 'pausada' && <Chip label="Pausada" color="warning" />}
-                                                {c.estado === 'pendiente' && <Chip label="Pendiente" />}
-                                                {c.estado === 'finalizada' && <Chip label="Finalizada" color="success" />}
-                                                {c.estado === 'programada' && <Chip label="Programada" color="info" />}
-                                                {c.estado === 'pausa_pendiente' && <Chip label="Pausa en cola" color="warning" />}
-                                            </TableCell>
-                                            <TableCell>
-                                                {c.agendadoAt ? new Date(c.agendadoAt).toLocaleString() : '—'}
-                                            </TableCell>
-                                            <TableCell>
-                                                {c.estado === 'procesando' && (
-                                                    <Box width={100}>
-                                                        <LinearProgress
-                                                            variant={progresos[c.id] ? 'determinate' : 'indeterminate'}
-                                                            value={
-                                                                progresos[c.id]
-                                                                    ? (progresos[c.id].enviados / progresos[c.id].total) * 100
-                                                                    : 0
-                                                            }
-                                                            sx={{ height: 8, borderRadius: 4 }}
-                                                        />
-                                                        <Typography variant="caption">
-                                                            {progresos[c.id]
-                                                                ? `${progresos[c.id].enviados}/${progresos[c.id].total}`
-                                                                : '...'}
-                                                        </Typography>
-                                                    </Box>
-                                                )}
-                                            </TableCell>
-                                            <TableCell
-                                                onClick={(e) => e.stopPropagation()}
-                                                sx={{ whiteSpace: 'nowrap', minWidth: 120 }}
-                                            >
-                                                {c.estado === 'pendiente' && (
-                                                    <>
-                                                        <Tooltip title="Enviar campaña">
-                                                            <IconButton color="primary" onClick={() => abrirModalEnvio(c)}>
-                                                                <SendIcon />
-                                                            </IconButton>
-                                                        </Tooltip>
-
-                                                        <Tooltip title="Agendar campaña">
-                                                            <IconButton color="secondary" onClick={() => abrirModalAgendar(c)}>
-                                                                <EventIcon />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    </>
-                                                )}
-                                                {(c.estado === 'pendiente' ||
-                                                    c.estado === 'pausada' ||
-                                                    c.estado === 'finalizada' ||
-                                                    c.estado === 'programada') && (
-                                                        <Tooltip title="Eliminar campaña">
-                                                            <IconButton color="error" onClick={() => confirmarEliminar(c)}>
-                                                                <DeleteIcon />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    )}
-                                            </TableCell>
-                                        </TableRow>
-                                    </React.Fragment>
-                                ))
-                            }
-
-                            {!loading && campaniasPaginadas.length === 0 && (
+                    {/* Tabla en contenedor con scroll + sticky header */}
+                    <Box
+                        sx={{
+                            width: '100%',
+                            overflowX: 'auto',
+                            borderRadius: 2,
+                            border: `1px solid ${theme.palette.divider}`,
+                        }}
+                    >
+                        <Table
+                            stickyHeader
+                            size={isMobile ? 'small' : 'medium'}
+                            sx={{
+                                minWidth: 700,
+                                '& th, & td': {
+                                    whiteSpace: { xs: 'nowrap', sm: 'nowrap', md: 'normal' },
+                                }
+                            }}
+                        >
+                            <TableHead>
                                 <TableRow>
-                                    <TableCell colSpan={8}>
-                                        <Box
-                                            sx={{
-                                                textAlign: 'center',
-                                                py: 6,
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                alignItems: 'center',
-                                                color: 'text.secondary',
-                                            }}
+                                    <TableCell sx={{ minWidth: 180 }}>
+                                        <TableSortLabel
+                                            active={orderBy === 'nombre'}
+                                            direction={orderBy === 'nombre' ? order : 'asc'}
+                                            onClick={() => handleRequestSort('nombre')}
                                         >
-                                            <InboxIcon sx={{ fontSize: 60, mb: 2 }} />
-                                            <Typography variant="h6" gutterBottom>
-                                                {filtroTexto
-                                                    ? 'No se encontraron campañas con ese nombre.'
-                                                    : mensajesPorTab[tab]}
-                                            </Typography>
-                                            {filtroTexto && (
-                                                <Typography variant="body2">
-                                                    Probá con otro término de búsqueda.
-                                                </Typography>
-                                            )}
-                                        </Box>
+                                            Nombre
+                                        </TableSortLabel>
                                     </TableCell>
+
+                                    <TableCell
+                                        align="right"
+                                        sx={{ display: { xs: 'none', sm: 'table-cell' }, minWidth: 110 }}
+                                    >
+                                        <TableSortLabel
+                                            active={orderBy === 'contactos'}
+                                            direction={orderBy === 'contactos' ? order : 'asc'}
+                                            onClick={() => handleRequestSort('contactos')}
+                                        >
+                                            Contactos
+                                        </TableSortLabel>
+                                    </TableCell>
+
+                                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, minWidth: 160 }}>
+                                        <TableSortLabel
+                                            active={orderBy === 'createdAt'}
+                                            direction={orderBy === 'createdAt' ? order : 'asc'}
+                                            onClick={() => handleRequestSort('createdAt')}
+                                        >
+                                            Creado
+                                        </TableSortLabel>
+                                    </TableCell>
+
+                                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, minWidth: 160 }}>
+                                        <TableSortLabel
+                                            active={orderBy === 'enviadoAt'}
+                                            direction={orderBy === 'enviadoAt' ? order : 'asc'}
+                                            onClick={() => handleRequestSort('enviadoAt')}
+                                        >
+                                            Enviado
+                                        </TableSortLabel>
+                                    </TableCell>
+
+                                    <TableCell sx={{ minWidth: 140 }}>
+                                        <TableSortLabel
+                                            active={orderBy === 'estado'}
+                                            direction={orderBy === 'estado' ? order : 'asc'}
+                                            onClick={() => handleRequestSort('estado')}
+                                        >
+                                            Estado
+                                        </TableSortLabel>
+                                    </TableCell>
+
+                                    <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' }, minWidth: 180 }}>
+                                        <TableSortLabel
+                                            active={orderBy === 'agendadoAt'}
+                                            direction={orderBy === 'agendadoAt' ? order : 'asc'}
+                                            onClick={() => handleRequestSort('agendadoAt')}
+                                        >
+                                            Agendada para
+                                        </TableSortLabel>
+                                    </TableCell>
+
+                                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' }, minWidth: 140 }}>
+                                        Progreso
+                                    </TableCell>
+
+                                    <TableCell sx={{ minWidth: 140 }}>Acciones</TableCell>
                                 </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                            </TableHead>
+
+                            <TableBody>
+                                {loading
+                                    ? Array.from({ length: rowsPerPage }).map((_, i) => (
+                                        <SkeletonRow key={`sk-${i}`} />
+                                    ))
+                                    : campaniasPaginadas.map((c) => (
+                                        <React.Fragment key={c.id}>
+                                            <TableRow
+                                                hover
+                                                onClick={() => handleAbrirDialogoContactos(c)}
+                                                sx={{
+                                                    cursor: 'pointer',
+                                                    '&:hover': { backgroundColor: 'action.hover' }
+                                                }}
+                                            >
+                                                <TableCell sx={{ maxWidth: { xs: 220, md: 'unset' } }}>
+                                                    <Tooltip title={c.nombre} placement="top" arrow>
+                                                        <Typography
+                                                            variant="body2"
+                                                            noWrap
+                                                            sx={{ fontWeight: 600 }}
+                                                        >
+                                                            {c.nombre}
+                                                        </Typography>
+                                                    </Tooltip>
+
+                                                    {/* Sub-info compacta visible solo en mobile */}
+                                                    <Box sx={{ display: { xs: 'block', sm: 'none' }, mt: 0.5 }}>
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            {c.contactosCount ?? c._count?.contactos ?? 0} contactos • {c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}
+                                                        </Typography>
+                                                        {c.estado === 'procesando' && (
+                                                            <Box sx={{ mt: 0.5, width: '100%', maxWidth: 180 }}>
+                                                                <LinearProgress
+                                                                    variant={progresos[c.id] ? 'determinate' : 'indeterminate'}
+                                                                    value={
+                                                                        progresos[c.id]
+                                                                            ? (progresos[c.id].enviados / progresos[c.id].total) * 100
+                                                                            : 0
+                                                                    }
+                                                                    sx={{ height: 6, borderRadius: 4 }}
+                                                                />
+                                                            </Box>
+                                                        )}
+                                                    </Box>
+                                                </TableCell>
+
+                                                <TableCell
+                                                    align="right"
+                                                    sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                                                >
+                                                    {c.contactosCount ?? c._count?.contactos ?? 0}
+                                                </TableCell>
+
+                                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                                                    {c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}
+                                                </TableCell>
+
+                                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                                                    {c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–'}
+                                                </TableCell>
+
+                                                <TableCell>
+                                                    {c.estado === 'procesando' && <Chip label="Procesando" color="info" size={isMobile ? 'small' : 'medium'} />}
+                                                    {c.estado === 'pausada' && <Chip label="Pausada" color="warning" size={isMobile ? 'small' : 'medium'} />}
+                                                    {c.estado === 'pendiente' && <Chip label="Pendiente" size={isMobile ? 'small' : 'medium'} />}
+                                                    {c.estado === 'finalizada' && <Chip label="Finalizada" color="success" size={isMobile ? 'small' : 'medium'} />}
+                                                    {c.estado === 'programada' && <Chip label="Programada" color="info" size={isMobile ? 'small' : 'medium'} />}
+                                                    {c.estado === 'pausa_pendiente' && <Chip label="Pausa en cola" color="warning" size={isMobile ? 'small' : 'medium'} />}
+                                                </TableCell>
+
+                                                <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                                                    {c.agendadoAt ? new Date(c.agendadoAt).toLocaleString() : '—'}
+                                                </TableCell>
+
+                                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                                                    {c.estado === 'procesando' && (
+                                                        <Box width={120}>
+                                                            <LinearProgress
+                                                                variant={progresos[c.id] ? 'determinate' : 'indeterminate'}
+                                                                value={
+                                                                    progresos[c.id]
+                                                                        ? (progresos[c.id].enviados / progresos[c.id].total) * 100
+                                                                        : 0
+                                                                }
+                                                                sx={{ height: 8, borderRadius: 4 }}
+                                                            />
+                                                            <Typography variant="caption">
+                                                                {progresos[c.id]
+                                                                    ? `${progresos[c.id].enviados}/${progresos[c.id].total}`
+                                                                    : '...'}
+                                                            </Typography>
+                                                        </Box>
+                                                    )}
+                                                </TableCell>
+
+                                                <TableCell
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    sx={{
+                                                        whiteSpace: 'nowrap',
+                                                        minWidth: { xs: 120, sm: 140 }
+                                                    }}
+                                                >
+                                                    {c.estado === 'pendiente' && (
+                                                        <>
+                                                            <Tooltip title="Enviar campaña">
+                                                                <IconButton
+                                                                    color="primary"
+                                                                    size={isMobile ? 'small' : 'medium'}
+                                                                    onClick={() => abrirModalEnvio(c)}
+                                                                >
+                                                                    <SendIcon />
+                                                                </IconButton>
+                                                            </Tooltip>
+
+                                                            <Tooltip title="Agendar campaña">
+                                                                <IconButton
+                                                                    color="secondary"
+                                                                    size={isMobile ? 'small' : 'medium'}
+                                                                    onClick={() => abrirModalAgendar(c)}
+                                                                >
+                                                                    <EventIcon />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </>
+                                                    )}
+                                                    {(c.estado === 'pendiente' ||
+                                                        c.estado === 'pausada' ||
+                                                        c.estado === 'finalizada' ||
+                                                        c.estado === 'programada') && (
+                                                            <Tooltip title="Eliminar campaña">
+                                                                <IconButton
+                                                                    color="error"
+                                                                    size={isMobile ? 'small' : 'medium'}
+                                                                    onClick={() => confirmarEliminar(c)}
+                                                                >
+                                                                    <DeleteIcon />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        )}
+                                                </TableCell>
+                                            </TableRow>
+                                        </React.Fragment>
+                                    ))
+                                }
+
+                                {!loading && campaniasPaginadas.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={8}>
+                                            <Box
+                                                sx={{
+                                                    textAlign: 'center',
+                                                    py: 6,
+                                                    px: 2,
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: 'center',
+                                                    color: 'text.secondary',
+                                                }}
+                                            >
+                                                <InboxIcon sx={{ fontSize: 60, mb: 2 }} />
+                                                <Typography variant="h6" gutterBottom align="center">
+                                                    {filtroTexto
+                                                        ? 'No se encontraron campañas con ese nombre.'
+                                                        : mensajesPorTab[tab]}
+                                                </Typography>
+                                                {filtroTexto && (
+                                                    <Typography variant="body2" align="center">
+                                                        Probá con otro término de búsqueda.
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </Box>
 
                     <TablePagination
-                        rowsPerPageOptions={[5, 10, 25]}
+                        rowsPerPageOptions={isMobile ? [5, 10] : [5, 10, 25]}
                         component="div"
                         count={campaniasMostradas.length}
                         rowsPerPage={rowsPerPage}
@@ -519,6 +665,14 @@ export default function VerCampañasEmail() {
                         onRowsPerPageChange={(e) => {
                             setRowsPerPage(parseInt(e.target.value, 10));
                             setPage(0);
+                        }}
+                        sx={{
+                            '.MuiTablePagination-toolbar': {
+                                px: { xs: 0, sm: 2 }
+                            },
+                            '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                                fontSize: { xs: 12, sm: 14 }
+                            }
                         }}
                     />
                 </Paper>
@@ -561,10 +715,18 @@ export default function VerCampañasEmail() {
                 </DialogActions>
             </Dialog>
 
-            <Dialog open={!!campañaSeleccionada} onClose={handleCloseDialogContacts} maxWidth="md" fullWidth>
+            <Dialog
+                open={!!campañaSeleccionada}
+                onClose={handleCloseDialogContacts}
+                maxWidth="md"
+                fullWidth
+                PaperProps={{
+                    sx: { maxHeight: { xs: '90vh', md: '80vh' } }
+                }}
+            >
                 {campañaSeleccionada && (
                     <>
-                        <DialogTitle>
+                        <DialogTitle sx={{ pr: 6 }}>
                             Contactos de "{campañaSeleccionada?.nombre}"
                             <IconButton
                                 aria-label="cerrar"
@@ -578,48 +740,56 @@ export default function VerCampañasEmail() {
                             <Box mb={2}>
                                 <TextField
                                     fullWidth
+                                    size={isMobile ? 'small' : 'medium'}
                                     label="Buscar por email o nombre"
                                     value={busquedaContacto}
                                     onChange={(e) => setBusquedaContacto(e.target.value)}
                                     placeholder="Ej: juan@mail.com o Juan Pérez"
                                 />
                             </Box>
-                            <FixedSizeList
-                                width="100%"
-                                itemSize={750}
-                                itemCount={contactosFiltrados.length}
-                                itemData={contactosFiltrados}
-                                height={window.innerHeight - 300}
-                            >
-                                {({ index, style, data }) => {
-                                    const contacto = data[index];
-                                    return (
-                                        <div style={style} key={contacto.id}>
-                                            <Box sx={{ px: 2, py: 1 }}>
-                                                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                                                    📧 Email: <code>{contacto.email}</code>
-                                                </Typography>
+                            <Box sx={{ width: '100%' }}>
+                                <FixedSizeList
+                                    width="100%"
+                                    itemSize={isMobile ? 750 : isTablet ? 750 : 750}
+                                    itemCount={contactosFiltrados.length}
+                                    itemData={contactosFiltrados}
+                                    height={
+                                        typeof window !== 'undefined'
+                                            ? Math.min(520, window.innerHeight - (isMobile ? 260 : 320))
+                                            : 400
+                                    }
+                                >
+                                    {({ index, style, data }) => {
+                                        const contacto = data[index];
+                                        return (
+                                            <div style={style} key={contacto.id}>
+                                                <Box sx={{ px: { xs: 1, md: 2 }, py: 1 }}>
+                                                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                                                        📧 Email: <code style={{ wordBreak: 'break-all' }}>{contacto.email}</code>
+                                                    </Typography>
 
-                                                {contacto.datos && Object.keys(contacto.datos).length > 0 && (
-                                                    <Box>
-                                                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>🧾 Datos:</Typography>
-                                                        <Box component="ul" sx={{ m: 0, pl: 2 }}>
-                                                            {Object.entries(contacto.datos).map(([key, value]) => (
-                                                                <li key={key}>
-                                                                    <Typography variant="body2">
-                                                                        <strong>{key}:</strong> <code>{String(value)}</code>
-                                                                    </Typography>
-                                                                </li>
-                                                            ))}
+                                                    {contacto.datos && Object.keys(contacto.datos).length > 0 && (
+                                                        <Box>
+                                                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>🧾 Datos:</Typography>
+                                                            <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                                                                {Object.entries(contacto.datos).map(([key, value]) => (
+                                                                    <li key={key}>
+                                                                        <Typography variant="body2">
+                                                                            <strong>{key}:</strong>{' '}
+                                                                            <code style={{ wordBreak: 'break-all' }}>{String(value)}</code>
+                                                                        </Typography>
+                                                                    </li>
+                                                                ))}
+                                                            </Box>
                                                         </Box>
-                                                    </Box>
-                                                )}
-                                            </Box>
-                                            <Divider sx={{ my: 1 }} />
-                                        </div>
-                                    );
-                                }}
-                            </FixedSizeList>
+                                                    )}
+                                                </Box>
+                                                <Divider sx={{ my: 1 }} />
+                                            </div>
+                                        );
+                                    }}
+                                </FixedSizeList>
+                            </Box>
                         </DialogContent>
                     </>
                 )}

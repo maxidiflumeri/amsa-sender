@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
     Box, Paper, Typography, Button, IconButton, Chip, Table, TableHead, TableRow, TableCell, TableBody,
     TablePagination, Tooltip, Divider, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
-    FormControlLabel, Switch, Stack, CircularProgress, LinearProgress, Snackbar, Alert, Autocomplete
+    FormControlLabel, Switch, Stack, CircularProgress, LinearProgress, Snackbar, Alert, Autocomplete,
+    TableContainer, useMediaQuery
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -58,8 +59,8 @@ function sanitizeCreateOrUpdate(raw) {
     return {
         nombre: String(raw.nombre || '').trim(),
         tipo: raw.tipo,
-        expresionCron: raw.expresionCron,          // cron final
-        zonaHoraria: raw.zonaHoraria,              // ej: "America/Argentina/Buenos_Aires"
+        expresionCron: raw.expresionCron,
+        zonaHoraria: raw.zonaHoraria,
         habilitada: Boolean(raw.habilitada),
         destinatarios: Array.isArray(raw.destinatarios) ? raw.destinatarios : [],
         configuracion: {
@@ -75,6 +76,7 @@ function sanitizeCreateOrUpdate(raw) {
 
 // --- Dialogo Crear/Editar con configuracion y destinatarios
 function TareaDialog({ open, onClose, onSubmit, initial }) {
+    const isMobile = useMediaQuery('(max-width:768px)');
     const isEdit = Boolean(initial?.id);
     // Campos base
     const [nombre, setNombre] = useState(initial?.nombre || '');
@@ -136,13 +138,19 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
     const disabledSave = !nombre || !expresionCron || !tz || !tipo || destinatarios.length === 0;
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <Dialog
+            open={open}
+            onClose={onClose}
+            maxWidth="md"
+            fullWidth
+            PaperProps={{ sx: { maxHeight: { xs: '92vh', md: '85vh' } } }}
+        >
             <DialogTitle>{isEdit ? 'Editar tarea' : 'Nueva tarea'}</DialogTitle>
-            <DialogContent dividers>
+            <DialogContent dividers sx={{ p: { xs: 2, md: 3 } }}>
                 <Stack spacing={2} sx={{ mt: 1 }}>
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                        <TextField label="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} fullWidth />
-                        <TextField select label="Tipo" value={tipo} onChange={(e) => setTipo(e.target.value)} fullWidth>
+                        <TextField label="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'} />
+                        <TextField select label="Tipo" value={tipo} onChange={(e) => setTipo(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
                             {TIPOS.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
                         </TextField>
                     </Stack>
@@ -152,10 +160,11 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
                         value={descripcion}
                         onChange={(e) => setDescripcion(e.target.value)}
                         fullWidth multiline minRows={2}
+                        size={isMobile ? 'small' : 'medium'}
                     />
 
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                        <TextField select label="Zona horaria" value={tz} onChange={(e) => setTz(e.target.value)} fullWidth>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+                        <TextField select label="Zona horaria" value={tz} onChange={(e) => setTz(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
                             <MenuItem value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires</MenuItem>
                             <MenuItem value="UTC">UTC</MenuItem>
                         </TextField>
@@ -166,7 +175,7 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
 
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Frecuencia</Typography>
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                        <TextField select label="Preset" value={preset} onChange={(e) => setPreset(e.target.value)} fullWidth>
+                        <TextField select label="Preset" value={preset} onChange={(e) => setPreset(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
                             <MenuItem value="cada_x_minutos">Cada X minutos</MenuItem>
                             <MenuItem value="cada_hora_al_minuto">Cada hora al minuto</MenuItem>
                             <MenuItem value="diario_hora">Diario a una hora</MenuItem>
@@ -176,26 +185,26 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
                         </TextField>
 
                         {preset === 'cada_x_minutos' && (
-                            <TextField type="number" label="Cada (min)" value={cadaMin} onChange={(e) => setCadaMin(e.target.value)} fullWidth />
+                            <TextField type="number" label="Cada (min)" value={cadaMin} onChange={(e) => setCadaMin(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'} />
                         )}
                         {(preset === 'diario_hora' || preset === 'semanal_dow_hora' || preset === 'mensual_dom_hora') && (
-                            <TextField select label="Hora" value={hora} onChange={(e) => setHora(e.target.value)} fullWidth>
+                            <TextField select label="Hora" value={hora} onChange={(e) => setHora(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
                                 {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
                             </TextField>
                         )}
                         {(preset === 'cada_hora_al_minuto' || preset === 'diario_hora' || preset === 'semanal_dow_hora' || preset === 'mensual_dom_hora') && (
-                            <TextField select label="Minuto" value={minuto} onChange={(e) => setMinuto(e.target.value)} fullWidth>
+                            <TextField select label="Minuto" value={minuto} onChange={(e) => setMinuto(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
                                 {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
                             </TextField>
                         )}
                         {preset === 'semanal_dow_hora' && (
-                            <TextField select label="Día de semana" value={diaSemana} onChange={(e) => setDiaSemana(e.target.value)} fullWidth>
+                            <TextField select label="Día de semana" value={diaSemana} onChange={(e) => setDiaSemana(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
                                 <MenuItem value="1">Lunes</MenuItem><MenuItem value="2">Martes</MenuItem><MenuItem value="3">Miércoles</MenuItem>
                                 <MenuItem value="4">Jueves</MenuItem><MenuItem value="5">Viernes</MenuItem><MenuItem value="6">Sábado</MenuItem><MenuItem value="0">Domingo</MenuItem>
                             </TextField>
                         )}
                         {preset === 'mensual_dom_hora' && (
-                            <TextField select label="Día del mes" value={diaMes} onChange={(e) => setDiaMes(e.target.value)} fullWidth>
+                            <TextField select label="Día del mes" value={diaMes} onChange={(e) => setDiaMes(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
                                 {Array.from({ length: 31 }, (_, i) => String(i + 1)).map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
                             </TextField>
                         )}
@@ -208,6 +217,7 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
                             onChange={(e) => setCustomCron(e.target.value)}
                             helperText="Formato: m h dom mon dow (ej: 0 8 * * * → 08:00 todos los días)"
                             fullWidth
+                            size={isMobile ? 'small' : 'medium'}
                         />
                     )}
 
@@ -221,14 +231,15 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Destino y contenido</Typography>
 
                     <Autocomplete
-                        multiple freeSolo
-                        options={[]} // opcionalmente podés sugerir emails
+                        multiple
+                        freeSolo
+                        options={[]}
                         value={destinatarios}
                         onChange={(_, vals) => setDestinatarios(vals)}
                         renderTags={(value, getTagProps) =>
                             value.map((option, index) => (<Chip variant="outlined" label={option} {...getTagProps({ index })} />))
                         }
-                        renderInput={(params) => <TextField {...params} label="Destinatarios (emails)" placeholder="Agregar email y Enter" />}
+                        renderInput={(params) => <TextField {...params} label="Destinatarios (emails)" placeholder="Agregar email y Enter" size={isMobile ? 'small' : 'medium'} />}
                     />
 
                     <TextField
@@ -237,6 +248,7 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
                         onChange={(e) => setAsuntoTpl(e.target.value)}
                         helperText="Podés usar variables como ${DATE}"
                         fullWidth
+                        size={isMobile ? 'small' : 'medium'}
                     />
 
                     <HtmlTemplateEditor
@@ -244,22 +256,20 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
                         onChange={setHtmlTpl}
                         variables={[
                             { label: 'Fecha', token: '${DATE}' },
-                            // si mañana querés más: { label: 'Usuario', token: '${USER}' }, etc.
                         ]}
                     />
 
-                    <Stack direction="row" spacing={2}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                         <FormControlLabel control={<Switch checked={repRebotes} onChange={(e) => setRepRebotes(e.target.checked)} />} label="Incluir reportes de rebotes" />
                         <FormControlLabel control={<Switch checked={repAcciones} onChange={(e) => setRepAcciones(e.target.checked)} />} label="Incluir reportes de acciones" />
                     </Stack>
                 </Stack>
             </DialogContent>
-            <DialogActions>
+            <DialogActions sx={{ p: { xs: 2, md: 3 } }}>
                 <Button onClick={onClose}>Cancelar</Button>
                 <Button
                     onClick={() => onSubmit({
                         id: initial?.id,
-                        // mapeo EXACTO al backend:
                         nombre,
                         tipo,
                         expresionCron,
@@ -271,7 +281,6 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
                             asuntoTpl,
                             htmlTpl,
                         },
-                        // metadatos para re-editar amigable (opcional persistirlos):
                         descripcion,
                         preset, cadaMin, hora, minuto, diaSemana, diaMes,
                     })}
@@ -287,39 +296,45 @@ function TareaDialog({ open, onClose, onSubmit, initial }) {
 
 function HistorialDialog({ open, onClose, loading, ejecuciones }) {
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+        <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth PaperProps={{ sx: { maxHeight: { xs: '92vh', md: '85vh' } } }}>
             <DialogTitle>Historial de ejecuciones</DialogTitle>
-            <DialogContent dividers>
+            <DialogContent dividers sx={{ p: { xs: 2, md: 3 } }}>
                 {loading && <LinearProgress sx={{ mb: 2 }} />}
-                <Table size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Fecha Inicio</TableCell>
-                            <TableCell>Fecha Fin</TableCell>
-                            <TableCell>Estado</TableCell>
-                            <TableCell>Mensaje</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {ejecuciones?.length ? ejecuciones.map((e) => (
-                            <TableRow key={e.id}>
-                                <TableCell>{e.inicioEn != null ? `${new Date(e.inicioEn).toLocaleString()}` : '-'}</TableCell>
-                                <TableCell>{e.finEn != null ? `${new Date(e.finEn).toLocaleString()}` : '-'}</TableCell>
-                                <TableCell><Chip size="small" label={e.estado} color={e.estado === 'completed' ? 'success' : e.estado === 'failed' ? 'error' : 'default'} /></TableCell>
-                                <TableCell>{e.error != null ? `${e.error.substring(0, 200)}` : 'Procesado Exitosamente.'}</TableCell>
+                <TableContainer sx={{ overflowX: 'auto', borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}` }}>
+                    <Table size="small" stickyHeader sx={{ minWidth: 800 }}>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell>Fecha Inicio</TableCell>
+                                <TableCell>Fecha Fin</TableCell>
+                                <TableCell>Estado</TableCell>
+                                <TableCell>Mensaje</TableCell>
                             </TableRow>
-                        )) : (
-                            <TableRow><TableCell colSpan={4} align="center">Sin ejecuciones registradas.</TableCell></TableRow>
-                        )}
-                    </TableBody>
-                </Table>
+                        </TableHead>
+                        <TableBody>
+                            {ejecuciones?.length ? ejecuciones.map((e) => (
+                                <TableRow key={e.id} hover>
+                                    <TableCell>{e.inicioEn != null ? `${new Date(e.inicioEn).toLocaleString()}` : '-'}</TableCell>
+                                    <TableCell>{e.finEn != null ? `${new Date(e.finEn).toLocaleString()}` : '-'}</TableCell>
+                                    <TableCell><Chip size="small" label={e.estado} color={e.estado === 'completed' ? 'success' : e.estado === 'failed' ? 'error' : 'default'} /></TableCell>
+                                    <TableCell sx={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                                        {e.error != null ? `${e.error.substring(0, 200)}` : 'Procesado Exitosamente.'}
+                                    </TableCell>
+                                </TableRow>
+                            )) : (
+                                <TableRow><TableCell colSpan={4} align="center">Sin ejecuciones registradas.</TableCell></TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </DialogContent>
-            <DialogActions><Button onClick={onClose}>Cerrar</Button></DialogActions>
+            <DialogActions sx={{ p: { xs: 2, md: 3 } }}><Button onClick={onClose}>Cerrar</Button></DialogActions>
         </Dialog>
     );
 }
 
 export default function TareasProgramadas() {
+    const isMobile = useMediaQuery('(max-width:768px)');
+
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
     const [loading, setLoading] = useState(false);
     const [rows, setRows] = useState([]);
@@ -354,18 +369,14 @@ export default function TareasProgramadas() {
     const submitDialog = async (payload) => {
         setSaving(true);
         try {
-            const body = sanitizeCreateOrUpdate(payload); // <<< quita descripcion/preset/cadaMin/hora/minuto/diaSemana/diaMes
-
+            const body = sanitizeCreateOrUpdate(payload);
             if (payload.id) {
-                // UPDATE: id por URL; body solo con campos permitidos
                 await api.put(`/tareas-programadas/${payload.id}`, body);
                 setSnack({ open: true, msg: 'Tarea actualizada', sev: 'success' });
             } else {
-                // CREATE: solo campos permitidos
                 await api.post('/tareas-programadas', body);
                 setSnack({ open: true, msg: 'Tarea creada', sev: 'success' });
             }
-
             setDialogOpen(false);
             await fetchAll();
         } catch (e) {
@@ -394,7 +405,7 @@ export default function TareasProgramadas() {
         }
     };
 
-    const confirmarEliminar = (campaña) => {
+    const confirmarEliminarFn = (campaña) => {
         setTareaAEliminar(campaña);
         setConfirmarEliminacion(true);
     };
@@ -424,84 +435,117 @@ export default function TareasProgramadas() {
     };
 
     return (
-        <Paper sx={{ p: 2, mt: 2 }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                <Typography variant="h6">Tareas programadas</Typography>
-                <Stack direction="row" spacing={1}>
+        <Paper sx={{ p: { xs: 2, md: 3 }, mt: 2 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" sx={{ mb: 1 }} spacing={1}>
+                <Typography variant={isMobile ? 'h6' : 'h6'} fontWeight={700}>Tareas programadas</Typography>
+                <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }} justifyContent={{ xs: 'flex-end', sm: 'flex-end' }} flexWrap="wrap" useFlexGap>
                     <Tooltip title="Refrescar"><IconButton onClick={fetchAll}><RefreshIcon /></IconButton></Tooltip>
-                    <Button sx={{
-                        borderRadius: 2,
-                        fontFamily: commonFont,
-                        textTransform: 'none',
-                        fontSize: '0.9rem',
-                        backgroundColor: '#075E54',
-                        transition: 'all 0.3s ease',
-                        '&:hover': {
-                            backgroundColor: '#0b7b65',
-                            transform: 'scale(1.03)',
-                            boxShadow: 4,
-                        },
-                    }} startIcon={<AddIcon />} variant="contained" onClick={handleCreate}>Nueva tarea</Button>
+                    <Button
+                        fullWidth={isMobile}
+                        sx={{
+                            borderRadius: 2,
+                            fontFamily: commonFont,
+                            textTransform: 'none',
+                            fontSize: '0.9rem',
+                            backgroundColor: '#075E54',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                                backgroundColor: '#0b7b65',
+                                transform: { md: 'scale(1.03)' },
+                                boxShadow: 4,
+                            },
+                        }} startIcon={<AddIcon />} variant="contained" onClick={handleCreate}
+                    >
+                        Nueva tarea
+                    </Button>
                 </Stack>
             </Stack>
 
-            {loading && <LinearProgress sx={{ mb: 1 }} />}
+            {loading && <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />}
 
-            <Table size="small">
-                <TableHead>
-                    <TableRow>
-                        <TableCell>Nombre</TableCell>
-                        <TableCell>Tipo</TableCell>
-                        <TableCell>Estado</TableCell>
-                        <TableCell>Cron</TableCell>
-                        <TableCell>TZ</TableCell>
-                        <TableCell>Próximo run</TableCell>
-                        <TableCell>Último run</TableCell>
-                        <TableCell align="right">Acciones</TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {paginated.map((row) => (
-                        <TableRow key={row.id} hover>
-                            <TableCell>
-                                <Stack spacing={0.2}>
-                                    <Typography fontWeight={600}>{row.nombre}</Typography>
-                                    {row.descripcion && <Typography variant="caption" color="text.secondary">{row.descripcion}</Typography>}
-                                </Stack>
-                            </TableCell>
-                            <TableCell>{row.tipo}</TableCell>
-                            <TableCell>{chipEstado(row.habilitada ?? row.activa)}</TableCell>
-                            <TableCell><code>{row.expresionCron || row.cron}</code></TableCell>
-                            <TableCell>{row.zonaHoraria || row.tz || TZ_DEFAULT}</TableCell>
-                            <TableCell>{row.proximoRun ? dayjs(row.proximoRun).format('YYYY-MM-DD HH:mm') : '-'}</TableCell>
-                            <TableCell>{row.ultimoRun ? dayjs(row.ultimoRun).format('YYYY-MM-DD HH:mm') : '-'}</TableCell>
-                            <TableCell align="right">
-                                <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                                    <Tooltip title="Editar"><span><IconButton onClick={() => handleEdit(row)}><EditIcon /></IconButton></span></Tooltip>
-                                    <Tooltip title={(row.habilitada ?? row.activa) ? 'Pausar' : 'Reanudar'}>
-                                        <span><IconButton onClick={() => toggleActiva(row)}>{(row.habilitada ?? row.activa) ? <PauseIcon /> : <PlayArrowIcon />}</IconButton></span>
-                                    </Tooltip>
-                                    <Tooltip title="Ejecutar ahora"><span><IconButton onClick={() => runNow(row)}><PlayCircleFilledWhiteIcon /></IconButton></span></Tooltip>
-                                    <Tooltip title="Historial"><span><IconButton onClick={() => openHistorial(row)}><HistoryIcon /></IconButton></span></Tooltip>
-                                    <Tooltip title="Eliminar"><span><IconButton onClick={() => confirmarEliminar(row)} color="error"><DeleteIcon /></IconButton></span></Tooltip>
-                                </Stack>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-
-                    {!loading && paginated.length === 0 && (
+            <TableContainer sx={{ overflowX: 'auto', borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}` }}>
+                <Table size="small" stickyHeader sx={{ minWidth: 900 }}>
+                    <TableHead>
                         <TableRow>
-                            <TableCell colSpan={8} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                                <Stack alignItems="center" spacing={1}>
-                                    <HistoryIcon fontSize="large" />
-                                    <Typography>No hay tareas todavía</Typography>
-                                    <Button variant="outlined" startIcon={<AddIcon />} onClick={handleCreate}>Crear la primera tarea</Button>
-                                </Stack>
-                            </TableCell>
+                            <TableCell>Nombre</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Tipo</TableCell>
+                            <TableCell>Estado</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Cron</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>TZ</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Próximo run</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Último run</TableCell>
+                            <TableCell align="right">Acciones</TableCell>
                         </TableRow>
-                    )}
-                </TableBody>
-            </Table>
+                    </TableHead>
+                    <TableBody>
+                        {paginated.map((row) => (
+                            <TableRow key={row.id} hover>
+                                <TableCell sx={{ maxWidth: 260 }}>
+                                    <Stack spacing={0.2}>
+                                        <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {row.nombre}
+                                        </Typography>
+                                        {row.descripcion && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                                                {row.descripcion}
+                                            </Typography>
+                                        )}
+
+                                        {/* Sub-info en mobile cuando ocultamos columnas */}
+                                        <Box sx={{ display: { xs: 'block', sm: 'none' }, mt: 0.5 }}>
+                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+                                                {chipEstado(row.habilitada ?? row.activa)}
+                                                <Chip size="small" variant="outlined" label={(row.zonaHoraria || row.tz || TZ_DEFAULT)} />
+                                            </Stack>
+                                            <Typography variant="caption" color="text.secondary">
+                                                <code>{row.expresionCron || row.cron}</code>
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary" display="block">
+                                                Próx: {row.proximoRun ? dayjs(row.proximoRun).format('YYYY-MM-DD HH:mm') : '-'} · Últ: {row.ultimoRun ? dayjs(row.ultimoRun).format('YYYY-MM-DD HH:mm') : '-'}
+                                            </Typography>
+                                        </Box>
+                                    </Stack>
+                                </TableCell>
+
+                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{row.tipo}</TableCell>
+                                <TableCell>{chipEstado(row.habilitada ?? row.activa)}</TableCell>
+                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}><code style={{ wordBreak: 'break-all' }}>{row.expresionCron || row.cron}</code></TableCell>
+                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{row.zonaHoraria || row.tz || TZ_DEFAULT}</TableCell>
+                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{row.proximoRun ? dayjs(row.proximoRun).format('YYYY-MM-DD HH:mm') : '-'}</TableCell>
+                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{row.ultimoRun ? dayjs(row.ultimoRun).format('YYYY-MM-DD HH:mm') : '-'}</TableCell>
+
+                                <TableCell align="right" sx={{ whiteSpace: 'nowrap', minWidth: 180 }}>
+                                    <Stack direction="row" spacing={0.5} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
+                                        <Tooltip title="Editar"><span><IconButton size={isMobile ? 'small' : 'medium'} onClick={() => handleEdit(row)}><EditIcon /></IconButton></span></Tooltip>
+                                        <Tooltip title={(row.habilitada ?? row.activa) ? 'Pausar' : 'Reanudar'}>
+                                            <span>
+                                                <IconButton size={isMobile ? 'small' : 'medium'} onClick={() => toggleActiva(row)}>
+                                                    {(row.habilitada ?? row.activa) ? <PauseIcon /> : <PlayArrowIcon />}
+                                                </IconButton>
+                                            </span>
+                                        </Tooltip>
+                                        <Tooltip title="Ejecutar ahora"><span><IconButton size={isMobile ? 'small' : 'medium'} onClick={() => runNow(row)}><PlayCircleFilledWhiteIcon /></IconButton></span></Tooltip>
+                                        <Tooltip title="Historial"><span><IconButton size={isMobile ? 'small' : 'medium'} onClick={() => openHistorial(row)}><HistoryIcon /></IconButton></span></Tooltip>
+                                        <Tooltip title="Eliminar"><span><IconButton size={isMobile ? 'small' : 'medium'} onClick={() => confirmarEliminarFn(row)} color="error"><DeleteIcon /></IconButton></span></Tooltip>
+                                    </Stack>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+
+                        {!loading && paginated.length === 0 && (
+                            <TableRow>
+                                <TableCell colSpan={8} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                                    <Stack alignItems="center" spacing={1}>
+                                        <HistoryIcon fontSize="large" />
+                                        <Typography>No hay tareas todavía</Typography>
+                                        <Button variant="outlined" startIcon={<AddIcon />} onClick={handleCreate}>Crear la primera tarea</Button>
+                                    </Stack>
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </TableContainer>
 
             <TablePagination
                 component="div"
@@ -511,6 +555,12 @@ export default function TareasProgramadas() {
                 rowsPerPage={rowsPerPage}
                 onRowsPerPageChange={(e) => { setRpp(parseInt(e.target.value, 10)); setPage(0); }}
                 rowsPerPageOptions={[5, 10, 25]}
+                sx={{
+                    '.MuiTablePagination-toolbar': { px: { xs: 0.5, sm: 2 } },
+                    '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                        fontSize: { xs: 12, sm: 14 }
+                    }
+                }}
             />
 
             <TareaDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onSubmit={submitDialog} initial={editing} />

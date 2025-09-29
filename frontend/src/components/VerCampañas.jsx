@@ -26,7 +26,8 @@ import {
     useMediaQuery,
     Box,
     TextField,
-    Stack
+    Stack,
+    TableContainer
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
@@ -98,7 +99,7 @@ export default function VerCampañas() {
     }, []);
 
     useEffect(() => {
-        const socket = io(import.meta.env.VITE_HOST_SOCKET); // cambiar si tenés otro host
+        const socket = io(import.meta.env.VITE_HOST_SOCKET);
 
         campañas.forEach((campaña) => {
             if (campaña.estado === 'procesando') {
@@ -118,7 +119,7 @@ export default function VerCampañas() {
         });
 
         socket.on('campania_finalizada', ({ campañaId }) => {
-            cargarCampañas(); // recarga la lista de campañas desde backend
+            cargarCampañas();
         });
 
         socket.on('campania_pausada', ({ campañaId }) => {
@@ -237,9 +238,6 @@ export default function VerCampañas() {
         setPausando((prev) => [...prev, campaña.id]);
         try {
             await api.post(`/whatsapp/campanias/${campaña.id}/pausar`);
-            // setMensaje({ tipo: 'success', texto: 'Campaña pausada' });
-            // setSnackbarOpen(true);
-            // cargarCampañas();
         } catch (err) {
             console.error('Error al pausar campaña', err);
             setMensaje({ tipo: 'error', texto: 'No se pudo pausar la campaña' });
@@ -283,12 +281,7 @@ export default function VerCampañas() {
     );
 
     return (
-        <Box
-            sx={{
-                py: 3,
-                transition: 'all 0.1s ease'
-            }}
-        >
+        <Box sx={{ py: 3, transition: 'all 0.1s ease' }}>
             <Paper
                 elevation={1}
                 sx={{
@@ -299,14 +292,22 @@ export default function VerCampañas() {
                     boxShadow: 'none',
                 }}
             >
-                <Box display="flex" flexDirection={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'flex-start' : 'center'} gap={2}>
-                    <Box display="flex" alignItems="center">
+                <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    justifyContent="space-between"
+                    spacing={1.5}
+                >
+                    <Box display="flex" alignItems="center" sx={{ minWidth: 0 }}>
                         <CampaignIcon sx={{ fontSize: 32 }} />
-                        <Typography ml={1} variant="h5" fontWeight="bold">Campañas WhatsApp</Typography>
+                        <Typography ml={1} variant={isMobile ? 'h6' : 'h5'} fontWeight="bold" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            Campañas WhatsApp
+                        </Typography>
                     </Box>
-                    <Stack direction="row" spacing={1}>
+                    <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }} justifyContent={{ xs: 'flex-end', sm: 'flex-end' }} flexWrap="wrap" useFlexGap>
                         <Tooltip title="Refrescar"><IconButton onClick={cargarCampañas}><RefreshIcon /></IconButton></Tooltip>
                         <Button
+                            fullWidth={isMobile}
                             variant="contained"
                             startIcon={<AddIcon />}
                             onClick={() => setModalNueva(true)}
@@ -319,7 +320,7 @@ export default function VerCampañas() {
                                 transition: 'all 0.3s ease',
                                 '&:hover': {
                                     backgroundColor: '#0b7b65',
-                                    transform: 'scale(1.03)',
+                                    transform: { md: 'scale(1.03)' },
                                     boxShadow: 4,
                                 },
                             }}
@@ -327,7 +328,7 @@ export default function VerCampañas() {
                             Nueva campaña
                         </Button>
                     </Stack>
-                </Box>
+                </Stack>
 
                 <Tabs
                     value={tab}
@@ -352,11 +353,12 @@ export default function VerCampañas() {
                         value={filtroTexto}
                         onChange={(e) => setFiltroTexto(e.target.value)}
                         placeholder="Buscar por nombre..."
+                        size={isMobile ? 'small' : 'medium'}
                     />
                 </Box>
 
-                <Box overflow="auto">
-                    <Table size={isMobile ? 'small' : 'medium'}>
+                <TableContainer sx={{ overflowX: 'auto', borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}` }}>
+                    <Table size={isMobile ? 'small' : 'medium'} stickyHeader sx={{ minWidth: 960 }}>
                         <TableHead>
                             <TableRow>
                                 <TableCell>
@@ -377,7 +379,7 @@ export default function VerCampañas() {
                                         Contactos
                                     </TableSortLabel>
                                 </TableCell>
-                                <TableCell>
+                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                                     <TableSortLabel
                                         active={orderBy === 'createdAt'}
                                         direction={orderBy === 'createdAt' ? order : 'asc'}
@@ -386,7 +388,7 @@ export default function VerCampañas() {
                                         Creado
                                     </TableSortLabel>
                                 </TableCell>
-                                <TableCell>
+                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                                     <TableSortLabel
                                         active={orderBy === 'enviadoAt'}
                                         direction={orderBy === 'enviadoAt' ? order : 'asc'}
@@ -395,16 +397,8 @@ export default function VerCampañas() {
                                         Enviado
                                     </TableSortLabel>
                                 </TableCell>
-                                <TableCell>
-                                    <TableSortLabel
-                                        active={orderBy === 'estado'}
-                                        direction={orderBy === 'estado' ? order : 'asc'}
-                                        onClick={() => handleRequestSort('estado')}
-                                    >
-                                        Estado
-                                    </TableSortLabel>
-                                </TableCell>
-                                <TableCell>
+                                <TableCell>Estado</TableCell>
+                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                                     <TableSortLabel
                                         active={orderBy === 'agendadoAt'}
                                         direction={orderBy === 'agendadoAt' ? order : 'asc'}
@@ -413,34 +407,58 @@ export default function VerCampañas() {
                                         Agendada para
                                     </TableSortLabel>
                                 </TableCell>
-                                <TableCell>Progreso</TableCell>
+                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Progreso</TableCell>
                                 <TableCell>Acciones</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
                             {loading
-                                ? Array.from({ length: rowsPerPage }).map((_, i) => (
-                                    <SkeletonRow key={`sk-${i}`} />
-                                ))
-                                :
-                                campañasPaginadas.map((c) => (
+                                ? Array.from({ length: rowsPerPage }).map((_, i) => <SkeletonRow key={`sk-${i}`} />)
+                                : campañasPaginadas.map((c) => (
                                     <React.Fragment key={c.id}>
                                         <TableRow hover onClick={() => setCampañaSeleccionada(c)} sx={{ cursor: 'pointer' }}>
-                                            <TableCell
-                                                sx={{
-                                                    maxWidth: 200,
-                                                    whiteSpace: 'nowrap',
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis'
-                                                }}
-                                            >
-                                                <Tooltip title={c.nombre}>
-                                                    <span>{c.nombre}</span>
-                                                </Tooltip>
+                                            <TableCell sx={{ maxWidth: 240 }}>
+                                                <Stack spacing={0.3}>
+                                                    <Tooltip title={c.nombre}>
+                                                        <Typography sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {c.nombre}
+                                                        </Typography>
+                                                    </Tooltip>
+
+                                                    {/* Sub-info para XS cuando se ocultan columnas */}
+                                                    <Box sx={{ display: { xs: 'block', sm: 'none' } }}>
+                                                        <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+                                                            {c.estado === 'procesando' && <Chip size="small" label="Procesando" color="info" />}
+                                                            {c.estado === 'pausada' && <Chip size="small" label="Pausada" color="warning" />}
+                                                            {c.estado === 'pendiente' && <Chip size="small" label="Pendiente" />}
+                                                            {c.estado === 'finalizada' && <Chip size="small" label="Finalizada" color="success" />}
+                                                            {c.estado === 'programada' && <Chip size="small" label="Programada" color="info" />}
+                                                            {c.estado === 'pausa_pendiente' && <Chip size="small" label="Pausa en cola" color="warning" />}
+                                                        </Stack>
+                                                        <Typography variant="caption" color="text.secondary" display="block">
+                                                            {c.createdAt ? new Date(c.createdAt).toLocaleString() : '—'}
+                                                            {c.agendadoAt ? ` · Agendada: ${new Date(c.agendadoAt).toLocaleString()}` : ''}
+                                                        </Typography>
+                                                        {c.estado === 'procesando' && (
+                                                            <Box sx={{ mt: 0.5 }}>
+                                                                <LinearProgress
+                                                                    variant={progresos[c.id] ? 'determinate' : 'indeterminate'}
+                                                                    value={progresos[c.id] ? (progresos[c.id].enviados / progresos[c.id].total) * 100 : 0}
+                                                                    sx={{ height: 6, borderRadius: 3, maxWidth: 160 }}
+                                                                />
+                                                            </Box>
+                                                        )}
+                                                    </Box>
+                                                </Stack>
                                             </TableCell>
+
                                             <TableCell align="right" sx={{ maxWidth: 5 }}>{c.contactos.length}</TableCell>
-                                            <TableCell>{c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}</TableCell>
-                                            <TableCell>{c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–'}</TableCell>
+                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                                                {c.createdAt ? new Date(c.createdAt).toLocaleString() : '–'}
+                                            </TableCell>
+                                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                                                {c.enviadoAt ? new Date(c.enviadoAt).toLocaleString() : '–'}
+                                            </TableCell>
                                             <TableCell>
                                                 {c.estado === 'procesando' && <Chip label="Procesando" color="info" />}
                                                 {c.estado === 'pausada' && <Chip label="Pausada" color="warning" />}
@@ -449,14 +467,12 @@ export default function VerCampañas() {
                                                 {c.estado === 'programada' && <Chip label="Programada" color="info" />}
                                                 {c.estado === 'pausa_pendiente' && <Chip label="Pausa en cola" color="warning" />}
                                             </TableCell>
-                                            <TableCell>
-                                                {c.agendadoAt
-                                                    ? new Date(c.agendadoAt).toLocaleString()
-                                                    : '—'}
+                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                                                {c.agendadoAt ? new Date(c.agendadoAt).toLocaleString() : '—'}
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                                                 {c.estado === 'procesando' && (
-                                                    <Box width={100}>
+                                                    <Box width={120}>
                                                         <LinearProgress
                                                             variant={progresos[c.id] ? 'determinate' : 'indeterminate'}
                                                             value={progresos[c.id] ? (progresos[c.id].enviados / progresos[c.id].total) * 100 : 0}
@@ -472,13 +488,13 @@ export default function VerCampañas() {
                                                 {c.estado === 'pendiente' && (
                                                     <>
                                                         <Tooltip title="Enviar campaña">
-                                                            <IconButton color="primary" onClick={() => abrirModalEnvio(c)}>
+                                                            <IconButton size={isMobile ? 'small' : 'medium'} color="primary" onClick={() => abrirModalEnvio(c)}>
                                                                 <SendIcon />
                                                             </IconButton>
                                                         </Tooltip>
 
                                                         <Tooltip title="Agendar campaña">
-                                                            <IconButton color="secondary" onClick={() => abrirModalAgendar(c)}>
+                                                            <IconButton size={isMobile ? 'small' : 'medium'} color="secondary" onClick={() => abrirModalAgendar(c)}>
                                                                 <EventIcon />
                                                             </IconButton>
                                                         </Tooltip>
@@ -488,13 +504,13 @@ export default function VerCampañas() {
                                                 {c.estado === 'procesando' || c.estado === 'pausa_pendiente' ? (
                                                     pausando.includes(c.id) || c.estado === 'pausa_pendiente' ? (
                                                         <Tooltip title={c.estado === 'pausa_pendiente' ? "Pausa ya solicitada" : "Pausando..."}>
-                                                            <IconButton disabled>
+                                                            <IconButton size={isMobile ? 'small' : 'medium'} disabled>
                                                                 {c.estado === 'pausa_pendiente' ? <PauseIcon /> : <CircularProgress size={20} />}
                                                             </IconButton>
                                                         </Tooltip>
                                                     ) : (
                                                         <Tooltip title="Pausar campaña">
-                                                            <IconButton color="warning" onClick={() => pausarCampaña(c)}>
+                                                            <IconButton size={isMobile ? 'small' : 'medium'} color="warning" onClick={() => pausarCampaña(c)}>
                                                                 <PauseIcon />
                                                             </IconButton>
                                                         </Tooltip>
@@ -502,14 +518,14 @@ export default function VerCampañas() {
                                                 ) : null}
                                                 {c.estado === 'pausada' && (
                                                     <Tooltip title="Reanudar campaña">
-                                                        <IconButton color="info" onClick={() => reanudarCampaña(c)}>
+                                                        <IconButton size={isMobile ? 'small' : 'medium'} color="info" onClick={() => reanudarCampaña(c)}>
                                                             <PlayArrowIcon />
                                                         </IconButton>
                                                     </Tooltip>
                                                 )}
                                                 {(c.estado === 'pendiente' || c.estado === 'pausada' || c.estado === 'finalizada' || c.estado === 'programada') && (
                                                     <Tooltip title="Eliminar campaña">
-                                                        <IconButton color="error" onClick={() => confirmarEliminar(c)}>
+                                                        <IconButton size={isMobile ? 'small' : 'medium'} color="error" onClick={() => confirmarEliminar(c)}>
                                                             <DeleteIcon />
                                                         </IconButton>
                                                     </Tooltip>
@@ -550,7 +566,7 @@ export default function VerCampañas() {
                             )}
                         </TableBody>
                     </Table>
-                </Box>
+                </TableContainer>
 
                 <TablePagination
                     rowsPerPageOptions={[5, 10, 25]}
@@ -560,6 +576,12 @@ export default function VerCampañas() {
                     page={page}
                     onPageChange={handleChangePage}
                     onRowsPerPageChange={handleChangeRowsPerPage}
+                    sx={{
+                        '.MuiTablePagination-toolbar': { px: { xs: 0.5, sm: 2 } },
+                        '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                            fontSize: { xs: 12, sm: 14 }
+                        }
+                    }}
                 />
             </Paper>
 
@@ -594,12 +616,14 @@ export default function VerCampañas() {
                             <React.Fragment key={idx}>
                                 <ListItem alignItems="flex-start" sx={{ flexDirection: 'column', alignItems: 'stretch', px: 1.5 }}>
                                     <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                                        📞 Número: <code tyle={codeStyle}>{contacto.numero}</code>
+                                        📞 Número:{' '}
+                                        <Box component="code" sx={codeStyle}>{contacto.numero}</Box>
                                     </Typography>
 
                                     {contacto.mensaje && (
                                         <Typography variant="body2" sx={{ mb: 0.5 }}>
-                                            📨 Mensaje: <code tyle={codeStyle}>{contacto.mensaje}</code>
+                                            📨 Mensaje:{' '}
+                                            <Box component="code" sx={codeStyle}>{contacto.mensaje}</Box>
                                         </Typography>
                                     )}
 
@@ -611,7 +635,7 @@ export default function VerCampañas() {
                                                     <li key={key}>
                                                         <Typography variant="body2">
                                                             <strong>{key}:</strong>{' '}
-                                                            <code tyle={codeStyle}>{String(value)}</code>
+                                                            <Box component="code" sx={codeStyle}>{String(value)}</Box>
                                                         </Typography>
                                                     </li>
                                                 ))}
