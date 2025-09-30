@@ -112,7 +112,7 @@ export class SesWebhookService {
 
         for (const r of recipients) {
             const email = r.emailAddress || null;
-            const status = r.status || null; // 5.1.1
+            const status = r.status.replace(/\./g, "") || null; // 5.1.1
             const diag = r.diagnosticCode || null;
 
             const reporteId = await this.resolveReporteId(
