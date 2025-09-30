@@ -79,33 +79,24 @@ export default function EnviarMailsModal({ open, onSendSuccess, onClose, campañ
         setMensaje({ tipo: '', texto: '' });
 
         try {
-            // Aplicar template si corresponde
-            // if (selectedTemplateId) {
-            //     await api.post(`/whatsapp/campanias/${campaña.id}/aplicar-template`, {
-            //         templateId: selectedTemplateId
-            //     });
-            // }
 
-            // if (fechaAgendada) {
-            //     // Envío agendado
-            //     await api.post(`/whatsapp/campanias/${campaña.id}/agendar`, {
-            //         sessionIds: selectedCuentaSmtp,
-            //         fechaAgenda: fechaAgendada,
-            //         config
-            //     });
-            // } else {
-            //     // Envío inmediato
-            //     await api.post('/whatsapp/mensajes/send-messages', {
-            //         sessionIds: selectedCuentaSmtp,
-            //         campaña: campaña.id,
-            //         config
-            //     });
-            // }            
-            await api.post('/email/envio/campania', {
-                idCampania: campaña.id,
-                idTemplate: selectedTemplateId,
-                idCuentaSmtp: selectedCuentaSmtp,
-            });
+            if (fechaAgendada) {
+                // Envío agendado
+                await api.post(`/email/envio/campania/agendar`, {
+                    idCampania: campaña.id,
+                    idTemplate: selectedTemplateId,
+                    idCuentaSmtp: selectedCuentaSmtp,
+                    fechaAgenda: fechaAgendada
+                });
+            } else {
+                // Envío inmediato
+                await api.post('/email/envio/campania', {
+                    idCampania: campaña.id,
+                    idTemplate: selectedTemplateId,
+                    idCuentaSmtp: selectedCuentaSmtp,
+                });
+            }
+
 
             onSendSuccess();
         } catch (error) {
@@ -150,7 +141,7 @@ export default function EnviarMailsModal({ open, onSendSuccess, onClose, campañ
                 <FormControl fullWidth sx={{ mb: 2 }}>
                     <InputLabel>Cuentas</InputLabel>
                     <Select
-                        value={selectedCuentaSmtp}                        
+                        value={selectedCuentaSmtp}
                         onChange={(e) => setselectedCuentaSmtp(e.target.value)}
                         label="Cuentas"
                     >

@@ -85,5 +85,43 @@ export class EnvioEmailService {
 
         return { ok: true, message: 'Campaña programada para envío' };
     }
+
+    async agendarCampania({
+        idCampania,
+        idTemplate,
+        idCuentaSmtp,
+        fechaAgenda
+    }: {
+        idCampania: number;
+        idTemplate: number;
+        idCuentaSmtp: number;
+        fechaAgenda: string;
+    }) {
+        const delay = Math.max(new Date(fechaAgenda).getTime() - Date.now(), 0);
+        this.logger.log(`⏱️ Agendando campaña mail ${idCampania} para ${fechaAgenda} (delay: ${delay} ms)`);
+
+        const job = await this.emailsEnvios.add(
+            'enviar-campania',
+            {
+                idCampania,
+                idTemplate,
+                idCuentaSmtp,
+            },
+            { delay },
+        );
+
+        await this.prisma.campañaEmail.update({
+            where: { id: idCampania },
+            data: {
+                agendadoAt: new Date(fechaAgenda),
+                estado: 'programada',
+                templateId: idTemplate,                
+                jobId: job.id,
+            },
+        });
+
+        this.logger.log(`📨 Campaña ${idCampania} agendada como job ${job.id}`);
+        return { ok: true, message: 'Campaña agendada correctamente' };
+    }
 }
 
