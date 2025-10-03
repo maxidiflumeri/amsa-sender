@@ -24,32 +24,50 @@ const PreviewTemplate = () => {
     const [html, setHtml] = useState('');
     const [asunto, setAsunto] = useState('');
     const [template, setTemplate] = useState(null);
+
     const [cuentas, setCuentas] = useState([]);
     const [smtpId, setSmtpId] = useState('');
+
     const [destino, setDestino] = useState('');
     const [loading, setLoading] = useState(true);
     const [enviando, setEnviando] = useState(false);
+
     const [feedback, setFeedback] = useState({
         open: false,
         message: '',
-        type: 'success' // o 'error'
+        type: 'success' // 'success' | 'error' | 'warning' | 'info'
     });
+
+    // ⚡ Campañas lite (sin contactos) y últimas 20
     const [campanias, setCampanias] = useState([]);
     const [campaniaId, setCampaniaId] = useState('');
+
+    // 🧠 Cache para contactos por campaña
+    const [contactosCache, setContactosCache] = useState({}); // { [id]: Array<Contactos> }
+    const [cargandoContactos, setCargandoContactos] = useState(false);
 
     useEffect(() => {
         const cargarVistaPrevia = async () => {
             try {
+                // Template
                 const { data: tpl } = await api.get(`/email/templates/${id}`);
                 setTemplate(tpl);
 
-                const { data: todasCampanias } = await api.get('/email/campanias');
-                setCampanias(todasCampanias.filter(c => c.contactos.length > 0)); // Solo campañas con contactos
+                // ⚡ Campañas lite
+                const { data: todasLite } = await api.get('/email/campanias?lite=1');
+                // Ordenar por createdAt desc y tomar las últimas 20
+                const ultimas20 = (todasLite || [])
+                    .slice()
+                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                    .slice(0, 20);
 
+                setCampanias(ultimas20);
+
+                // Cuentas SMTP
                 const { data: cuentasSmtp } = await api.get('/email/cuentas');
                 setCuentas(cuentasSmtp);
             } catch (error) {
-                console.error('Error generando vista previa', error);
+                console.error('Error inicializando vista previa', error);
                 setHtml('<p>Error generando la vista previa.</p>');
             } finally {
                 setLoading(false);
@@ -58,6 +76,86 @@ const PreviewTemplate = () => {
 
         cargarVistaPrevia();
     }, [id]);
+
+    // Reemplazá la función por esta versión
+    const generarPreviewConDatos = async (datosContacto) => {
+        // ⚠️ siempre mandar el html/asunto del template, no del state
+        const htmlTpl = template?.html ?? '';
+        const asuntoTpl = template?.asunto ?? '';
+
+        try {
+            const { data: previewReal } = await api.post('/email/templates/preview', {
+                html: htmlTpl,
+                asunto: asuntoTpl,
+                datos: datosContacto ?? {}           // 👈 acá van los datos del contacto
+            });
+            setHtml(previewReal.html);
+            setAsunto(previewReal.asunto);
+        } catch (err) {
+            console.error('Error generando preview con datos reales', err);
+            setHtml('<p>Error generando la vista previa con datos reales.</p>');
+            setAsunto(asuntoTpl);
+            setFeedback({
+                open: true,
+                type: 'error',
+                message: 'No se pudo generar la vista previa con datos reales.'
+            });
+        }
+    };
+
+    // Reemplazá onSelectCampania por esta versión
+    const onSelectCampania = async (value) => {
+        const campaniaIdNum = Number(value);
+        setCampaniaId(campaniaIdNum || '');
+
+        if (!campaniaIdNum) return;
+
+        // Si ya hay cache, usarlo
+        if (contactosCache[campaniaIdNum]?.length) {
+            const lista = contactosCache[campaniaIdNum];
+            const contacto = lista[Math.floor(Math.random() * lista.length)];
+            await generarPreviewConDatos(contacto?.datos);  // 👈 pasar datos reales
+            return;
+        }
+
+        const extraerItems = (resp) => Array.isArray(resp?.items) ? resp.items : [];
+        setCargandoContactos(true);
+        try {
+            const { data: resp } = await api.get(`/email/campanias/${campaniaIdNum}/contactos`);
+            const items = extraerItems(resp); // 👈 acá usamos .items
+
+            setContactosCache((prev) => ({ ...prev, [campaniaIdNum]: items }));
+
+            if (!items.length) {
+                // sin contactos -> mostrar template "crudo"
+                setHtml(template?.html ?? '<p>Sin contactos.</p>');
+                setAsunto(template?.asunto ?? '');
+                setFeedback({
+                    open: true,
+                    type: 'warning',
+                    message: 'La campaña seleccionada no tiene contactos.'
+                });
+                return;
+            }
+
+            // ✅ usar un contacto real
+            const contacto = items[Math.floor(Math.random() * items.length)]; // o aleatorio
+            await generarPreviewConDatos(contacto?.datos);
+        } catch (error) {
+            console.error('Error trayendo contactos de la campaña', error);
+            setFeedback({
+                open: true,
+                type: 'error',
+                message: 'No se pudieron obtener los contactos de la campaña.'
+            });
+            // fallback: template crudo
+            setHtml(template?.html ?? '');
+            setAsunto(template?.asunto ?? '');
+        } finally {
+            setCargandoContactos(false);
+        }
+    };
+
 
     const handleEnviar = async () => {
         if (!smtpId || !destino) {
@@ -77,14 +175,14 @@ const PreviewTemplate = () => {
             setFeedback({
                 open: true,
                 type: 'success',
-                message: 'Correo enviado exitosamente',
+                message: 'Correo enviado exitosamente'
             });
         } catch (error) {
             console.error('Error al enviar correo', error);
             setFeedback({
                 open: true,
                 type: 'error',
-                message: 'Error al enviar el correo',
+                message: 'Error al enviar el correo'
             });
         } finally {
             setEnviando(false);
@@ -119,7 +217,7 @@ const PreviewTemplate = () => {
                     }}
                 >
                     <Grid container spacing={2} justifyContent="center">
-                        {/* panel de envío */}
+                        {/* Panel de envío */}
                         <Grid item xs={12} sm={10} md={7} lg={6}>
                             <Box mt={1} display="flex" flexDirection="column" gap={2}>
                                 <TextField
@@ -143,29 +241,12 @@ const PreviewTemplate = () => {
                                     fullWidth
                                     size={isMobile ? 'small' : 'medium'}
                                     value={campaniaId}
-                                    onChange={async (e) => {
-                                        const idSeleccionado = e.target.value;
-                                        setCampaniaId(idSeleccionado);
-
-                                        try {
-                                            const contacto = campanias.find(c => c.id === idSeleccionado)?.contactos[0];
-                                            const { data: previewReal } = await api.post('/email/templates/preview', {
-                                                html: template.html,
-                                                datos: contacto?.datos,
-                                                asunto: template.asunto
-                                            });
-
-                                            setHtml(previewReal.html);
-                                            setAsunto(previewReal.asunto);
-                                        } catch (err) {
-                                            console.error('Error generando preview con datos reales', err);
-                                            setHtml('<p>Error generando la vista previa con datos reales.</p>');
-                                        }
-                                    }}
+                                    onChange={(e) => onSelectCampania(Number(e.target.value))}
+                                    helperText={cargandoContactos ? 'Cargando contactos de la campaña...' : 'Se usan los datos de un contacto de la campaña.'}
                                 >
                                     {campanias.map((c) => (
-                                        <MenuItem key={c.id} value={c.id}>
-                                            {c.nombre}
+                                        <MenuItem key={c.id} value={Number(c.id)}>
+                                            {c.nombre} • {new Date(c.createdAt).toLocaleString()}
                                         </MenuItem>
                                     ))}
                                 </TextField>
@@ -198,36 +279,46 @@ const PreviewTemplate = () => {
                     </Grid>
 
                     {/* Asunto renderizado */}
-                    <Typography
-                        variant="subtitle1"
-                        fontWeight="bold"
-                        sx={{ mb: 2, mt: 4 }}
-                    >
-                        <strong>Asunto:</strong> {asunto || 'Sin asunto'}
+                    <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2, mt: 4 }}>
+                        <strong>Asunto:</strong> {asunto || template?.asunto || 'Sin asunto'}
                     </Typography>
 
                     {/* Contenido del email (responsive/seguro) */}
                     <Box
                         sx={{
-                            // hace que el contenido HTML embebido no rompa el layout
                             border: (theme) => `1px solid ${theme.palette.divider}`,
                             borderRadius: 2,
                             p: { xs: 1.5, md: 2 },
                             bgcolor: 'background.paper',
                             overflowX: 'auto',
-                            // reglas de responsividad internas:
-                            '& img': { maxWidth: '100%', height: 'auto' },
-                            '& table': {
-                                width: '100%',
-                                display: 'block',
-                                overflowX: 'auto',
-                                borderCollapse: 'collapse'
-                            },
-                            '& td, & th': { wordBreak: 'break-word' },
-                            '& a': { wordBreak: 'break-all' }
+
+                            display: 'flex',              // 👈 usar flexbox
+                            justifyContent: 'center',     // 👈 centra horizontal
                         }}
                     >
-                        <div dangerouslySetInnerHTML={{ __html: html }} />
+                        <Box
+                            sx={{
+                                width: '100%',
+                                maxWidth: 700,               // 👈 ancho máximo centrado
+                                '& img': { maxWidth: '100%', height: 'auto' },
+                                '& table': {
+                                    width: '100%',
+                                    display: 'block',
+                                    overflowX: 'auto',
+                                    borderCollapse: 'collapse',
+                                },
+                                '& td, & th': { wordBreak: 'break-word' },
+                                '& a': { wordBreak: 'break-all' },
+                            }}
+                        >
+                            {cargandoContactos ? (
+                                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                                    <CircularProgress size={28} />
+                                </Box>
+                            ) : (
+                                <div dangerouslySetInnerHTML={{ __html: html }} />
+                            )}
+                        </Box>
                     </Box>
                 </Paper>
             </Box>
