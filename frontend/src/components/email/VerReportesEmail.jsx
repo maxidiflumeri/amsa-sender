@@ -729,7 +729,7 @@ export default function CampaignEngagementPage() {
 
             const cd = res.headers?.['content-disposition'] || '';
             const match = /filename="?([^"]+)"?/i.exec(cd);
-            const fallbackName = `actividades_${selectedDate.format('YYYY-MM-DD')}.csv'`;
+            const fallbackName = `actividades_${selectedDate.format('YYYY-MM-DD')}.csv`;
             const filename = match?.[1] || fallbackName;
 
             const blobUrl = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8;' }));

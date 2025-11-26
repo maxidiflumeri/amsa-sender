@@ -195,7 +195,7 @@ export class ReportesEmailService {
             const desuscriptos = desuscriptosMap[c.id] ?? 0;
             const abiertos = abiertosMap[c.id] ?? 0;
             const clics = clicsMap[c.id] ?? 0;
-            const totalContactos  = c._count?.contactos ?? 0; // 👈 NUEVO
+            const totalContactos = c._count?.contactos ?? 0; // 👈 NUEVO
 
             return {
                 id: c.id,
@@ -479,7 +479,7 @@ export class ReportesEmailService {
         });
 
         const header =
-            'EMAIL;FECHA_ENVIO;FECHA_ACTIVIDAD;CAMPANIA;ACCION;TIPO_ACCION;ACTIVIDAD;DESCRIPCION;ID_CONTACTO';
+            'EMAIL;FECHA_ENVIO;FECHA_ACTIVIDAD;CAMPANIA;ACCION;TIPO_ACCION;ACTIVIDAD;DESCRIPCION;ID_CONTACTO;DNI';
         const rows: string[] = [header];
 
         for (const e of eventos) {
@@ -519,6 +519,16 @@ export class ReportesEmailService {
                 ID_CONTACTO = '';
             }
 
+            let DNI = ''
+            try {
+                const datos = e.reporte?.contacto?.datos as any;
+                if (datos && typeof datos === 'object' && 'Cuitdoc' in datos) {
+                    DNI = String(datos['Cuitdoc']);
+                }
+            } catch (err) {
+                DNI = '';
+            }
+
             rows.push(
                 [
                     EMAIL,
@@ -530,6 +540,7 @@ export class ReportesEmailService {
                     ACTIVIDAD,
                     descripcion,
                     ID_CONTACTO,
+                    DNI,
                 ].join(';'),
             );
         }
@@ -632,7 +643,13 @@ export class ReportesEmailService {
                         enviadoAt: true,
                         creadoAt: true,
                         campaña: { select: { id: true, nombre: true } },
-                        contacto: { select: { id: true, email: true } },
+                        contacto: {
+                            select: {
+                                id: true,
+                                email: true,
+                                datos: true // 👈 agregamos el JSON
+                            }
+                        },
                     },
                 },
             },
@@ -640,7 +657,7 @@ export class ReportesEmailService {
         });
 
         const header =
-            'EMAIL;FECHA_ENVIO;FECHA_ACTIVIDAD;CAMPANIA;ACCION;TIPO_ACCION;ACTIVIDAD;DESCRIPCION;ID_CONTACTO';
+            'EMAIL;FECHA_ENVIO;FECHA_ACTIVIDAD;CAMPANIA;ACCION;TIPO_ACCION;ACTIVIDAD;DESCRIPCION;ID_CONTACTO;DNI';
         const rows: string[] = [header];
 
         for (const r of rebotes) {
@@ -672,7 +689,25 @@ export class ReportesEmailService {
                         this.clean(r.descripcion);
 
             // ID_CONTACTO: del reporte
-            const ID_CONTACTO = r.reporte?.contacto?.id !== undefined ? String(r.reporte.contacto.id) : '';
+            let ID_CONTACTO = '';
+            try {
+                const datos = r.reporte?.contacto?.datos as any;
+                if (datos && typeof datos === 'object' && 'id_contacto' in datos) {
+                    ID_CONTACTO = String(datos['id_contacto']);
+                }
+            } catch (err) {
+                ID_CONTACTO = '';
+            }
+
+            let DNI = ''
+            try {
+                const datos = r.reporte?.contacto?.datos as any;
+                if (datos && typeof datos === 'object' && 'Cuitdoc' in datos) {
+                    DNI = String(datos['Cuitdoc']);
+                }
+            } catch (err) {
+                DNI = '';
+            }
 
             rows.push([
                 EMAIL,
@@ -684,6 +719,7 @@ export class ReportesEmailService {
                 ACTIVIDAD,
                 DESCRIPCION,
                 ID_CONTACTO,
+                DNI,
             ].join(';'));
         }
 
