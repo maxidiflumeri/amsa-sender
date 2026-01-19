@@ -34,6 +34,7 @@ WORKDIR /app
 # Copiá los archivos de dependencias
 COPY backend/package*.json ./
 COPY backend/prisma ./prisma
+COPY backend/patches ./patches
 
 # Instalá dependencias
 RUN npm install
