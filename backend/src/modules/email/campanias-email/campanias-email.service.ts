@@ -41,7 +41,7 @@ export class CampaniasEmailService {
         opts: { page?: string | number; size?: string | number; q?: string } = {},
     ) {
         const pageNum = Math.max(Number(opts.page || 1), 1);
-        const sizeNum = Math.min(Math.max(Number(opts.size || 100), 1), 500);
+        const sizeNum = Math.min(Math.max(Number(opts.size || 100), 1), 1000000);
         const skip = (pageNum - 1) * sizeNum;
 
         const where: any = { campañaId };
