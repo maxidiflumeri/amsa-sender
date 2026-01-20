@@ -42,7 +42,11 @@ index 54f9caf..2d2dc3c 100644
 -            window.Store.WAWebStreamModel.Stream.markAvailable();
 -            await window.Store.SendSeen.sendSeen(chat);
 -            window.Store.WAWebStreamModel.Stream.markUnavailable();
-+            await window.Store.SendSeen.markSeen(chat, false, false);
++            try {
++                await window.Store.SendSeen.markSeen(chat, false, false);
++            } catch(e) {
++                 // Ignore error to prevent message sending failure
++            }
              return true;
          }
          return false;
