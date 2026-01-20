@@ -60,7 +60,10 @@ export class ReportesEmailService {
         const { since, until, q, includeSparkline, page, size } = params;
 
         // --- Filtro de campañas (sin 'mode', rely en collation *_ci de MySQL) ---
-        const whereCampaign = q ? { nombre: { contains: q } } : undefined;
+        const whereCampaign: Prisma.CampañaEmailWhereInput = {
+            contactos: { some: {} },
+            ...(q ? { nombre: { contains: q } } : {}),
+        };
 
         // --- Total y página de campañas (orden por createdAt desc) ---
         const [total, campañas] = await Promise.all([
