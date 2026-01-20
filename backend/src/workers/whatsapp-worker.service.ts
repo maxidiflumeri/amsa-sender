@@ -4,6 +4,7 @@ import { delay, Worker, Job } from 'bullmq';
 import { connection } from 'src/queues/bullmq.config';
 import { RedisClientType } from 'redis';
 import { v4 as uuidv4 } from 'uuid';
+import { waitForLocks, releaseLock, renewLock } from 'src/common/redis-lock.utils';
 
 @Injectable()
 export class WhatsappWorkerService implements OnModuleInit {
@@ -19,13 +20,14 @@ export class WhatsappWorkerService implements OnModuleInit {
     async onModuleInit() {
         const worker = new Worker('colaEnvios', this.procesarJob.bind(this), {
             connection,
+            concurrency: Number(process.env.WHATSAPP_CONCURRENCY || 5),
         });
 
         worker.on('failed', (job, err) => {
             this.logger.error(`❌ Job ${job?.id ?? 'unknown'} falló: ${err.message}`);
         });
 
-        this.logger.log('👷 Worker de WhatsApp iniciado y escuchando jobs en "colaEnvios"...');
+        this.logger.log(`👷 Worker de WhatsApp iniciado (concurrencia: ${process.env.WHATSAPP_CONCURRENCY || 5}) y escuchando jobs en "colaEnvios"...`);
 
         await this.redisSub.subscribe('respuesta-envio', (message: string) => {
             try {
@@ -49,153 +51,179 @@ export class WhatsappWorkerService implements OnModuleInit {
         const { sessionIds, campaña, config } = job.data;
         const { batchSize, delayEntreMensajes, delayEntreLotes } = config;
 
-        this.logger.log(`📨 Procesando campaña ${campaña} con ${sessionIds.length} sesiones.`);
+        this.logger.log(`📨 [Job ${job.id}] Iniciando campaña ${campaña}. Solicitando locks para ${sessionIds.length} sesiones...`);
 
-        const estado = await this.prisma.campaña.findUnique({ where: { id: campaña } });
-        if (!estado) throw new Error('Campaña no encontrada');
+        // 1. Adquirir locks para las sesiones (espera activa si están ocupadas)
+        // Usamos un TTL generoso (ej. 30 min) y lo vamos renovando, o un TTL fijo y confiamos en la renovación.
+        // Dado que el proceso puede ser largo, es mejor renovar. 
+        // TTL inicial: 300s (5 min). Si se cuelga el worker, se liberan en 5 min.
+        const SESSION_LOCK_TTL = 300;
+        const lockKeys = sessionIds.map((sid: string) => `wa_session_lock:${sid}`);
 
-        if (estado.estado === 'pausa_pendiente') {
-            await this.prisma.campaña.update({ where: { id: campaña }, data: { estado: 'pausada' } });
-            await this.redis.publish('campania-pausada', JSON.stringify({ campañaId: campaña }));
-            this.logger.warn(`⏸️ Campaña ${campaña} pausada antes de iniciar.`);
-            return;
-        }
+        await waitForLocks(this.redis, lockKeys, SESSION_LOCK_TTL);
+        this.logger.log(`🔒 [Job ${job.id}] Locks adquiridos para campaña ${campaña}. Procesando...`);
 
-        if (estado.estado === 'programada') {
-            await this.prisma.campaña.update({ where: { id: campaña }, data: { estado: 'procesando' } });
-            await this.redis.publish('campania-estado', JSON.stringify({ campaña, estado: 'procesando' }));
-            this.logger.log(`▶️ Campaña ${campaña} marcada como "procesando".`);
-        }
+        // Intervalo para renovar locks (heartbeat) cada 60s
+        const renewalInterval = setInterval(async () => {
+            for (const key of lockKeys) {
+                await renewLock(this.redis, key, SESSION_LOCK_TTL);
+            }
+        }, 60000);
 
-        const enviadosPrevios = await this.prisma.reporte.findMany({
-            where: { campañaId: campaña },
-            select: { numero: true },
-        });
-        const yaEnviados = new Set(enviadosPrevios.map(r => r.numero));
+        try {
+            const estado = await this.prisma.campaña.findUnique({ where: { id: campaña } });
+            if (!estado) throw new Error('Campaña no encontrada');
 
-        const contactos = await this.prisma.contacto.findMany({
-            where: { campañaId: campaña, numero: { notIn: Array.from(yaEnviados) } },
-            orderBy: { id: 'asc' },
-        });
+            if (estado.estado === 'pausa_pendiente') {
+                await this.prisma.campaña.update({ where: { id: campaña }, data: { estado: 'pausada' } });
+                await this.redis.publish('campania-pausada', JSON.stringify({ campañaId: campaña }));
+                this.logger.warn(`⏸️ Campaña ${campaña} pausada antes de iniciar.`);
+                return;
+            }
 
-        const total = contactos.length;
-        let enviados = 0;
+            if (estado.estado === 'programada' || estado.estado === 'pendiente') {
+                await this.prisma.campaña.update({ where: { id: campaña }, data: { estado: 'procesando' } });
+                await this.redis.publish('campania-estado', JSON.stringify({ campaña, estado: 'procesando' }));
+                this.logger.log(`▶️ Campaña ${campaña} marcada como "procesando".`);
+            }
 
-        this.logger.log(`📦 ${total} contactos a enviar para campaña ${campaña}.`);
+            const enviadosPrevios = await this.prisma.reporte.findMany({
+                where: { campañaId: campaña },
+                select: { numero: true },
+            });
+            const yaEnviados = new Set(enviadosPrevios.map(r => r.numero));
 
-        const porSesion: Record<string, typeof contactos> = {};
-        sessionIds.forEach(id => porSesion[id] = []);
-        contactos.forEach((c, i) => {
-            const sid = sessionIds[i % sessionIds.length];
-            porSesion[sid].push(c);
-        });
+            const contactos = await this.prisma.contacto.findMany({
+                where: { campañaId: campaña, numero: { notIn: Array.from(yaEnviados) } },
+                orderBy: { id: 'asc' },
+            });
 
-        for (const sessionId of sessionIds) {
-            const contactosSesion = porSesion[sessionId];
+            const total = contactos.length;
+            let enviados = 0;
 
-            for (let i = 0; i < contactosSesion.length; i += batchSize) {
-                const lote = contactosSesion.slice(i, i + batchSize);
+            this.logger.log(`📦 ${total} contactos a enviar para campaña ${campaña}.`);
 
-                for (const contacto of lote) {
-                    const estadoActual = await this.prisma.campaña.findUnique({ where: { id: campaña } });
-                    if (estadoActual?.estado === 'pausada') {
-                        this.logger.warn(`⏸️ Campaña ${campaña} pausada manualmente. Deteniendo envío.`);
-                        await this.redis.publish('campania-pausada', JSON.stringify({ campañaId: campaña }));
-                        return;
-                    }
+            const porSesion: Record<string, typeof contactos> = {};
+            sessionIds.forEach((id: string) => porSesion[id] = []);
+            contactos.forEach((c, i) => {
+                const sid = sessionIds[i % sessionIds.length];
+                porSesion[sid].push(c);
+            });
 
-                    const messageId = uuidv4();
+            for (const sessionId of sessionIds) {
+                const contactosSesion = porSesion[sessionId];
 
-                    await this.redis.publish('solicitar-sesion', JSON.stringify({
-                        sessionId,
-                        numero: contacto.numero,
-                        mensaje: contacto.mensaje,
-                        messageId,
-                    }));
+                for (let i = 0; i < contactosSesion.length; i += batchSize) {
+                    const lote = contactosSesion.slice(i, i + batchSize);
 
-                    const respuesta = await this.esperarRespuesta(messageId);
+                    for (const contacto of lote) {
+                        const estadoActual = await this.prisma.campaña.findUnique({ where: { id: campaña } });
+                        if (estadoActual?.estado === 'pausada') {
+                            this.logger.warn(`⏸️ Campaña ${campaña} pausada manualmente. Deteniendo envío.`);
+                            await this.redis.publish('campania-pausada', JSON.stringify({ campañaId: campaña }));
+                            return; // Sale del try, va al finally
+                        }
 
-                    if (respuesta.estado === 'enviado') {
-                        enviados++;
+                        const messageId = uuidv4();
 
-                        await this.redis.publish('progreso-envio', JSON.stringify({
-                            campañaId: campaña,
-                            enviados,
-                            total,
+                        await this.redis.publish('solicitar-sesion', JSON.stringify({
+                            sessionId,
+                            numero: contacto.numero,
+                            mensaje: contacto.mensaje,
+                            messageId,
                         }));
 
-                        const sesion = await this.prisma.sesion.findUnique({
-                            where: { sessionId },
-                            select: { ani: true },
-                        });
+                        const respuesta = await this.esperarRespuesta(messageId);
 
-                        await this.prisma.reporte.create({
-                            data: {
-                                numero: contacto.numero,
-                                estado: 'enviado',
-                                mensaje: contacto.mensaje,
+                        if (respuesta.estado === 'enviado') {
+                            enviados++;
+
+                            await this.redis.publish('progreso-envio', JSON.stringify({
                                 campañaId: campaña,
-                                enviadoAt: new Date(),
-                                aniEnvio: sesion?.ani || null,
-                                datos: contacto.datos || undefined,
-                            },
-                        });
+                                enviados,
+                                total,
+                            }));
 
-                        await this.prisma.mensaje.create({
-                            data: {
-                                numero: contacto.numero,
-                                campañaId: campaña,
-                                ani: sesion?.ani || '',
-                                mensaje: contacto.mensaje || '',
-                                fromMe: true,
-                                fecha: new Date(),
-                                tipo: 'texto',
-                            },
-                        });
+                            const sesion = await this.prisma.sesion.findUnique({
+                                where: { sessionId },
+                                select: { ani: true },
+                            });
 
-                        this.logger.log(`✅ [${sessionId}] Enviado a ${contacto.numero}`);
-                    } else {
-                        await this.prisma.reporte.create({
-                            data: {
-                                numero: contacto.numero,
-                                estado: 'fallo',
-                                mensaje: contacto.mensaje,
-                                campañaId: campaña,
-                                enviadoAt: new Date(),
-                                datos: contacto.datos || undefined,
-                            },
-                        });
+                            await this.prisma.reporte.create({
+                                data: {
+                                    numero: contacto.numero,
+                                    estado: 'enviado',
+                                    mensaje: contacto.mensaje,
+                                    campañaId: campaña,
+                                    enviadoAt: new Date(),
+                                    aniEnvio: sesion?.ani || null,
+                                    datos: contacto.datos || undefined,
+                                },
+                            });
 
-                        this.logger.warn(`⚠️ [${sessionId}] Fallo al enviar a ${contacto.numero}: ${respuesta.error || 'desconocido'}`);
+                            await this.prisma.mensaje.create({
+                                data: {
+                                    numero: contacto.numero,
+                                    campañaId: campaña,
+                                    ani: sesion?.ani || '',
+                                    mensaje: contacto.mensaje || '',
+                                    fromMe: true,
+                                    fecha: new Date(),
+                                    tipo: 'texto',
+                                },
+                            });
+
+                            this.logger.log(`✅ [${sessionId}] Enviado a ${contacto.numero}`);
+                        } else {
+                            await this.prisma.reporte.create({
+                                data: {
+                                    numero: contacto.numero,
+                                    estado: 'fallo',
+                                    mensaje: contacto.mensaje,
+                                    campañaId: campaña,
+                                    enviadoAt: new Date(),
+                                    datos: contacto.datos || undefined,
+                                },
+                            });
+
+                            this.logger.warn(`⚠️ [${sessionId}] Fallo al enviar a ${contacto.numero}: ${respuesta.error || 'desconocido'}`);
+                        }
+
+                        await delay(delayEntreMensajes);
                     }
 
-                    await delay(delayEntreMensajes);
+                    await delay(delayEntreLotes);
                 }
-
-                await delay(delayEntreLotes);
             }
-        }
 
-        const estadoFinal = await this.prisma.campaña.findUnique({ where: { id: campaña } });
+            const estadoFinal = await this.prisma.campaña.findUnique({ where: { id: campaña } });
 
-        if (estadoFinal?.estado === 'pausada') {
-            this.logger.warn(`⏸️ Campaña ${campaña} fue pausada durante el envío. No se finaliza.`);
-            return;
-        }
+            if (estadoFinal?.estado === 'pausada') {
+                this.logger.warn(`⏸️ Campaña ${campaña} fue pausada durante el envío. No se finaliza.`);
+                return;
+            }
 
-        if (enviados === 0) {
-            await this.prisma.campaña.update({
-                where: { id: campaña },
-                data: { estado: 'pendiente' },
-            });
-            this.logger.warn(`🔁 Campaña ${campaña} sin mensajes enviados. Se marca como pendiente.`);
-        } else {
-            await this.prisma.campaña.update({
-                where: { id: campaña },
-                data: { estado: 'finalizada', enviadoAt: new Date() },
-            });
-            await this.redis.publish('campania-finalizada', JSON.stringify({ campañaId: campaña }));
-            this.logger.log(`🏁 Campaña ${campaña} finalizada. Total enviados: ${enviados}/${total}.`);
+            if (enviados === 0) {
+                await this.prisma.campaña.update({
+                    where: { id: campaña },
+                    data: { estado: 'pendiente' },
+                });
+                this.logger.warn(`🔁 Campaña ${campaña} sin mensajes enviados. Se marca como pendiente.`);
+            } else {
+                await this.prisma.campaña.update({
+                    where: { id: campaña },
+                    data: { estado: 'finalizada', enviadoAt: new Date() },
+                });
+                await this.redis.publish('campania-finalizada', JSON.stringify({ campañaId: campaña }));
+                this.logger.log(`🏁 Campaña ${campaña} finalizada. Total enviados: ${enviados}/${total}.`);
+            }
+        } finally {
+            // Liberar recursos
+            clearInterval(renewalInterval);
+            for (const key of lockKeys) {
+                await releaseLock(this.redis, key);
+            }
+            this.logger.log(`🔓 [Job ${job.id}] Locks liberados para campaña ${campaña}.`);
         }
     }
 
