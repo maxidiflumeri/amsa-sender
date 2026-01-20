@@ -41,8 +41,8 @@ export async function parseCsvEmail(filePath: string): Promise<ContactoEmail[]> 
 
     return new Promise((resolve, reject) => {
         fs.createReadStream(filePath)
-            .pipe(csv({ separator: '\t' }))
-            .on('data', (data) => {                
+            .pipe(csv({ separator: '\t', quote: '' }))
+            .on('data', (data) => {
                 const email = data['mail']?.trim();
                 if (!email) return;
 
