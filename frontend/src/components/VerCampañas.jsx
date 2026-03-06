@@ -49,6 +49,7 @@ import InboxIcon from '@mui/icons-material/Inbox';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import Skeleton from '@mui/material/Skeleton'
 import RefreshIcon from '@mui/icons-material/Refresh';
+import WifiOffIcon from '@mui/icons-material/WifiOff';
 
 export default function VerCampañas() {
     const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -127,6 +128,18 @@ export default function VerCampañas() {
             setMensaje({ tipo: 'success', texto: `Campaña ${campañaId} pausada exitosamente` });
             setSnackbarOpen(true);
             cargarCampañas();
+        });
+
+        socket.on('campania_envio_reanudado', ({ campañaId, segundosPausado }) => {
+            const nombre = campañas.find(c => c.id === campañaId)?.nombre || `#${campañaId}`;
+            const duracion = segundosPausado >= 60
+                ? `${Math.floor(segundosPausado / 60)}m ${segundosPausado % 60}s`
+                : `${segundosPausado}s`;
+            setMensaje({
+                tipo: 'warning',
+                texto: `El envío de "${nombre}" se pausó ${duracion} por un problema de conexión y se reanudó automáticamente.`,
+            });
+            setSnackbarOpen(true);
         });
 
         return () => socket.disconnect();
@@ -693,16 +706,31 @@ export default function VerCampañas() {
 
             <Snackbar
                 open={snackbarOpen}
-                autoHideDuration={6000}
+                autoHideDuration={mensaje.tipo === 'warning' ? 10000 : 6000}
                 onClose={() => setSnackbarOpen(false)}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
             >
                 <MuiAlert
                     elevation={6}
                     variant="filled"
-                    severity={mensaje.tipo}
+                    severity={mensaje.tipo || 'info'}
                     onClose={() => setSnackbarOpen(false)}
-                    icon={<CheckCircleIcon fontSize="inherit" />}
+                    icon={mensaje.tipo === 'warning' ? <WifiOffIcon fontSize="inherit" /> : <CheckCircleIcon fontSize="inherit" />}
+                    sx={{
+                        ...(mensaje.tipo === 'warning' && {
+                            background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+                            boxShadow: '0 4px 20px rgba(255, 152, 0, 0.4)',
+                            borderRadius: 2,
+                            fontWeight: 500,
+                            '& .MuiAlert-icon': {
+                                animation: 'pulse 2s ease-in-out infinite',
+                            },
+                            '@keyframes pulse': {
+                                '0%, 100%': { opacity: 1 },
+                                '50%': { opacity: 0.5 },
+                            },
+                        }),
+                    }}
                 >
                     {mensaje.texto}
                 </MuiAlert>

@@ -11,6 +11,9 @@ export class WhatsappWorkerService implements OnModuleInit {
     private readonly logger = new Logger(WhatsappWorkerService.name);
     private pendientes = new Map<string, (data: any) => void>();
 
+    /** Timeout máximo para esperar reconexión de Redis (ms) */
+    private readonly REDIS_RECONNECT_TIMEOUT = 120_000; // 2 minutos
+
     constructor(
         private prisma: PrismaService,
         @Inject('REDIS_CLIENT') private redis: RedisClientType,
@@ -27,8 +30,33 @@ export class WhatsappWorkerService implements OnModuleInit {
             this.logger.error(`❌ Job ${job?.id ?? 'unknown'} falló: ${err.message}`);
         });
 
+        // Capturar errores de conexión del Worker (BullMQ/ioredis)
+        worker.on('error', (err) => {
+            this.logger.error(`❌ Worker connection error: ${err.message}`);
+        });
+
         this.logger.log(`👷 Worker de WhatsApp iniciado (concurrencia: ${process.env.WHATSAPP_CONCURRENCY || 5}) y escuchando jobs en "colaEnvios"...`);
 
+        // Suscripción inicial
+        await this.subscribirARespuestas();
+
+        // Re-suscribir cuando el cliente SUB se reconecte
+        this.redisSub.on('ready', async () => {
+            this.logger.log('🔄 Redis SUB reconectado. Re-suscribiendo a "respuesta-envio"...');
+            try {
+                await this.subscribirARespuestas();
+            } catch (err) {
+                this.logger.error(`❌ Error re-suscribiendo a "respuesta-envio": ${err.message}`);
+            }
+        });
+
+        this.logger.log('📡 Suscripción a canal Redis "respuesta-envio" activa.');
+    }
+
+    /**
+     * Suscribe al canal "respuesta-envio" para recibir respuestas de envío.
+     */
+    private async subscribirARespuestas() {
         await this.redisSub.subscribe('respuesta-envio', (message: string) => {
             try {
                 const data = JSON.parse(message);
@@ -43,8 +71,6 @@ export class WhatsappWorkerService implements OnModuleInit {
                 this.logger.error(`❌ Error parseando mensaje de "respuesta-envio": ${err.message}`);
             }
         });
-
-        this.logger.log('📡 Suscripción a canal Redis "respuesta-envio" activa.');
     }
 
     async procesarJob(job: Job) {
@@ -54,9 +80,6 @@ export class WhatsappWorkerService implements OnModuleInit {
         this.logger.log(`📨 [Job ${job.id}] Iniciando campaña ${campaña}. Solicitando locks para ${sessionIds.length} sesiones...`);
 
         // 1. Adquirir locks para las sesiones (espera activa si están ocupadas)
-        // Usamos un TTL generoso (ej. 30 min) y lo vamos renovando, o un TTL fijo y confiamos en la renovación.
-        // Dado que el proceso puede ser largo, es mejor renovar. 
-        // TTL inicial: 300s (5 min). Si se cuelga el worker, se liberan en 5 min.
         const SESSION_LOCK_TTL = 300;
         const lockKeys = sessionIds.map((sid: string) => `wa_session_lock:${sid}`);
 
@@ -76,14 +99,14 @@ export class WhatsappWorkerService implements OnModuleInit {
 
             if (estado.estado === 'pausa_pendiente') {
                 await this.prisma.campaña.update({ where: { id: campaña }, data: { estado: 'pausada' } });
-                await this.redis.publish('campania-pausada', JSON.stringify({ campañaId: campaña }));
+                await this.safePublish('campania-pausada', JSON.stringify({ campañaId: campaña }));
                 this.logger.warn(`⏸️ Campaña ${campaña} pausada antes de iniciar.`);
                 return;
             }
 
             if (estado.estado === 'programada' || estado.estado === 'pendiente') {
                 await this.prisma.campaña.update({ where: { id: campaña }, data: { estado: 'procesando' } });
-                await this.redis.publish('campania-estado', JSON.stringify({ campaña, estado: 'procesando' }));
+                await this.safePublish('campania-estado', JSON.stringify({ campaña, estado: 'procesando' }));
                 this.logger.log(`▶️ Campaña ${campaña} marcada como "procesando".`);
             }
 
@@ -117,16 +140,19 @@ export class WhatsappWorkerService implements OnModuleInit {
                     const lote = contactosSesion.slice(i, i + batchSize);
 
                     for (const contacto of lote) {
+                        // Verificar que Redis esté listo antes de cada envío
+                        await this.waitForRedisReady(campaña);
+
                         const estadoActual = await this.prisma.campaña.findUnique({ where: { id: campaña } });
                         if (estadoActual?.estado === 'pausada') {
                             this.logger.warn(`⏸️ Campaña ${campaña} pausada manualmente. Deteniendo envío.`);
-                            await this.redis.publish('campania-pausada', JSON.stringify({ campañaId: campaña }));
+                            await this.safePublish('campania-pausada', JSON.stringify({ campañaId: campaña }));
                             return; // Sale del try, va al finally
                         }
 
                         const messageId = uuidv4();
 
-                        await this.redis.publish('solicitar-sesion', JSON.stringify({
+                        await this.safePublish('solicitar-sesion', JSON.stringify({
                             sessionId,
                             numero: contacto.numero,
                             mensaje: contacto.mensaje,
@@ -138,7 +164,7 @@ export class WhatsappWorkerService implements OnModuleInit {
                         if (respuesta.estado === 'enviado') {
                             enviados++;
 
-                            await this.redis.publish('progreso-envio', JSON.stringify({
+                            await this.safePublish('progreso-envio', JSON.stringify({
                                 campañaId: campaña,
                                 enviados,
                                 total,
@@ -214,7 +240,7 @@ export class WhatsappWorkerService implements OnModuleInit {
                     where: { id: campaña },
                     data: { estado: 'finalizada', enviadoAt: new Date() },
                 });
-                await this.redis.publish('campania-finalizada', JSON.stringify({ campañaId: campaña }));
+                await this.safePublish('campania-finalizada', JSON.stringify({ campañaId: campaña }));
                 this.logger.log(`🏁 Campaña ${campaña} finalizada. Total enviados: ${enviados}/${total}.`);
             }
         } finally {
@@ -224,6 +250,51 @@ export class WhatsappWorkerService implements OnModuleInit {
                 await releaseLock(this.redis, key);
             }
             this.logger.log(`🔓 [Job ${job.id}] Locks liberados para campaña ${campaña}.`);
+        }
+    }
+
+    /**
+     * Espera hasta que Redis esté listo (reconectado).
+     * Si no se reconecta dentro del timeout, lanza un error para que el job falle gracefully.
+     * Emite un evento de "reanudado" al frontend cuando se reconecta.
+     */
+    private async waitForRedisReady(campañaId?: number, timeout?: number): Promise<void> {
+        const maxWait = timeout ?? this.REDIS_RECONNECT_TIMEOUT;
+
+        if (this.redis.isReady) return;
+
+        this.logger.warn('⏳ Redis desconectado. Esperando reconexión...');
+        const start = Date.now();
+
+        while (!this.redis.isReady) {
+            if (Date.now() - start > maxWait) {
+                throw new Error(`Redis no se reconectó dentro del timeout (${maxWait / 1000}s). Pausando job.`);
+            }
+            await new Promise(r => setTimeout(r, 2000));
+        }
+
+        const segundosPausado = Math.round((Date.now() - start) / 1000);
+        this.logger.log(`✅ Redis reconectado tras ${segundosPausado}s. Reanudando envío.`);
+
+        // Notificar al frontend que el envío se pausó y reanudó
+        if (campañaId) {
+            await this.safePublish('campania-envio-reanudado', JSON.stringify({
+                campañaId,
+                segundosPausado,
+            }));
+        }
+    }
+
+    /**
+     * Publish seguro: si Redis no está listo, espera reconexión antes de publicar.
+     * Si falla después de esperar, loguea el error pero no mata el proceso.
+     */
+    private async safePublish(channel: string, message: string): Promise<void> {
+        try {
+            await this.waitForRedisReady();
+            await this.redis.publish(channel, message);
+        } catch (err) {
+            this.logger.error(`❌ Error publicando en "${channel}": ${err.message}`);
         }
     }
 

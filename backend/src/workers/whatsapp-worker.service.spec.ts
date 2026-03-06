@@ -33,6 +33,8 @@ const mockRedisClient = {
     get: jest.fn(),
     del: jest.fn(),
     expire: jest.fn(),
+    isReady: true,
+    on: jest.fn(),
 };
 
 // 3. Mock Prisma

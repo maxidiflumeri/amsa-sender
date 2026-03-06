@@ -33,7 +33,8 @@ export class PubSubService implements OnModuleInit {
             'campania-estado',
             'estado-sesion',
             'solicitar-sesion',
-            'progreso-envio-mail'
+            'progreso-envio-mail',
+            'campania-envio-reanudado'
         ];
 
         for (const canal of canales) {
@@ -73,6 +74,10 @@ export class PubSubService implements OnModuleInit {
                     case 'progreso-envio-mail':
                         this.logger.log(`📊 Progreso de envío mail: ${JSON.stringify(data)}`);
                         this.socketGateway.emitirEvento('progreso_mail', data, `campaña_${data.campañaId}`);
+                        break;
+                    case 'campania-envio-reanudado':
+                        this.logger.log(`🔄 Envío reanudado tras desconexión: ${JSON.stringify(data)}`);
+                        this.socketGateway.emitirEvento('campania_envio_reanudado', data);
                         break;
                     default:
                         this.logger.warn(`⚠️ Canal no manejado: ${channel}`);
