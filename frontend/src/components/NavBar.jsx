@@ -33,6 +33,7 @@ import { Collapse } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import UnsubscribeIcon from '@mui/icons-material/Unsubscribe';
+import SendIcon from '@mui/icons-material/Send';
 import { Avatar, Menu, MenuItem } from '@mui/material';
 import logo from '../assets/amsasender.png'; // Asegúrate de que la ruta sea correcta
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -53,6 +54,7 @@ const emailItems = [
     { label: 'Cuentas SMTP', path: '/email/cuentas', icon: <LinkIcon /> },
     { label: 'Templates', path: '/email/templates', icon: <ArticleIcon /> },
     { label: 'Campañas', path: '/email/campanias', icon: <CampaignIcon /> },
+    { label: 'Envío Manual', path: '/email/envio-manual', icon: <SendIcon /> },
     { label: 'Reportes', path: '/email/reportes', icon: <BarChartIcon /> },
     { label: 'Desuscripciones', path: '/email/desuscripciones', icon: <UnsubscribeIcon /> },
 ];

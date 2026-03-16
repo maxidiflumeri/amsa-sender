@@ -66,6 +66,12 @@ export class CampaniasEmailController {
         return this.campaniasService.contactosPorCampania(Number(id), { page, size, q });
     }
 
+    @Post(':id/forzar-cierre')
+    async forzarCierre(@Param('id') id: string, @Body() body: { estado: 'finalizada' | 'error' }) {
+        this.logger.log(`📥 POST /${id}/forzar-cierre → ${body.estado}`);
+        return this.campaniasService.forzarCierre(+id, body.estado ?? 'error');
+    }
+
     @Delete(':id')
     async eliminarCampaña(@Param('id') id: string) {
         this.logger.log(`🗑️ DELETE /${id} - Eliminar campaña`);

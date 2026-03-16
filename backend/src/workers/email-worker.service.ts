@@ -41,8 +41,21 @@ export class EmailWorkerService implements OnModuleInit {
             concurrency: Number(process.env.EMAIL_MAX_PARALLEL_CAMPAIGNS ?? '5'),
         });
 
-        worker.on('failed', (job, err) => {
+        worker.on('failed', async (job, err) => {
             this.logger.error(`❌ Job ${job?.id ?? 'unknown'} falló: ${err.message}`);
+            const campañaId = job?.data?.idCampania;
+            if (campañaId) {
+                try {
+                    await this.prisma.campañaEmail.update({
+                        where: { id: campañaId },
+                        data: { estado: 'error' },
+                    });
+                    this.logger.warn(`⚠️ Campaña email ${campañaId} marcada como "error" por fallo del job.`);
+                    await this.subClient.publish('campania-error', JSON.stringify({ campañaId, tipo: 'email' }));
+                } catch (e) {
+                    this.logger.error(`❌ No se pudo marcar campaña email ${campañaId} como error: ${e.message}`);
+                }
+            }
         });
 
         this.logger.log('👷 Worker de Email iniciado y escuchando jobs en "emailsEnvios"...');
@@ -97,6 +110,9 @@ export class EmailWorkerService implements OnModuleInit {
             where: { id: idCampania },
             data: { estado: 'procesando' },
         });
+        // Limpiar logs anteriores de este run
+        try { await this.pubClient.del(`campania-email-logs:${idCampania}`); } catch {}
+        await this.publicarLog(idCampania, 'info', `▶️ Iniciando: ${total} contactos`);
 
         const transporter = nodemailer.createTransport({
             host: this.smtpHost,
@@ -152,6 +168,7 @@ export class EmailWorkerService implements OnModuleInit {
                 // (A) Omitir si DESUSCRIPTO (sin consumir rate/SMTP)
                 if (unsubHashSet.has(h)) {
                     this.logger.log(`⛔ Omitido ${contacto.email} (desuscripto)`);
+                    await this.publicarLog(idCampania, 'skip', `⛔ Omitido: ${contacto.email}  (desuscripto)`);
                     await this.prisma.reporteEmail.create({
                         data: {
                             campañaId: idCampania,
@@ -170,6 +187,7 @@ export class EmailWorkerService implements OnModuleInit {
                 if (sup) {
                     const motivo = `Suppressed (hard bounce/complaint): ${sup.bounceType ?? ''}/${sup.bounceSubType ?? ''}`.trim();
                     this.logger.log(`⛔ Omitido ${contacto.email} (suprimido) ${motivo}`);
+                    await this.publicarLog(idCampania, 'skip', `⛔ Omitido: ${contacto.email}  (suprimido — ${sup.bounceType ?? 'bounce'})`);
                     await this.prisma.reporteEmail.create({
                         data: {
                             campañaId: idCampania,
@@ -257,10 +275,12 @@ export class EmailWorkerService implements OnModuleInit {
                         },
                     });
 
+                    await this.publicarLog(idCampania, 'ok', `✅ Enviado: ${contacto.email}`);
                     this.logger.log(`✅ Enviado a ${contacto.email}`);
                     return { ok: true, skipped: false };
                 } catch (err: any) {
                     this.logger.warn(`⚠️ Fallo al enviar a ${contacto.email}: ${err.message}`);
+                    await this.publicarLog(idCampania, 'warn', `⚠️ Fallo: ${contacto.email} — ${err.message}`);
                     await this.prisma.reporteEmail.update({
                         where: { id: reporte.id },
                         data: { estado: 'fallo', error: err.message, enviadoAt: new Date() },
@@ -309,7 +329,20 @@ export class EmailWorkerService implements OnModuleInit {
         });
 
         await this.subClient.publish('campania-finalizada', JSON.stringify({ campañaId: idCampania }));
+        await this.publicarLog(idCampania, 'info', `🏁 Finalizada — ${enviados}/${total} procesados`);
 
         this.logger.log(`🏁 Campaña ${idCampania} finalizada. Total procesados: ${enviados}/${total}`);
+    }
+
+    private async publicarLog(campañaId: number, nivel: 'ok' | 'warn' | 'error' | 'info' | 'skip', mensaje: string): Promise<void> {
+        const payload = JSON.stringify({ campañaId, nivel, mensaje, timestamp: new Date().toISOString() });
+        try {
+            await this.subClient.publish('campania-log', payload);
+            // Persiste en lista Redis para historial (últimas 200 entradas, TTL 24h)
+            const key = `campania-email-logs:${campañaId}`;
+            await this.pubClient.rPush(key, payload);
+            await this.pubClient.lTrim(key, -500, -1);
+            await this.pubClient.expire(key, 86400);
+        } catch { /* silenciar errores de log para no interrumpir el envío */ }
     }
 }

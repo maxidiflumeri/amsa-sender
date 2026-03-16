@@ -241,6 +241,27 @@ export class CampaniasService {
         return { ok: true };
     }
 
+    async forzarCierre(id: number, nuevoEstado: 'finalizada' | 'error') {
+        this.logger.log(`🔧 Forzando cierre de campaña WA ${id} → ${nuevoEstado}`);
+        const campaña = await this.prisma.campaña.findUnique({ where: { id }, select: { id: true, jobId: true } });
+        if (!campaña) throw new NotFoundException('Campaña no encontrada');
+
+        if (campaña.jobId) {
+            try {
+                const job: Job | undefined = await this.colaEnvios.getJob(campaña.jobId);
+                if (job) {
+                    const state = await job.getState();
+                    if (['waiting', 'delayed', 'active'].includes(state)) await job.remove();
+                }
+            } catch (e) {
+                this.logger.warn(`⚠️ No se pudo cancelar job ${campaña.jobId}: ${e.message}`);
+            }
+        }
+
+        await this.prisma.campaña.update({ where: { id }, data: { estado: nuevoEstado } });
+        return { ok: true };
+    }
+
     async eliminarCampaña(id: number) {
         this.logger.log(`🗑️ Eliminando campaña ${id}`);
         const campaña = await this.prisma.campaña.findUnique({ where: { id } });

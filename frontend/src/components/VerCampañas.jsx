@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     Typography,
     Table,
@@ -34,6 +34,9 @@ import AddIcon from '@mui/icons-material/Add';
 import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PauseIcon from '@mui/icons-material/Pause';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import BlockIcon from '@mui/icons-material/Block';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import MuiAlert from '@mui/material/Alert';
@@ -41,6 +44,8 @@ import api from '../api/axios';
 import SubirCampaña from './SubirCampaña';
 import EnviarMensajesModal from './EnviarMensajes';
 import { io } from 'socket.io-client';
+import CampañaLogModal from './CampañaLogModal';
+import TerminalIcon from '@mui/icons-material/Terminal';
 import LinearProgress from '@mui/material/LinearProgress';
 import CircularProgress from '@mui/material/CircularProgress';
 import EventIcon from '@mui/icons-material/Event';
@@ -71,8 +76,14 @@ export default function VerCampañas() {
     const [progresos, setProgresos] = useState({});
     const [pausando, setPausando] = useState([]);
     const [mostrarCalendario, setMostrarCalendario] = useState(false);
+    const [campañaACerrar, setCampañaACerrar] = useState(null);
+    const [forzandoCierre, setForzandoCierre] = useState(false);
     const [filtroTexto, setFiltroTexto] = useState('');
     const [loading, setLoading] = useState(true);
+    const [modalLog, setModalLog] = useState(null); // { id, nombre }
+    const [campaniasBloqueadas, setCampaniasBloqueadas] = useState(new Set());
+    const ultimoProgresoRef = useRef({}); // { [campañaId]: timestamp del último evento de progreso }
+    const STUCK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutos sin progreso = campaña bloqueada
 
     const theme = useTheme();
     const codeStyle = {
@@ -105,6 +116,10 @@ export default function VerCampañas() {
         campañas.forEach((campaña) => {
             if (campaña.estado === 'procesando') {
                 socket.emit('join_campaña', campaña.id);
+                // Inicializar timestamp si aún no se rastreó esta campaña
+                if (!ultimoProgresoRef.current[campaña.id]) {
+                    ultimoProgresoRef.current[campaña.id] = Date.now();
+                }
             }
         });
 
@@ -113,6 +128,14 @@ export default function VerCampañas() {
         });
 
         socket.on('progreso', ({ enviados, total, campañaId }) => {
+            ultimoProgresoRef.current[campañaId] = Date.now();
+            // Si recibimos progreso, la campaña ya no está bloqueada
+            setCampaniasBloqueadas(prev => {
+                if (!prev.has(campañaId)) return prev;
+                const next = new Set(prev);
+                next.delete(campañaId);
+                return next;
+            });
             setProgresos((prev) => ({
                 ...prev,
                 [campañaId]: { enviados, total }
@@ -120,13 +143,31 @@ export default function VerCampañas() {
         });
 
         socket.on('campania_finalizada', ({ campañaId }) => {
+            delete ultimoProgresoRef.current[campañaId];
+            setCampaniasBloqueadas(prev => {
+                const next = new Set(prev);
+                next.delete(campañaId);
+                return next;
+            });
             cargarCampañas();
         });
 
         socket.on('campania_pausada', ({ campañaId }) => {
+            delete ultimoProgresoRef.current[campañaId];
+            setCampaniasBloqueadas(prev => {
+                const next = new Set(prev);
+                next.delete(campañaId);
+                return next;
+            });
             setPausando((prev) => prev.filter(id => id !== campañaId));
             setMensaje({ tipo: 'success', texto: `Campaña ${campañaId} pausada exitosamente` });
             setSnackbarOpen(true);
+            cargarCampañas();
+        });
+
+        socket.on('campania_error', ({ campañaId }) => {
+            // El backend detectó un error: mostrar el botón de forzar cierre inmediatamente
+            setCampaniasBloqueadas(prev => new Set([...prev, campañaId]));
             cargarCampañas();
         });
 
@@ -145,10 +186,33 @@ export default function VerCampañas() {
         return () => socket.disconnect();
     }, [campañas]);
 
+    // Timer: cada 30s verifica si alguna campaña en "procesando" lleva más de 5 min sin progreso
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const procesandoIds = campañas
+                .filter(c => c.estado === 'procesando')
+                .map(c => c.id);
+            if (!procesandoIds.length) return;
+            const now = Date.now();
+            setCampaniasBloqueadas(prev => {
+                let changed = false;
+                const next = new Set(prev);
+                for (const id of procesandoIds) {
+                    const last = ultimoProgresoRef.current[id];
+                    if (!last || now - last > STUCK_THRESHOLD_MS) {
+                        if (!next.has(id)) { next.add(id); changed = true; }
+                    }
+                }
+                return changed ? next : prev;
+            });
+        }, 30_000);
+        return () => clearInterval(interval);
+    }, [campañas]);
+
 
     const agendadas = campañas.filter(c => c.estado === 'programada');
     const pendientes = campañas.filter(c => c.estado === 'pendiente');
-    const procesando = campañas.filter(c => ['procesando', 'pausada', 'pausa_pendiente'].includes(c.estado));
+    const procesando = campañas.filter(c => ['procesando', 'pausada', 'pausa_pendiente', 'error'].includes(c.estado));
     const enviadas = campañas.filter(c => c.estado === 'finalizada');
     const campañasPorTab =
         tab === 0 ? pendientes :
@@ -216,6 +280,22 @@ export default function VerCampañas() {
     const confirmarEliminar = (campaña) => {
         setCampañaAEliminar(campaña);
         setConfirmarEliminacion(true);
+    };
+
+    const handleForzarCierre = async (campaña, nuevoEstado) => {
+        setForzandoCierre(true);
+        try {
+            await api.post(`/whatsapp/campanias/${campaña.id}/forzar-cierre`, { estado: nuevoEstado });
+            setMensaje({ tipo: 'success', texto: `Campaña marcada como "${nuevoEstado}"` });
+            setSnackbarOpen(true);
+            setCampañaACerrar(null);
+            cargarCampañas();
+        } catch (err) {
+            setMensaje({ tipo: 'error', texto: err.response?.data?.message || 'No se pudo forzar el cierre' });
+            setSnackbarOpen(true);
+        } finally {
+            setForzandoCierre(false);
+        }
     };
 
     const eliminarCampaña = async () => {
@@ -447,6 +527,7 @@ export default function VerCampañas() {
                                                             {c.estado === 'finalizada' && <Chip size="small" label="Finalizada" color="success" />}
                                                             {c.estado === 'programada' && <Chip size="small" label="Programada" color="info" />}
                                                             {c.estado === 'pausa_pendiente' && <Chip size="small" label="Pausa en cola" color="warning" />}
+                                                            {c.estado === 'error' && <Chip size="small" label="Error" color="error" icon={<WarningAmberIcon />} />}
                                                         </Stack>
                                                         <Typography variant="caption" color="text.secondary" display="block">
                                                             {c.createdAt ? new Date(c.createdAt).toLocaleString() : '—'}
@@ -514,6 +595,13 @@ export default function VerCampañas() {
                                                     </>
                                                 )}
 
+                                                {c.estado === 'procesando' && (
+                                                    <Tooltip title="Ver logs en tiempo real">
+                                                        <IconButton size={isMobile ? 'small' : 'medium'} color="info" onClick={() => setModalLog({ id: c.id, nombre: c.nombre })}>
+                                                            <TerminalIcon />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                )}
                                                 {c.estado === 'procesando' || c.estado === 'pausa_pendiente' ? (
                                                     pausando.includes(c.id) || c.estado === 'pausa_pendiente' ? (
                                                         <Tooltip title={c.estado === 'pausa_pendiente' ? "Pausa ya solicitada" : "Pausando..."}>
@@ -529,12 +617,33 @@ export default function VerCampañas() {
                                                         </Tooltip>
                                                     )
                                                 ) : null}
+                                                {c.estado === 'procesando' && campaniasBloqueadas.has(c.id) && (
+                                                    <Tooltip title="Campaña bloqueada — forzar cierre">
+                                                        <IconButton size={isMobile ? 'small' : 'medium'} color="error" onClick={() => setCampañaACerrar(c)}>
+                                                            <BlockIcon />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                )}
                                                 {c.estado === 'pausada' && (
                                                     <Tooltip title="Reanudar campaña">
                                                         <IconButton size={isMobile ? 'small' : 'medium'} color="info" onClick={() => reanudarCampaña(c)}>
                                                             <PlayArrowIcon />
                                                         </IconButton>
                                                     </Tooltip>
+                                                )}
+                                                {c.estado === 'error' && (
+                                                    <>
+                                                        <Tooltip title="Marcar como finalizada">
+                                                            <IconButton size={isMobile ? 'small' : 'medium'} color="success" onClick={() => handleForzarCierre(c, 'finalizada')}>
+                                                                <CheckCircleOutlineIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                        <Tooltip title="Eliminar campaña">
+                                                            <IconButton size={isMobile ? 'small' : 'medium'} color="error" onClick={() => confirmarEliminar(c)}>
+                                                                <DeleteIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    </>
                                                 )}
                                                 {(c.estado === 'pendiente' || c.estado === 'pausada' || c.estado === 'finalizada' || c.estado === 'programada') && (
                                                     <Tooltip title="Eliminar campaña">
@@ -689,6 +798,46 @@ export default function VerCampañas() {
                 </DialogActions>
             </Dialog>
 
+            {/* Dialog: forzar cierre de campaña bloqueada */}
+            <Dialog open={!!campañaACerrar} onClose={() => setCampañaACerrar(null)} maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <WarningAmberIcon color="warning" />
+                    Forzar cierre de campaña
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Typography mb={2}>
+                        La campaña <strong>"{campañaACerrar?.nombre}"</strong> parece estar bloqueada en "Procesando".
+                        Podés forzar su cierre eligiendo el estado final.
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                        Si el proceso de envío sigue corriendo en el servidor, finalizará por su cuenta y actualizará el estado.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setCampañaACerrar(null)} color="inherit" disabled={forzandoCierre}>
+                        Cancelar
+                    </Button>
+                    <Button
+                        onClick={() => handleForzarCierre(campañaACerrar, 'finalizada')}
+                        color="success"
+                        variant="outlined"
+                        disabled={forzandoCierre}
+                        startIcon={forzandoCierre ? <CircularProgress size={14} /> : <CheckCircleOutlineIcon />}
+                    >
+                        Marcar finalizada
+                    </Button>
+                    <Button
+                        onClick={() => handleForzarCierre(campañaACerrar, 'error')}
+                        color="error"
+                        variant="contained"
+                        disabled={forzandoCierre}
+                        startIcon={forzandoCierre ? <CircularProgress size={14} /> : <BlockIcon />}
+                    >
+                        Marcar error
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
             {campañaAEnviar && (
                 <EnviarMensajesModal
                     open={modalEnvio}
@@ -703,6 +852,24 @@ export default function VerCampañas() {
                     mostrarCalendario={mostrarCalendario}
                 />
             )}
+
+            <CampañaLogModal
+                open={!!modalLog}
+                onClose={() => setModalLog(null)}
+                campañaId={modalLog?.id}
+                campañaNombre={modalLog?.nombre}
+                tipo="whatsapp"
+                estadoCampaña={campañas.find(c => c.id === modalLog?.id)?.estado}
+                progreso={progresos[modalLog?.id] ?? null}
+                onPausar={() => {
+                    const c = campañas.find(x => x.id === modalLog?.id);
+                    if (c) pausarCampaña(c);
+                }}
+                onForzarCierre={() => {
+                    const c = campañas.find(x => x.id === modalLog?.id);
+                    if (c) setCampañaACerrar(c);
+                }}
+            />
 
             <Snackbar
                 open={snackbarOpen}

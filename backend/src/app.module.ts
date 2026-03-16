@@ -12,9 +12,10 @@ import { AuthModule } from './auth/auth.module';
 import { EmailModule } from './modules/email/email.module';
 import { ConfiguracionModule } from './modules/configuracion/configuracion.module';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
+import { CampaniaLogsModule } from './modules/campania-logs/campania-logs.module';
 
 @Module({
-  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule, AuthModule, EmailModule, ConfiguracionModule, SchedulerModule],
+  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule, AuthModule, EmailModule, ConfiguracionModule, SchedulerModule, CampaniaLogsModule],
   controllers: [AppController],
   providers: [AppService, SocketGateway, PubSubService],
 })

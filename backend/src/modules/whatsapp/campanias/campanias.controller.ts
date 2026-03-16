@@ -105,6 +105,12 @@ export class CampaniasController {
         return this.campaniasService.reanudarCampaña(+id);
     }
 
+    @Post(':id/forzar-cierre')
+    async forzarCierre(@Param('id') id: string, @Body() body: { estado: 'finalizada' | 'error' }) {
+        this.logger.log(`📥 POST /${id}/forzar-cierre → ${body.estado}`);
+        return this.campaniasService.forzarCierre(+id, body.estado ?? 'error');
+    }
+
     @Delete(':id')
     async eliminarCampaña(@Param('id') id: string) {
         this.logger.log(`🗑️ DELETE /${id} - Eliminar campaña`);

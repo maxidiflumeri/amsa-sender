@@ -9,8 +9,9 @@ import { ReportesEmailModule } from './reportes-email/reportes-email.module';
 import { GmailModule } from './gmail/gmail.module';
 import { EmailDesuscribirModule } from './desuscribir-email/desuscribir-email.module';
 import { SesWebhookModule } from './ses-webhook/ses-webhook.module';
+import { ManualEmailModule } from './manual-email/manual-email.module';
 
-@Module({    
+@Module({
     imports: [
       SmtpModule,
       TemplatesEmailModule,
@@ -21,8 +22,9 @@ import { SesWebhookModule } from './ses-webhook/ses-webhook.module';
       ReportesEmailModule,
       GmailModule,
       EmailDesuscribirModule,
-      SesWebhookModule
+      SesWebhookModule,
+      ManualEmailModule,
     ],
   })
 
-  export class EmailModule {}  
+  export class EmailModule {}

@@ -22,6 +22,7 @@ import DesuscripcionConfirmar from './components/email/DesuscripcionConfirmar';
 import DesuscripcionResultado from './components/email/DesuscripcionResultado';
 import VerDesuscripcionesEmail from './components/email/VerDesuscripcionesEmail';
 import TareasProgramadas from './components/TareasProgramadas';
+import EnvioManual from './components/email/EnvioManual';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -244,6 +245,7 @@ export default function App() {
                     <Route path="/email/campanias" element={<VerCampañasEmail />} />
                     <Route path="/email/reportes" element={<VerReportesEmail />} />
                     <Route path="/email/desuscripciones" element={<VerDesuscripcionesEmail />} />
+                    <Route path="/email/envio-manual" element={<EnvioManual />} />
                 </Route>
 
                 {/* Catch-all */}

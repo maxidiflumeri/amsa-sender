@@ -62,7 +62,10 @@ export class ReportesEmailService {
         // --- Filtro de campañas (sin 'mode', rely en collation *_ci de MySQL) ---
         const whereCampaign: Prisma.CampañaEmailWhereInput = {
             contactos: { some: {} },
-            ...(q ? { nombre: { contains: q } } : {}),
+            AND: [
+                { nombre: { not: '__envios_manuales__' } },
+                ...(q ? [{ nombre: { contains: q } }] : []),
+            ],
         };
 
         // --- Total y página de campañas (orden por createdAt desc) ---

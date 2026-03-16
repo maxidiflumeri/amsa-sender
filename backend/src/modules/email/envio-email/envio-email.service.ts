@@ -69,18 +69,19 @@ export class EnvioEmailService {
         idCuentaSmtp: number;
     }) {
 
+        const job = await this.emailsEnvios.add('enviar-campania', {
+            idCampania,
+            idTemplate,
+            idCuentaSmtp,
+        });
+
         await this.prisma.campañaEmail.update({
             where: { id: idCampania },
             data: {
                 estado: 'procesando',
-                templateId: idTemplate
+                templateId: idTemplate,
+                jobId: job.id,
             }
-        });
-
-        await this.emailsEnvios.add('enviar-campania', {
-            idCampania,
-            idTemplate,
-            idCuentaSmtp,
         });
 
         return { ok: true, message: 'Campaña programada para envío' };

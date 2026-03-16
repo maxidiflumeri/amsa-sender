@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     Divider,
     Typography,
@@ -38,12 +38,17 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EventIcon from '@mui/icons-material/Event';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import BlockIcon from '@mui/icons-material/Block';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import MuiAlert from '@mui/material/Alert';
 import CloseIcon from '@mui/icons-material/Close';
 import { FixedSizeList } from 'react-window';
 import EnviarMailsModal from './EnviarMails';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import { io } from 'socket.io-client';
+import CampañaLogModal from '../CampañaLogModal';
+import TerminalIcon from '@mui/icons-material/Terminal';
 import Skeleton from '@mui/material/Skeleton'
 import RefreshIcon from '@mui/icons-material/Refresh';
 
@@ -66,7 +71,13 @@ export default function VerCampañasEmail() {
     const [campañaAEnviar, setCampañaAEnviar] = useState(null);
     const [campañaAEliminar, setCampañaAEliminar] = useState(null);
     const [confirmarEliminacion, setConfirmarEliminacion] = useState(false);
+    const [campañaACerrar, setCampañaACerrar] = useState(null);
+    const [forzandoCierre, setForzandoCierre] = useState(false);
     const [campañaSeleccionada, setCampañaSeleccionada] = useState(null);
+    const [modalLog, setModalLog] = useState(null); // { id, nombre }
+    const [campaniasBloqueadas, setCampaniasBloqueadas] = useState(new Set());
+    const ultimoProgresoRef = useRef({}); // { [campañaId]: timestamp del último evento de progreso }
+    const STUCK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutos sin progreso = campaña bloqueada
     const [loadingContactos, setLoadingContactos] = useState(false);
     const [busquedaContacto, setBusquedaContacto] = useState('');
     const [mostrarCalendario, setMostrarCalendario] = useState(false);
@@ -121,10 +132,22 @@ export default function VerCampañasEmail() {
         campanias.forEach((campaña) => {
             if (campaña.estado === 'procesando') {
                 socket.emit('join_campaña', campaña.id);
+                // Inicializar timestamp si aún no se rastreó esta campaña
+                if (!ultimoProgresoRef.current[campaña.id]) {
+                    ultimoProgresoRef.current[campaña.id] = Date.now();
+                }
             }
         });
 
         socket.on('progreso_mail', ({ campañaId, enviados, total }) => {
+            ultimoProgresoRef.current[campañaId] = Date.now();
+            // Si recibimos progreso, la campaña ya no está bloqueada
+            setCampaniasBloqueadas(prev => {
+                if (!prev.has(campañaId)) return prev;
+                const next = new Set(prev);
+                next.delete(campañaId);
+                return next;
+            });
             setProgresos((prev) => ({
                 ...prev,
                 [campañaId]: { enviados, total }
@@ -140,7 +163,19 @@ export default function VerCampañasEmail() {
         });
 
         socket.on('campania_finalizada', ({ campañaId }) => {
-            cargarCampanias(); // recarga la lista de campañas desde backend
+            delete ultimoProgresoRef.current[campañaId];
+            setCampaniasBloqueadas(prev => {
+                const next = new Set(prev);
+                next.delete(campañaId);
+                return next;
+            });
+            cargarCampanias();
+        });
+
+        socket.on('campania_error', ({ campañaId }) => {
+            // El backend detectó un error: mostrar el botón de forzar cierre inmediatamente
+            setCampaniasBloqueadas(prev => new Set([...prev, campañaId]));
+            cargarCampanias();
         });
 
         return () => {
@@ -148,9 +183,32 @@ export default function VerCampañasEmail() {
         };
     }, [campanias]);
 
+    // Timer: cada 30s verifica si alguna campaña en "procesando" lleva más de 5 min sin progreso
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const procesandoIds = campanias
+                .filter(c => c.estado === 'procesando')
+                .map(c => c.id);
+            if (!procesandoIds.length) return;
+            const now = Date.now();
+            setCampaniasBloqueadas(prev => {
+                let changed = false;
+                const next = new Set(prev);
+                for (const id of procesandoIds) {
+                    const last = ultimoProgresoRef.current[id];
+                    if (!last || now - last > STUCK_THRESHOLD_MS) {
+                        if (!next.has(id)) { next.add(id); changed = true; }
+                    }
+                }
+                return changed ? next : prev;
+            });
+        }, 30_000);
+        return () => clearInterval(interval);
+    }, [campanias]);
+
     const agendadas = campanias.filter(c => c.estado === 'programada');
     const pendientes = campanias.filter(c => c.estado === 'pendiente');
-    const procesando = campanias.filter(c => ['procesando', 'pausada', 'pausa_pendiente'].includes(c.estado));
+    const procesando = campanias.filter(c => ['procesando', 'pausada', 'pausa_pendiente', 'error'].includes(c.estado));
     const enviadas = campanias.filter(c => c.estado === 'finalizada');
     const campaniasPorTab = tab === 0 ? pendientes : tab === 1 ? agendadas : tab === 2 ? procesando : enviadas;
 
@@ -228,6 +286,22 @@ export default function VerCampañasEmail() {
         } finally {
             setConfirmarEliminacion(false);
             setCampañaAEliminar(null);
+        }
+    };
+
+    const handleForzarCierre = async (campaña, nuevoEstado) => {
+        setForzandoCierre(true);
+        try {
+            await api.post(`/email/campanias/${campaña.id}/forzar-cierre`, { estado: nuevoEstado });
+            setMensaje({ tipo: 'success', texto: `Campaña marcada como "${nuevoEstado}"` });
+            setSnackbarOpen(true);
+            setCampañaACerrar(null);
+            cargarCampanias({ silent: true });
+        } catch (err) {
+            setMensaje({ tipo: 'error', texto: err.response?.data?.message || 'No se pudo forzar el cierre' });
+            setSnackbarOpen(true);
+        } finally {
+            setForzandoCierre(false);
         }
     };
 
@@ -545,6 +619,7 @@ export default function VerCampañasEmail() {
                                                     {c.estado === 'finalizada' && <Chip label="Finalizada" color="success" size={isMobile ? 'small' : 'medium'} />}
                                                     {c.estado === 'programada' && <Chip label="Programada" color="info" size={isMobile ? 'small' : 'medium'} />}
                                                     {c.estado === 'pausa_pendiente' && <Chip label="Pausa en cola" color="warning" size={isMobile ? 'small' : 'medium'} />}
+                                                    {c.estado === 'error' && <Chip label="Error" color="error" size={isMobile ? 'small' : 'medium'} icon={<WarningAmberIcon />} />}
                                                 </TableCell>
 
                                                 <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
@@ -598,6 +673,50 @@ export default function VerCampañasEmail() {
                                                                     onClick={() => abrirModalAgendar(c)}
                                                                 >
                                                                     <EventIcon />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </>
+                                                    )}
+                                                    {c.estado === 'procesando' && (
+                                                        <Tooltip title="Ver logs en tiempo real">
+                                                            <IconButton
+                                                                color="info"
+                                                                size={isMobile ? 'small' : 'medium'}
+                                                                onClick={() => setModalLog({ id: c.id, nombre: c.nombre })}
+                                                            >
+                                                                <TerminalIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    )}
+                                                    {c.estado === 'procesando' && campaniasBloqueadas.has(c.id) && (
+                                                        <Tooltip title="Campaña bloqueada — forzar cierre">
+                                                            <IconButton
+                                                                color="error"
+                                                                size={isMobile ? 'small' : 'medium'}
+                                                                onClick={() => setCampañaACerrar(c)}
+                                                            >
+                                                                <BlockIcon />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    )}
+                                                    {c.estado === 'error' && (
+                                                        <>
+                                                            <Tooltip title="Marcar como finalizada">
+                                                                <IconButton
+                                                                    color="success"
+                                                                    size={isMobile ? 'small' : 'medium'}
+                                                                    onClick={() => handleForzarCierre(c, 'finalizada')}
+                                                                >
+                                                                    <CheckCircleOutlineIcon />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                            <Tooltip title="Eliminar campaña">
+                                                                <IconButton
+                                                                    color="error"
+                                                                    size={isMobile ? 'small' : 'medium'}
+                                                                    onClick={() => confirmarEliminar(c)}
+                                                                >
+                                                                    <DeleteIcon />
                                                                 </IconButton>
                                                             </Tooltip>
                                                         </>
@@ -715,6 +834,46 @@ export default function VerCampañasEmail() {
                 </DialogActions>
             </Dialog>
 
+            {/* Dialog: forzar cierre de campaña bloqueada */}
+            <Dialog open={!!campañaACerrar} onClose={() => setCampañaACerrar(null)} maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <WarningAmberIcon color="warning" />
+                    Forzar cierre de campaña
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Typography mb={2}>
+                        La campaña <strong>"{campañaACerrar?.nombre}"</strong> parece estar bloqueada en "Procesando".
+                        Podés forzar su cierre eligiendo el estado final.
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                        Si el proceso de envío sigue corriendo en el servidor, finalizará por su cuenta y actualizará el estado.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setCampañaACerrar(null)} color="inherit" disabled={forzandoCierre}>
+                        Cancelar
+                    </Button>
+                    <Button
+                        onClick={() => handleForzarCierre(campañaACerrar, 'finalizada')}
+                        color="success"
+                        variant="outlined"
+                        disabled={forzandoCierre}
+                        startIcon={forzandoCierre ? <CircularProgress size={14} /> : <CheckCircleOutlineIcon />}
+                    >
+                        Marcar finalizada
+                    </Button>
+                    <Button
+                        onClick={() => handleForzarCierre(campañaACerrar, 'error')}
+                        color="error"
+                        variant="contained"
+                        disabled={forzandoCierre}
+                        startIcon={forzandoCierre ? <CircularProgress size={14} /> : <BlockIcon />}
+                    >
+                        Marcar error
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
             <Dialog
                 open={!!campañaSeleccionada}
                 onClose={handleCloseDialogContacts}
@@ -816,6 +975,20 @@ export default function VerCampañasEmail() {
                     mostrarCalendario={mostrarCalendario}
                 />
             )}
+
+            <CampañaLogModal
+                open={!!modalLog}
+                onClose={() => setModalLog(null)}
+                campañaId={modalLog?.id}
+                campañaNombre={modalLog?.nombre}
+                tipo="email"
+                estadoCampaña={campanias.find(c => c.id === modalLog?.id)?.estado}
+                progreso={progresos[modalLog?.id] ?? null}
+                onForzarCierre={() => {
+                    const c = campanias.find(x => x.id === modalLog?.id);
+                    if (c) setCampañaACerrar(c);
+                }}
+            />
 
             <Snackbar
                 open={snackbarOpen}

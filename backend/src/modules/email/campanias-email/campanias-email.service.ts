@@ -3,17 +3,22 @@ import { chunk } from 'lodash';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as fs from 'fs/promises';
 import { parseCsvEmail } from 'src/modules/whatsapp/campanias/utils/csv-parser';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Job, Queue } from 'bullmq';
 
 @Injectable()
 export class CampaniasEmailService {
     private readonly logger = new Logger(CampaniasEmailService.name);
 
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        @InjectQueue('emailsEnvios') private readonly emailsEnvios: Queue,
+    ) { }
 
     async obtenerCampañas() {
         this.logger.log('🔍 Buscando campañas activas...');
         return this.prisma.campañaEmail.findMany({
-            where: { archivada: false },
+            where: { archivada: false, nombre: { not: '__envios_manuales__' } },
             include: { contactos: true },
             orderBy: { createdAt: 'desc' },
         });
@@ -22,7 +27,7 @@ export class CampaniasEmailService {
     async obtenerCampañasLite() {
         this.logger.log('🔍 Buscando campañas (lite)…');
         return this.prisma.campañaEmail.findMany({
-            where: { archivada: false },
+            where: { archivada: false, nombre: { not: '__envios_manuales__' } },
             select: {
                 id: true,
                 nombre: true,
@@ -116,6 +121,27 @@ export class CampaniasEmailService {
         }
     }
 
+    async forzarCierre(id: number, nuevoEstado: 'finalizada' | 'error') {
+        this.logger.log(`🔧 Forzando cierre de campaña email ${id} → ${nuevoEstado}`);
+        const campaña = await this.prisma.campañaEmail.findUnique({ where: { id }, select: { id: true, jobId: true } });
+        if (!campaña) throw new NotFoundException('Campaña no encontrada');
+
+        if (campaña.jobId) {
+            try {
+                const job: Job | undefined = await this.emailsEnvios.getJob(campaña.jobId);
+                if (job) {
+                    const state = await job.getState();
+                    if (['waiting', 'delayed', 'active'].includes(state)) await job.remove();
+                }
+            } catch (e) {
+                this.logger.warn(`⚠️ No se pudo cancelar job ${campaña.jobId}: ${e.message}`);
+            }
+        }
+
+        await this.prisma.campañaEmail.update({ where: { id }, data: { estado: nuevoEstado } });
+        return { ok: true };
+    }
+
     async eliminarCampaña(id: number) {
         this.logger.log(`🗑️ Eliminando campaña ${id}`);
         const campaña = await this.prisma.campañaEmail.findUnique({ where: { id } });
@@ -123,20 +149,20 @@ export class CampaniasEmailService {
         if (!campaña) throw new NotFoundException('Campaña no encontrada');
         if (campaña.estado === 'procesando') {
             this.logger.warn(`❌ No se puede eliminar campaña ${id} porque está procesando`);
-            throw new BadRequestException('No se puede eliminar una campaña en proceso');
+            throw new BadRequestException('No se puede eliminar una campaña en proceso. Forzá su cierre primero.');
         }
 
-        // if (campaña.jobId) {
-        //     try {
-        //         const job: Job | undefined = await this.colaEnvios.getJob(campaña.jobId);
-        //         if (job) {
-        //             await job.remove();
-        //             this.logger.log(`🗑️ Job ${campaña.jobId} eliminado de la cola.`);
-        //         }
-        //     } catch (err) {
-        //         this.logger.warn(`⚠️ No se pudo eliminar el job ${campaña.jobId}: ${err.message}`);
-        //     }
-        // }
+        if (campaña.jobId) {
+            try {
+                const job: Job | undefined = await this.emailsEnvios.getJob(campaña.jobId);
+                if (job) {
+                    await job.remove();
+                    this.logger.log(`🗑️ Job ${campaña.jobId} eliminado de la cola.`);
+                }
+            } catch (err) {
+                this.logger.warn(`⚠️ No se pudo eliminar el job ${campaña.jobId}: ${err.message}`);
+            }
+        }
 
         await this.prisma.contactoEmail.deleteMany({ where: { campañaId: campaña.id } });
         await this.prisma.campañaEmail.update({

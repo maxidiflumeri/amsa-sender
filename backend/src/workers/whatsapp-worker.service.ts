@@ -26,8 +26,21 @@ export class WhatsappWorkerService implements OnModuleInit {
             concurrency: Number(process.env.WHATSAPP_CONCURRENCY || 5),
         });
 
-        worker.on('failed', (job, err) => {
+        worker.on('failed', async (job, err) => {
             this.logger.error(`❌ Job ${job?.id ?? 'unknown'} falló: ${err.message}`);
+            const campañaId = job?.data?.campaña;
+            if (campañaId) {
+                try {
+                    await this.prisma.campaña.update({
+                        where: { id: campañaId },
+                        data: { estado: 'error' },
+                    });
+                    this.logger.warn(`⚠️ Campaña WA ${campañaId} marcada como "error" por fallo del job.`);
+                    await this.safePublish('campania-error', JSON.stringify({ campañaId, tipo: 'whatsapp' }));
+                } catch (e) {
+                    this.logger.error(`❌ No se pudo marcar campaña WA ${campañaId} como error: ${e.message}`);
+                }
+            }
         });
 
         // Capturar errores de conexión del Worker (BullMQ/ioredis)
@@ -100,6 +113,7 @@ export class WhatsappWorkerService implements OnModuleInit {
             if (estado.estado === 'pausa_pendiente') {
                 await this.prisma.campaña.update({ where: { id: campaña }, data: { estado: 'pausada' } });
                 await this.safePublish('campania-pausada', JSON.stringify({ campañaId: campaña }));
+                await this.publicarLog(campaña, 'warn', '⏸️ Campaña pausada antes de iniciar.');
                 this.logger.warn(`⏸️ Campaña ${campaña} pausada antes de iniciar.`);
                 return;
             }
@@ -125,6 +139,9 @@ export class WhatsappWorkerService implements OnModuleInit {
             let enviados = 0;
 
             this.logger.log(`📦 ${total} contactos a enviar para campaña ${campaña}.`);
+            // Limpiar logs anteriores de este run
+            try { await this.redis.del(`campania-wa-logs:${campaña}`); } catch {}
+            await this.publicarLog(campaña, 'info', `▶️ Iniciando: ${total} contactos en ${sessionIds.length} sesión(es)`);
 
             const porSesion: Record<string, typeof contactos> = {};
             sessionIds.forEach((id: string) => porSesion[id] = []);
@@ -147,6 +164,7 @@ export class WhatsappWorkerService implements OnModuleInit {
                         if (estadoActual?.estado === 'pausada') {
                             this.logger.warn(`⏸️ Campaña ${campaña} pausada manualmente. Deteniendo envío.`);
                             await this.safePublish('campania-pausada', JSON.stringify({ campañaId: campaña }));
+                            await this.publicarLog(campaña, 'warn', `⏸️ Campaña pausada manualmente. Enviados hasta ahora: ${enviados}/${total}`);
                             return; // Sale del try, va al finally
                         }
 
@@ -169,6 +187,7 @@ export class WhatsappWorkerService implements OnModuleInit {
                                 enviados,
                                 total,
                             }));
+                            await this.publicarLog(campaña, 'ok', `✅ Enviado a ${contacto.numero}  (sesión: ${sessionId})`);
 
                             const sesion = await this.prisma.sesion.findUnique({
                                 where: { sessionId },
@@ -212,7 +231,9 @@ export class WhatsappWorkerService implements OnModuleInit {
                                 },
                             });
 
-                            this.logger.warn(`⚠️ [${sessionId}] Fallo al enviar a ${contacto.numero}: ${respuesta.error || 'desconocido'}`);
+                            const motivo = respuesta.error || respuesta.estado || 'desconocido';
+                            await this.publicarLog(campaña, 'warn', `⚠️ Fallo: ${contacto.numero} — ${motivo}  (sesión: ${sessionId})`);
+                            this.logger.warn(`⚠️ [${sessionId}] Fallo al enviar a ${contacto.numero}: ${motivo}`);
                         }
 
                         await delay(delayEntreMensajes);
@@ -234,6 +255,7 @@ export class WhatsappWorkerService implements OnModuleInit {
                     where: { id: campaña },
                     data: { estado: 'pendiente' },
                 });
+                await this.publicarLog(campaña, 'warn', '⚠️ Sin mensajes enviados. Campaña marcada como pendiente.');
                 this.logger.warn(`🔁 Campaña ${campaña} sin mensajes enviados. Se marca como pendiente.`);
             } else {
                 await this.prisma.campaña.update({
@@ -241,6 +263,7 @@ export class WhatsappWorkerService implements OnModuleInit {
                     data: { estado: 'finalizada', enviadoAt: new Date() },
                 });
                 await this.safePublish('campania-finalizada', JSON.stringify({ campañaId: campaña }));
+                await this.publicarLog(campaña, 'info', `🏁 Finalizada — ${enviados}/${total} enviados correctamente`);
                 this.logger.log(`🏁 Campaña ${campaña} finalizada. Total enviados: ${enviados}/${total}.`);
             }
         } finally {
@@ -251,6 +274,18 @@ export class WhatsappWorkerService implements OnModuleInit {
             }
             this.logger.log(`🔓 [Job ${job.id}] Locks liberados para campaña ${campaña}.`);
         }
+    }
+
+    private async publicarLog(campañaId: number, nivel: 'ok' | 'warn' | 'error' | 'info' | 'skip', mensaje: string): Promise<void> {
+        const payload = JSON.stringify({ campañaId, nivel, mensaje, timestamp: new Date().toISOString() });
+        await this.safePublish('campania-log', payload);
+        // Persiste en lista Redis para historial (últimas 200 entradas, TTL 24h)
+        try {
+            const key = `campania-wa-logs:${campañaId}`;
+            await this.redis.rPush(key, payload);
+            await this.redis.lTrim(key, -500, -1);
+            await this.redis.expire(key, 86400);
+        } catch { /* no interrumpir el envío por error de persistencia */ }
     }
 
     /**

@@ -34,7 +34,9 @@ export class PubSubService implements OnModuleInit {
             'estado-sesion',
             'solicitar-sesion',
             'progreso-envio-mail',
-            'campania-envio-reanudado'
+            'campania-envio-reanudado',
+            'campania-error',
+            'campania-log',
         ];
 
         for (const canal of canales) {
@@ -78,6 +80,14 @@ export class PubSubService implements OnModuleInit {
                     case 'campania-envio-reanudado':
                         this.logger.log(`🔄 Envío reanudado tras desconexión: ${JSON.stringify(data)}`);
                         this.socketGateway.emitirEvento('campania_envio_reanudado', data);
+                        break;
+                    case 'campania-error':
+                        this.logger.warn(`🚨 Campaña con error: ${JSON.stringify(data)}`);
+                        this.socketGateway.emitirEvento('campania_error', data);
+                        break;
+                    case 'campania-log':
+                        // Emitir solo al room de la campaña (no a todos los clientes)
+                        this.socketGateway.emitirEvento('campania_log', data, `campaña_${data.campañaId}`);
                         break;
                     default:
                         this.logger.warn(`⚠️ Canal no manejado: ${channel}`);

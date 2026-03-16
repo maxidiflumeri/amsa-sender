@@ -4,12 +4,14 @@ import { QueueModule } from 'src/queues/queue.module';
 import { SchedulerService } from './sheduler.service';
 import { TareasService } from './tarea.service';
 import { TareasController } from './tarea.controller';
+import { OrphanDetectorService } from './orphan-detector.service';
+import { PrismaModule } from 'src/prisma/prisma.module';
 
 @Module({
-  imports: [QueueModule],
-  providers: [SchedulerService, TareasService],
+  imports: [QueueModule, PrismaModule],
+  providers: [SchedulerService, TareasService, OrphanDetectorService],
   controllers: [TareasController],
-  exports: [SchedulerService], // 👈 opcional, por si lo usás en otro módulo
+  exports: [SchedulerService],
 })
 
 export class SchedulerModule {}
