@@ -38,29 +38,38 @@ import { Avatar, Menu, MenuItem } from '@mui/material';
 import logo from '../assets/amsasender.png'; // Asegúrate de que la ruta sea correcta
 import SettingsIcon from '@mui/icons-material/Settings';
 import ScheduleIcon from '@mui/icons-material/Schedule';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import PeopleIcon from '@mui/icons-material/People';
+import LockIcon from '@mui/icons-material/Lock';
+import { useAuth } from '../context/AuthContext';
 
 const drawerWidth = 220;
 
 const whatsappItems = [
-    { label: 'Sesiones', path: '/sesiones', icon: <DashboardIcon /> },
-    { label: 'Conectar', path: '/conectar', icon: <LinkIcon /> },
-    { label: 'Campañas', path: '/campanias', icon: <CampaignIcon /> },
-    { label: 'Templates', path: '/templates', icon: <ArticleIcon /> },
-    { label: 'Reportes', path: '/reportes', icon: <BarChartIcon /> },
-    { label: 'Métricas', path: '/metricas', icon: <InsightsIcon /> },
+    { label: 'Sesiones', path: '/sesiones', icon: <DashboardIcon />, permiso: 'whatsapp.sesiones' },
+    { label: 'Conectar', path: '/conectar', icon: <LinkIcon />, permiso: 'whatsapp.conectar' },
+    { label: 'Campañas', path: '/campanias', icon: <CampaignIcon />, permiso: 'whatsapp.campanias' },
+    { label: 'Templates', path: '/templates', icon: <ArticleIcon />, permiso: 'whatsapp.templates' },
+    { label: 'Reportes', path: '/reportes', icon: <BarChartIcon />, permiso: 'whatsapp.reportes' },
+    { label: 'Métricas', path: '/metricas', icon: <InsightsIcon />, permiso: 'whatsapp.metricas' },
 ];
 
 const emailItems = [
-    { label: 'Cuentas SMTP', path: '/email/cuentas', icon: <LinkIcon /> },
-    { label: 'Templates', path: '/email/templates', icon: <ArticleIcon /> },
-    { label: 'Campañas', path: '/email/campanias', icon: <CampaignIcon /> },
-    { label: 'Envío Manual', path: '/email/envio-manual', icon: <SendIcon /> },
-    { label: 'Reportes', path: '/email/reportes', icon: <BarChartIcon /> },
-    { label: 'Desuscripciones', path: '/email/desuscripciones', icon: <UnsubscribeIcon /> },
+    { label: 'Cuentas SMTP', path: '/email/cuentas', icon: <LinkIcon />, permiso: 'email.cuentas_smtp' },
+    { label: 'Templates', path: '/email/templates', icon: <ArticleIcon />, permiso: 'email.templates' },
+    { label: 'Campañas', path: '/email/campanias', icon: <CampaignIcon />, permiso: 'email.campanias' },
+    { label: 'Envío Manual', path: '/email/envio-manual', icon: <SendIcon />, permiso: 'email.envio_manual' },
+    { label: 'Reportes', path: '/email/reportes', icon: <BarChartIcon />, permiso: 'email.reportes' },
+    { label: 'Desuscripciones', path: '/email/desuscripciones', icon: <UnsubscribeIcon />, permiso: 'email.desuscripciones' },
 ];
 
 const configItems = [
-    { label: 'Tareas programadas', path: '/config/tareas-programadas', icon: <ScheduleIcon /> },
+    { label: 'Tareas programadas', path: '/config/tareas-programadas', icon: <ScheduleIcon />, permiso: 'config.tareas_programadas' },
+];
+
+const adminItems = [
+    { label: 'Usuarios', path: '/admin/usuarios', icon: <PeopleIcon />, permiso: 'admin.usuarios' },
+    { label: 'Roles', path: '/admin/roles', icon: <LockIcon />, permiso: 'admin.usuarios' },
 ];
 
 // Switch estilo iOS con íconos dentro del track
@@ -127,6 +136,8 @@ export default function Layout({ children, mode, toggleTheme }) {
     const [openWhatsapp, setOpenWhatsapp] = useState(false);
     const [openEmail, setOpenEmail] = useState(false);
     const [openConfig, setOpenConfig] = useState(false);
+    const [openAdmin, setOpenAdmin] = useState(false);
+    const { hasPermiso } = useAuth();
 
     const handleMenuOpen = (event) => {
         setAnchorEl(event.currentTarget);
@@ -188,6 +199,10 @@ export default function Layout({ children, mode, toggleTheme }) {
         setOpenEmail(location.pathname.startsWith('/email'));
     }, [location.pathname]);
 
+    useEffect(() => {
+        setOpenAdmin(location.pathname.startsWith('/admin'));
+    }, [location.pathname]);
+
     const drawerContent = (
         <Box height="100%" display="flex" flexDirection="column">
             {/* Botón de colapsar */}
@@ -217,6 +232,7 @@ export default function Layout({ children, mode, toggleTheme }) {
             <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
                 <List sx={{ paddingTop: 1 }}>
                     {/* WhatsApp */}
+                    {whatsappItems.some(i => hasPermiso(i.permiso)) && <>
                     <ListItemButton onClick={() => setOpenWhatsapp(!openWhatsapp)}>
                         <ListItemIcon
                             sx={{
@@ -258,7 +274,7 @@ export default function Layout({ children, mode, toggleTheme }) {
                         {!collapsed && (openWhatsapp ? <ExpandLess /> : <ExpandMore />)}
                     </ListItemButton>
                     <Collapse in={openWhatsapp} timeout="auto" unmountOnExit>
-                        {whatsappItems.map(({ label, path, icon }) => (
+                        {whatsappItems.filter(i => hasPermiso(i.permiso)).map(({ label, path, icon }) => (
                             <ListItem key={path} disablePadding>
                                 <Tooltip title={collapsed ? label : ''} placement="right">
                                     <ListItemButton
@@ -292,7 +308,9 @@ export default function Layout({ children, mode, toggleTheme }) {
                             </ListItem>
                         ))}
                     </Collapse>
+                    </>}
                     {/* Email */}
+                    {emailItems.some(i => hasPermiso(i.permiso)) && <>
                     <ListItemButton onClick={() => setOpenEmail(!openEmail)}>
                         <ListItemIcon
                             sx={{
@@ -336,7 +354,7 @@ export default function Layout({ children, mode, toggleTheme }) {
                         {!collapsed && (openEmail ? <ExpandLess /> : <ExpandMore />)}
                     </ListItemButton>
                     <Collapse in={openEmail} timeout="auto" unmountOnExit>
-                        {emailItems.map(({ label, path, icon }) => (
+                        {emailItems.filter(i => hasPermiso(i.permiso)).map(({ label, path, icon }) => (
                             <ListItem key={path} disablePadding>
                                 <Tooltip title={collapsed ? label : ''} placement="right">
                                     <ListItemButton
@@ -370,7 +388,9 @@ export default function Layout({ children, mode, toggleTheme }) {
                             </ListItem>
                         ))}
                     </Collapse>
+                    </>}
                     {/* Configuración */}
+                    {configItems.some(i => hasPermiso(i.permiso)) && <>
                     <ListItemButton onClick={() => setOpenConfig(!openConfig)}>
                         <ListItemIcon
                             sx={{
@@ -407,7 +427,7 @@ export default function Layout({ children, mode, toggleTheme }) {
                         {!collapsed && (openConfig ? <ExpandLess /> : <ExpandMore />)}
                     </ListItemButton>
                     <Collapse in={openConfig} timeout="auto" unmountOnExit>
-                        {configItems.map(({ label, path, icon }) => (
+                        {configItems.filter(i => hasPermiso(i.permiso)).map(({ label, path, icon }) => (
                             <ListItem key={path} disablePadding>
                                 <Tooltip title={collapsed ? label : ''} placement="right">
                                     <ListItemButton
@@ -441,6 +461,71 @@ export default function Layout({ children, mode, toggleTheme }) {
                             </ListItem>
                         ))}
                     </Collapse>
+                    </>}
+                    {/* Admin */}
+                    {hasPermiso('admin.usuarios') && (
+                        <>
+                            <ListItemButton onClick={() => setOpenAdmin(!openAdmin)}>
+                                <ListItemIcon
+                                    sx={{
+                                        minWidth: 'auto',
+                                        justifyContent: 'center',
+                                        mr: collapsed ? 0 : 1.5,
+                                        backgroundColor: '#FCE4EC',
+                                        borderRadius: '50%',
+                                        width: 36, height: 36,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        color: '#c2185b',
+                                        '& svg': { fontSize: collapsed ? 26 : 22 }
+                                    }}
+                                >
+                                    <AdminPanelSettingsIcon />
+                                </ListItemIcon>
+                                {!collapsed && (
+                                    <ListItemText
+                                        primary="Admin"
+                                        primaryTypographyProps={{ sx: { fontWeight: 'bold' } }}
+                                    />
+                                )}
+                                {!collapsed && (openAdmin ? <ExpandLess /> : <ExpandMore />)}
+                            </ListItemButton>
+                            <Collapse in={openAdmin} timeout="auto" unmountOnExit>
+                                {adminItems.filter(i => hasPermiso(i.permiso)).map(({ label, path, icon }) => (
+                                    <ListItem key={path} disablePadding>
+                                        <Tooltip title={collapsed ? label : ''} placement="right">
+                                            <ListItemButton
+                                                component={RouterLink}
+                                                to={path}
+                                                selected={location.pathname === path}
+                                                onClick={isMobile ? handleDrawerToggle : undefined}
+                                                sx={{
+                                                    pl: collapsed ? 0 : 4,
+                                                    justifyContent: collapsed ? 'center' : 'flex-start',
+                                                    '&.Mui-selected': {
+                                                        backgroundColor: theme.palette.action.selected,
+                                                        fontWeight: 'bold',
+                                                    }
+                                                }}
+                                            >
+                                                <ListItemIcon
+                                                    sx={{
+                                                        minWidth: 'auto',
+                                                        mr: collapsed ? 0 : 1.5,
+                                                        justifyContent: collapsed ? 'center' : 'flex-start',
+                                                        width: collapsed ? '100%' : 'auto',
+                                                        display: 'flex',
+                                                    }}
+                                                >
+                                                    {icon}
+                                                </ListItemIcon>
+                                                {!collapsed && <ListItemText primary={label} />}
+                                            </ListItemButton>
+                                        </Tooltip>
+                                    </ListItem>
+                                ))}
+                            </Collapse>
+                        </>
+                    )}
                 </List>
             </Box>
 

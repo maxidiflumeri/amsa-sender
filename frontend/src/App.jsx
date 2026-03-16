@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
+import { AuthProvider } from './context/AuthContext';
 import ConectarSesion from './components/ConectarSesion';
 import EstadoSesiones from './components/EstadoSesiones';
 import SubirCampaña from './components/SubirCampaña';
@@ -23,6 +24,8 @@ import DesuscripcionResultado from './components/email/DesuscripcionResultado';
 import VerDesuscripcionesEmail from './components/email/VerDesuscripcionesEmail';
 import TareasProgramadas from './components/TareasProgramadas';
 import EnvioManual from './components/email/EnvioManual';
+import GestionUsuarios from './components/admin/GestionUsuarios';
+import GestionRoles from './components/admin/GestionRoles';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -217,6 +220,7 @@ export default function App() {
         }), [mode]);
 
     return (
+        <AuthProvider>
         <ThemeProvider theme={theme}>
             <CssBaseline />
             <Routes>
@@ -246,11 +250,14 @@ export default function App() {
                     <Route path="/email/reportes" element={<VerReportesEmail />} />
                     <Route path="/email/desuscripciones" element={<VerDesuscripcionesEmail />} />
                     <Route path="/email/envio-manual" element={<EnvioManual />} />
+                    <Route path="/admin/usuarios" element={<GestionUsuarios />} />
+                    <Route path="/admin/roles" element={<GestionRoles />} />
                 </Route>
 
                 {/* Catch-all */}
                 <Route path="*" element={<Navigate to="/" />} />
             </Routes>
         </ThemeProvider>
+        </AuthProvider>
     );
 }

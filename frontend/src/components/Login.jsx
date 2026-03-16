@@ -131,8 +131,8 @@ const Login = () => {
 
                     <DialogContent sx={{ textAlign: 'center', px: 1 }}>
                         <Typography variant="body1" sx={{ fontSize: 15 }}>
-                            Tu cuenta no tiene permisos para usar AMSA Sender.<br />
-                            Por favor, usá una cuenta <strong>@anamayasa.com.ar</strong> autorizada.
+                            Tu cuenta no tiene acceso a AMSA Sender.<br />
+                            Pedile al administrador que te dé de alta en el sistema.
                         </Typography>
                     </DialogContent>
 

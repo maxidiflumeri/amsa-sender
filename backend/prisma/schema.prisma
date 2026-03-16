@@ -96,13 +96,25 @@ model CuentaSMTP {
   @@map("CuentaSMTP")
 }
 
+model Rol {
+  id       Int       @id @default(autoincrement())
+  nombre   String    @unique
+  permisos Json      // string[] — ej: ["whatsapp.campanias", "email.reportes"]
+  creadoAt DateTime  @default(now())
+  usuarios Usuario[]
+  @@map("Rol")
+}
+
 model Usuario {
   id       Int      @id @default(autoincrement())
   email    String   @unique
   nombre   String
   foto     String?
-  rol      String   @default("usuario")
-  creadoAt DateTime 
+  rol      String   @default("usuario")  // nombre del rol (sincronizado)
+  rolId    Int?
+  rolObj   Rol?     @relation(fields: [rolId], references: [id])
+  activo   Boolean  @default(true)
+  creadoAt DateTime
   @@map("Usuario")
 }
 
