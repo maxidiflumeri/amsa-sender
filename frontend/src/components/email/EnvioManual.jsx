@@ -11,6 +11,8 @@ import PreviewIcon from '@mui/icons-material/Preview';
 import ArticleIcon from '@mui/icons-material/Article';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import CloseIcon from '@mui/icons-material/Close';
 import EmailEditor from 'react-email-editor';
 import api from '../../api/axios';
 import { renderTemplate } from '../../utils/renderTemplate';
@@ -19,10 +21,14 @@ export default function EnvioManual() {
     const [modo, setModo] = useState('template');
 
     // Destinatario y SMTP (comunes)
-    const [to, setTo] = useState('');
+    const [toList, setToList] = useState([]);
     const [toNombre, setToNombre] = useState('');
     const [smtpId, setSmtpId] = useState('');
     const [cuentas, setCuentas] = useState([]);
+
+    // Adjuntos
+    const [adjuntos, setAdjuntos] = useState([]);
+    const adjuntosRef = useRef(null);
 
     // Modo A: template
     const [templates, setTemplates] = useState([]);
@@ -91,6 +97,12 @@ export default function EnvioManual() {
         }
     }, []);
 
+    const quitarAdjunto = (index) => {
+        setAdjuntos(prev => prev.filter((_, i) => i !== index));
+        // Resetear el input para que se pueda volver a seleccionar el mismo archivo
+        if (adjuntosRef.current) adjuntosRef.current.value = '';
+    };
+
     // Preview HTML con variables aplicadas (calculado en cliente)
     const previewHtml = useMemo(() => {
         if (modo === 'template') {
@@ -121,8 +133,11 @@ export default function EnvioManual() {
         });
 
     const validar = (htmlFinal) => {
-        if (!to.trim()) return 'El email del destinatario es requerido';
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())) return 'El email no es válido';
+        if (toList.length === 0) return 'Agregá al menos un email destinatario';
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        for (const email of toList) {
+            if (!emailRegex.test(email.trim())) return `Email inválido: ${email}`;
+        }
         if (!smtpId) return 'Seleccioná una cuenta SMTP';
         if (modo === 'template') {
             if (!templateSeleccionado) return 'Seleccioná un template';
@@ -145,19 +160,26 @@ export default function EnvioManual() {
         setEnviando(true);
         setResultado(null);
         try {
-            const body = {
-                to: to.trim(),
-                toNombre: toNombre.trim() || undefined,
-                smtpId: Number(smtpId),
-                subject: asuntoPreview,
-                html: htmlFinal,
-                ...(modo === 'template' && templateSeleccionado
-                    ? { templateId: templateSeleccionado.id, variables: { nombre: toNombre, ...variableValues } }
-                    : {}),
-            };
-            const { data } = await api.post('/email/manual/send', body);
-            setResultado({ ok: true, reporteId: data.reporteId });
-            mostrarSnack('Mail enviado correctamente', 'success');
+            const formData = new FormData();
+            toList.forEach(email => formData.append('to', email.trim()));
+            if (toNombre.trim()) formData.append('toNombre', toNombre.trim());
+            formData.append('smtpId', String(smtpId));
+            formData.append('subject', asuntoPreview);
+            formData.append('html', htmlFinal);
+            if (modo === 'template' && templateSeleccionado) {
+                formData.append('templateId', String(templateSeleccionado.id));
+                formData.append('variables', JSON.stringify({ nombre: toNombre, ...variableValues }));
+            }
+            adjuntos.forEach(f => formData.append('adjuntos', f));
+
+            const { data } = await api.post('/email/manual/send', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setResultado(data);
+            const msg = data.total === 1
+                ? 'Mail enviado correctamente'
+                : `${data.enviados}/${data.total} mails enviados`;
+            mostrarSnack(msg, data.ok ? 'success' : 'warning');
         } catch (err) {
             const msg = err.response?.data?.message || err.message || 'Error al enviar';
             setResultado({ ok: false, error: msg });
@@ -230,13 +252,32 @@ export default function EnvioManual() {
                         Destinatario
                     </Typography>
                     <Box display="flex" flexDirection="column" gap={2} mb={3}>
-                        <TextField
-                            label="Email *"
-                            value={to}
-                            onChange={e => setTo(e.target.value)}
-                            type="email"
-                            size="small"
-                            fullWidth
+                        <Autocomplete
+                            multiple
+                            freeSolo
+                            options={[]}
+                            value={toList}
+                            onChange={(_, newValue) => setToList(newValue)}
+                            renderTags={(value, getTagProps) =>
+                                value.map((email, index) => (
+                                    <Chip
+                                        key={email}
+                                        label={email}
+                                        {...getTagProps({ index })}
+                                        size="small"
+                                        color={/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? 'default' : 'error'}
+                                    />
+                                ))
+                            }
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Email(s) destinatario(s) *"
+                                    placeholder={toList.length === 0 ? 'Escribí y presioná Enter' : ''}
+                                    size="small"
+                                    helperText="Presioná Enter para agregar cada email"
+                                />
+                            )}
                         />
                         <TextField
                             label="Nombre"
@@ -245,6 +286,47 @@ export default function EnvioManual() {
                             size="small"
                             fullWidth
                         />
+                    </Box>
+
+                    <Divider sx={{ mb: 3 }} />
+
+                    {/* Archivos adjuntos */}
+                    <Typography variant="subtitle1" fontWeight="bold" mb={1}>
+                        Archivos adjuntos
+                    </Typography>
+                    <input
+                        ref={adjuntosRef}
+                        type="file"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={e => {
+                            setAdjuntos(prev => [...prev, ...Array.from(e.target.files)]);
+                            e.target.value = '';
+                        }}
+                    />
+                    <Box display="flex" flexDirection="column" gap={1} mb={3}>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<AttachFileIcon />}
+                            onClick={() => adjuntosRef.current?.click()}
+                            sx={{ alignSelf: 'flex-start' }}
+                        >
+                            Adjuntar archivos
+                        </Button>
+                        {adjuntos.length > 0 && (
+                            <Box display="flex" gap={0.5} flexWrap="wrap" mt={0.5}>
+                                {adjuntos.map((f, i) => (
+                                    <Chip
+                                        key={i}
+                                        label={f.name}
+                                        size="small"
+                                        onDelete={() => quitarAdjunto(i)}
+                                        deleteIcon={<CloseIcon />}
+                                    />
+                                ))}
+                            </Box>
+                        )}
                     </Box>
 
                     <Divider sx={{ mb: 3 }} />
@@ -409,21 +491,24 @@ export default function EnvioManual() {
                                 <Alert
                                     severity="success"
                                     action={
-                                        <Tooltip title="Ver reporte">
-                                            <IconButton
-                                                size="small"
-                                                href="/email/reportes"
-                                                target="_blank"
-                                            >
+                                        <Tooltip title="Ver reportes">
+                                            <IconButton size="small" href="/email/reportes" target="_blank">
                                                 <OpenInNewIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>
                                     }
                                 >
-                                    Mail enviado · reporte #{resultado.reporteId}
+                                    {resultado.total === 1
+                                        ? `Mail enviado · reporte #${resultado.reporteIds?.[0]}`
+                                        : `${resultado.enviados}/${resultado.total} mails enviados`}
+                                </Alert>
+                            ) : resultado.enviados > 0 ? (
+                                <Alert severity="warning">
+                                    {resultado.enviados}/{resultado.total} enviados.{' '}
+                                    {resultado.errores?.map(e => e.email).join(', ')} fallaron.
                                 </Alert>
                             ) : (
-                                <Alert severity="error">{resultado.error}</Alert>
+                                <Alert severity="error">{resultado.error || 'Error al enviar'}</Alert>
                             )}
                         </Box>
                     )}

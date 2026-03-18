@@ -1,5 +1,5 @@
 export class EnvioManualDto {
-    to: string;
+    to: string[];
     toNombre?: string;
     smtpId: number;
     subject: string;

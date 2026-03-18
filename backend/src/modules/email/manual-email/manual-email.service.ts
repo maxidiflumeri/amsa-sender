@@ -15,6 +15,8 @@ const NOMBRE_CAMPANA_MANUAL = '__envios_manuales__';
 const TENANT_ID = 'amsa-sender';
 const BOUNCE_DOMAIN = 'anamayasa.com.ar';
 
+type NmAttachment = { filename: string; content: Buffer; contentType: string };
+
 @Injectable()
 export class ManualEmailService {
     private readonly logger = new Logger(ManualEmailService.name);
@@ -60,7 +62,115 @@ export class ManualEmailService {
         return nueva.id;
     }
 
-    async enviarManual(dto: EnvioManualDto, userId: number): Promise<{ ok: boolean; reporteId: number; error?: string }> {
+    private async enviarADestinatario(params: {
+        email: string;
+        toNombre?: string;
+        campañaId: number;
+        htmlBase: string;
+        subject: string;
+        smtp: any;
+        transporter: nodemailer.Transporter;
+        attachments: NmAttachment[];
+    }): Promise<{ ok: boolean; reporteId: number; error?: string }> {
+        const { email, toNombre, campañaId, htmlBase, subject, smtp, transporter, attachments } = params;
+
+        const contacto = await this.prisma.contactoEmail.create({
+            data: {
+                email,
+                nombre: toNombre || '',
+                datos: {},
+                campañaId,
+            },
+        });
+
+        const reporte = await this.prisma.reporteEmail.create({
+            data: {
+                campañaId,
+                contactoId: contacto.id,
+                estado: 'pendiente',
+                asunto: subject,
+                html: htmlBase,
+                creadoAt: new Date(),
+            },
+        });
+
+        const tok = generarTrackingTok();
+        await this.prisma.reporteEmail.update({
+            where: { id: reporte.id },
+            data: { trackingTok: tok },
+        });
+
+        try {
+            const apiBase = this.getApiBaseUrl();
+
+            const tokenUnsub = this.descService.signUnsubToken({
+                tenantId: TENANT_ID,
+                email,
+                scope: 'global',
+            });
+            const unsubUrl = `${apiBase}/email/desuscripciones/u?u=${encodeURIComponent(tokenUnsub)}`;
+            const verEnNavegadorUrl = `${process.env.FRONT_BASE_URL}/mailing/vista/${reporte.id}`;
+
+            const htmlConLayout = insertHeaderAndFooter(htmlBase, verEnNavegadorUrl, unsubUrl);
+            const htmlFinal = prepararHtmlConTracking_safe(htmlConLayout, apiBase, tok);
+
+            const secret = process.env.AMSA_BOUNCE_SECRET || '';
+            const messageId = `<${reporte.id}.${randomUUID()}@${BOUNCE_DOMAIN}>`;
+            const xHeader = buildAmsaHeader(reporte.id, email, messageId, secret);
+            const htmlConMarker = injectHtmlMarker(htmlFinal, xHeader);
+
+            await transporter.sendMail({
+                from: `"${smtp.remitente}" <${smtp.emailFrom || smtp.usuario}>`,
+                to: email,
+                subject,
+                html: htmlConMarker,
+                replyTo: smtp.usuario,
+                messageId,
+                attachments,
+                headers: {
+                    'X-AMSASender': xHeader,
+                    'List-Unsubscribe': `<${unsubUrl}>`,
+                    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                    'X-SES-CONFIGURATION-SET': process.env.SES_CONFIG_SET || '',
+                },
+            });
+
+            await this.prisma.reporteEmail.update({
+                where: { id: reporte.id },
+                data: {
+                    estado: 'enviado',
+                    enviadoAt: new Date(),
+                    html: htmlConMarker,
+                    smtpMessageId: messageId,
+                },
+            });
+
+            this.logger.log(`✅ Envío manual enviado a ${email} (reporteId=${reporte.id})`);
+            return { ok: true, reporteId: reporte.id };
+
+        } catch (err: any) {
+            this.logger.warn(`⚠️ Fallo envío manual a ${email}: ${err.message}`);
+            await this.prisma.reporteEmail.update({
+                where: { id: reporte.id },
+                data: { estado: 'fallo', error: err.message, enviadoAt: new Date() },
+            });
+            return { ok: false, error: err.message, reporteId: reporte.id };
+        }
+    }
+
+    async enviarManual(
+        dto: EnvioManualDto,
+        userId: number,
+        archivos: Express.Multer.File[] = [],
+    ): Promise<{
+        ok: boolean;
+        total: number;
+        enviados: number;
+        reporteIds: number[];
+        errores?: { email: string; error: string }[];
+    }> {
+        if (!dto.to?.length) throw new BadRequestException('Debe indicar al menos un destinatario');
+
         // 1. Cargar cuenta SMTP
         const smtp = await this.prisma.cuentaSMTP.findUnique({ where: { id: dto.smtpId } });
         if (!smtp) throw new NotFoundException(`Cuenta SMTP id=${dto.smtpId} no encontrada`);
@@ -81,105 +191,53 @@ export class ManualEmailService {
             subject = dto.subject;
         }
 
-        // 3. Obtener campaña reservada y crear contacto efímero
+        // 3. Obtener campaña reservada
         const campañaId = await this.obtenerOCrearCampanaManual(userId);
 
-        const contacto = await this.prisma.contactoEmail.create({
-            data: {
-                email: dto.to,
-                nombre: dto.toNombre || '',
-                datos: {},
+        // 4. Crear transporter una sola vez
+        const transporter = nodemailer.createTransport({
+            host: smtp.host,
+            port: smtp.puerto,
+            secure: smtp.puerto === 465,
+            auth: { user: smtp.usuario, pass: smtp.password },
+        });
+
+        // 5. Preparar adjuntos para nodemailer
+        const attachments: NmAttachment[] = archivos.map(f => ({
+            filename: f.originalname,
+            content: f.buffer,
+            contentType: f.mimetype,
+        }));
+
+        // 6. Enviar a cada destinatario
+        const reporteIds: number[] = [];
+        const errores: { email: string; error: string }[] = [];
+
+        for (const email of dto.to) {
+            const result = await this.enviarADestinatario({
+                email: email.trim(),
+                toNombre: dto.toNombre,
                 campañaId,
-            },
-        });
-
-        // 4. Crear ReporteEmail inicial
-        const reporte = await this.prisma.reporteEmail.create({
-            data: {
-                campañaId,
-                contactoId: contacto.id,
-                estado: 'pendiente',
-                asunto: subject,
-                html: htmlBase,
-                creadoAt: new Date(),
-            },
-        });
-
-        // 5. Generar token de tracking
-        const tok = generarTrackingTok();
-        await this.prisma.reporteEmail.update({
-            where: { id: reporte.id },
-            data: { trackingTok: tok },
-        });
-
-        try {
-            const apiBase = this.getApiBaseUrl();
-
-            // 6. Token y URL de desuscripción
-            const tokenUnsub = this.descService.signUnsubToken({
-                tenantId: TENANT_ID,
-                email: dto.to,
-                scope: 'global',
-            });
-            const unsubUrl = `${apiBase}/email/desuscripciones/u?u=${encodeURIComponent(tokenUnsub)}`;
-            const verEnNavegadorUrl = `${process.env.FRONT_BASE_URL}/mailing/vista/${reporte.id}`;
-
-            // 7. Inyectar header/footer + tracking
-            const htmlConLayout = insertHeaderAndFooter(htmlBase, verEnNavegadorUrl, unsubUrl);
-            const htmlFinal = prepararHtmlConTracking_safe(htmlConLayout, apiBase, tok);
-
-            // 8. Construir headers de bounce
-            const secret = process.env.AMSA_BOUNCE_SECRET || '';
-            const messageId = `<${reporte.id}.${randomUUID()}@${BOUNCE_DOMAIN}>`;
-            const xHeader = buildAmsaHeader(reporte.id, dto.to, messageId, secret);
-            const htmlConMarker = injectHtmlMarker(htmlFinal, xHeader);
-
-            // 9. Crear transporter con la cuenta SMTP seleccionada
-            const transporter = nodemailer.createTransport({
-                host: smtp.host,
-                port: smtp.puerto,
-                secure: smtp.puerto === 465,
-                auth: { user: smtp.usuario, pass: smtp.password },
-            });
-
-            // 10. Enviar
-            await transporter.sendMail({
-                from: `"${smtp.remitente}" <${smtp.emailFrom || smtp.usuario}>`,
-                to: dto.to,
+                htmlBase,
                 subject,
-                html: htmlConMarker,
-                replyTo: smtp.usuario,
-                messageId,
-                headers: {
-                    'X-AMSASender': xHeader,
-                    'List-Unsubscribe': `<${unsubUrl}>`,
-                    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-                    'X-SES-CONFIGURATION-SET': process.env.SES_CONFIG_SET || '',
-                },
+                smtp,
+                transporter,
+                attachments,
             });
-
-            // 11. Actualizar reporte como enviado
-            await this.prisma.reporteEmail.update({
-                where: { id: reporte.id },
-                data: {
-                    estado: 'enviado',
-                    enviadoAt: new Date(),
-                    html: htmlConMarker,
-                    smtpMessageId: messageId,
-                },
-            });
-
-            this.logger.log(`✅ Envío manual enviado a ${dto.to} (reporteId=${reporte.id})`);
-            return { ok: true, reporteId: reporte.id };
-
-        } catch (err: any) {
-            this.logger.warn(`⚠️ Fallo envío manual a ${dto.to}: ${err.message}`);
-            await this.prisma.reporteEmail.update({
-                where: { id: reporte.id },
-                data: { estado: 'fallo', error: err.message, enviadoAt: new Date() },
-            });
-            return { ok: false, error: err.message, reporteId: reporte.id };
+            reporteIds.push(result.reporteId);
+            if (!result.ok) {
+                errores.push({ email, error: result.error || 'Error desconocido' });
+            }
         }
+
+        const enviados = dto.to.length - errores.length;
+        return {
+            ok: errores.length === 0,
+            total: dto.to.length,
+            enviados,
+            reporteIds,
+            ...(errores.length > 0 ? { errores } : {}),
+        };
     }
 
     async guardarComoTemplate(dto: GuardarTemplateDto) {

@@ -1,4 +1,6 @@
-import { Body, Controller, Logger, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Logger, Post, Request, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { ManualEmailService } from './manual-email.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { EnvioManualDto } from './dtos/envio-manual.dto';
@@ -13,10 +15,31 @@ export class ManualEmailController {
     constructor(private readonly manualEmailService: ManualEmailService) { }
 
     @Post('send')
-    async enviarManual(@Body() dto: EnvioManualDto, @Request() req: any) {
+    @UseInterceptors(FilesInterceptor('adjuntos', 10, {
+        storage: memoryStorage(),
+        limits: { fileSize: 10 * 1024 * 1024 },
+    }))
+    async enviarManual(
+        @Body() body: any,
+        @UploadedFiles() adjuntos: Express.Multer.File[],
+        @Request() req: any,
+    ) {
+        const toRaw = body.to;
+        const to: string[] = Array.isArray(toRaw) ? toRaw : (toRaw ? [toRaw] : []);
+
+        const dto: EnvioManualDto = {
+            to,
+            toNombre: body.toNombre || undefined,
+            smtpId: Number(body.smtpId),
+            subject: body.subject,
+            html: body.html,
+            templateId: body.templateId ? Number(body.templateId) : undefined,
+            variables: body.variables ? JSON.parse(body.variables) : undefined,
+        };
+
         const userId = req['usuario']?.sub;
-        this.logger.log(`📨 Envío manual a ${dto.to} por userId=${userId}`);
-        return this.manualEmailService.enviarManual(dto, userId);
+        this.logger.log(`📨 Envío manual a [${to.join(', ')}] por userId=${userId}`);
+        return this.manualEmailService.enviarManual(dto, userId, adjuntos || []);
     }
 
     @Post('extract-vars')
