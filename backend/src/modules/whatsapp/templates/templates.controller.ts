@@ -21,6 +21,7 @@ import {
     validateOrReject,
 } from 'class-validator';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 
 class PreviewDto {
     @IsOptional()
@@ -57,7 +58,8 @@ class CrearEditarDto {
 }
 
 @Controller('whatsapp/templates')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('whatsapp.templates')
 export class TemplatesController {
     private readonly logger = new Logger(TemplatesController.name);
 

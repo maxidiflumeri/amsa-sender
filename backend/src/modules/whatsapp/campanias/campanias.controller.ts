@@ -18,9 +18,11 @@ import { CampaniasService } from './campanias.service';
 import { AplicarTemplateDto } from './dtos/aplicar-template.dto';
 import { AgendarCampañaDto } from './dtos/agendar-campaña.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 
 @Controller('whatsapp/campanias')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('whatsapp.campanias')
 export class CampaniasController {
     private readonly logger = new Logger(CampaniasController.name); // Corregido: antes usaba mal el nombre
 

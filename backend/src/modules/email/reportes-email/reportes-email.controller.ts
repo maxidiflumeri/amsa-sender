@@ -2,11 +2,12 @@
 import { Controller, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
 import { ReportesEmailService } from './reportes-email.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 import { Response } from 'express';
 
 @Controller('email/reportes')
-@UseGuards(JwtAuthGuard)
-
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('email.reportes')
 export class ReportesEmailController {
     constructor(private svc: ReportesEmailService) { }
 

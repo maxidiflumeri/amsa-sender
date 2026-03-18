@@ -12,9 +12,11 @@ import {
 import { MensajesService } from './mensajes.service';
 import { Mensaje } from '@prisma/client';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 
 @Controller('whatsapp/mensajes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('whatsapp.campanias')
 export class MensajesController {
     private readonly logger = new Logger(MensajesController.name);
 

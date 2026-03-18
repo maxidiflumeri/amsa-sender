@@ -3,6 +3,7 @@ import { Body, Controller, Delete, Get, Post, Query, Param, Req, Res, InternalSe
 import { Response } from 'express';
 import { EmailDesuscribirService } from './desuscribir-email.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 
 @Controller('email/desuscripciones')
 export class EmailDesuscribirController {
@@ -49,7 +50,8 @@ export class EmailDesuscribirController {
     }
 
     // 4) Listado / Alta / Borrado / Vaciar (protegidos por auth de tu app)
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PermisosGuard)
+    @RequiredPermiso('email.desuscripciones')
     @Get('unsubscribes')
     async list(@Req() req: any, @Query('page') page = 0, @Query('size') size = 25, @Query('q') q?: string) {
         try {
@@ -61,7 +63,8 @@ export class EmailDesuscribirController {
         }
     }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PermisosGuard)
+    @RequiredPermiso('email.desuscripciones')
     @Post('unsubscribes')
     async add(@Req() req: any, @Body() body: { email: string; scope?: 'global' | 'campaign'; campaignId?: string; reason?: string }) {
         try {
@@ -73,7 +76,8 @@ export class EmailDesuscribirController {
         }
     }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PermisosGuard)
+    @RequiredPermiso('email.desuscripciones')
     @Delete('unsubscribes/:id')
     async remove(@Req() req: any, @Param('id') id: string) {
         try {
@@ -86,7 +90,8 @@ export class EmailDesuscribirController {
         }
     }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PermisosGuard)
+    @RequiredPermiso('email.desuscripciones')
     @Delete('unsubscribes')
     async clearAll(@Req() req: any) {
         try {

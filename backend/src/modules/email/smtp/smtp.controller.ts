@@ -2,9 +2,11 @@ import { Controller, Get, Post, Body, Param, UseGuards, Delete } from '@nestjs/c
 import { SmtpService } from './smtp.service';
 import { CreateCuentaDto } from './dtos/create-cuenta.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso, SoloJwt } from 'src/auth/permisos.guard';
 
 @Controller('email/cuentas')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('email.cuentas_smtp')
 export class SmtpController {
     constructor(private readonly smtpService: SmtpService) { }
 
@@ -13,6 +15,7 @@ export class SmtpController {
         return this.smtpService.crearCuenta(data);
     }
 
+    @SoloJwt()
     @Get()
     async listar() {
         return this.smtpService.listarCuentas();

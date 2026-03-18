@@ -1,11 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { TemplatesEmailService } from './templates-email.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso, SoloJwt } from 'src/auth/permisos.guard';
 import { UpdateTemplateEmailDto } from './dtos/update-template-email.dto';
 
 @Controller('email/templates')
-@UseGuards(JwtAuthGuard)
-
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('email.templates')
 export class TemplatesEmailController {
     constructor(private readonly service: TemplatesEmailService) { }
 
@@ -21,12 +22,14 @@ export class TemplatesEmailController {
         });
     }
 
+    @SoloJwt()
     @Get()
     listar(@Query('smtpId') smtpId?: string) {
         const id = smtpId ? Number(smtpId) : undefined;
         return this.service.obtenerTodos(id);
     }
 
+    @SoloJwt()
     @Get(':id')
     obtener(@Param('id') id: string) {
         return this.service.obtenerUno(Number(id));
@@ -37,6 +40,7 @@ export class TemplatesEmailController {
         return this.service.update(+id, updateDto);
     }
 
+    @SoloJwt()
     @Post('preview')
     renderPreview(@Body() body: { html: string; datos: Record<string, any>, asunto: string }) {
         let html = body.html;

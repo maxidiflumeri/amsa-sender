@@ -13,13 +13,14 @@ import {
     Query
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 import { CampaniasEmailService } from './campanias-email.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 
 @Controller('email/campanias')
-@UseGuards(JwtAuthGuard)
-
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('email.campanias')
 export class CampaniasEmailController {
     private readonly logger = new Logger(CampaniasEmailController.name); // Corregido: antes usaba mal el nombre
     constructor(private readonly campaniasService: CampaniasEmailService) { }

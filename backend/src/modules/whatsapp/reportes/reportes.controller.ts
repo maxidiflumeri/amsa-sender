@@ -8,9 +8,11 @@ import {
 } from '@nestjs/common';
 import { ReportesService } from './reportes.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 
 @Controller('whatsapp/reportes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('whatsapp.reportes')
 export class ReportesController {
     private readonly logger = new Logger(ReportesController.name);
 

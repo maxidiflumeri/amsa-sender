@@ -34,7 +34,7 @@ const Login = () => {
             if (data.access_token) {
                 localStorage.setItem('token', data.access_token);
                 localStorage.setItem('usuario', JSON.stringify(data.usuario));
-                window.location.href = '/dashboard';
+                window.location.href = '/';
             } else {
                 setErrorOpen(true);
             }

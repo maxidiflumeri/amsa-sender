@@ -3,12 +3,14 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ManualEmailService } from './manual-email.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 import { EnvioManualDto } from './dtos/envio-manual.dto';
 import { ExtractVarsDto } from './dtos/extract-vars.dto';
 import { GuardarTemplateDto } from './dtos/guardar-template.dto';
 
 @Controller('email/manual')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('email.envio_manual')
 export class ManualEmailController {
     private readonly logger = new Logger(ManualEmailController.name);
 

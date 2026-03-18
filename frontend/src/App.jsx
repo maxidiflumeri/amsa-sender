@@ -26,6 +26,8 @@ import TareasProgramadas from './components/TareasProgramadas';
 import EnvioManual from './components/email/EnvioManual';
 import GestionUsuarios from './components/admin/GestionUsuarios';
 import GestionRoles from './components/admin/GestionRoles';
+import PaginaInicio from './components/PaginaInicio';
+import RutaProtegida from './components/RutaProtegida';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -232,26 +234,26 @@ export default function App() {
 
                 {/* Rutas privadas con layout */}
                 <Route element={<LayoutPrivado mode={mode} toggleTheme={toggleTheme} />}>
-                    <Route path="/" element={<Navigate to="/campanias" />} />
-                    <Route path="/sesiones" element={<EstadoSesiones />} />
-                    <Route path="/conectar" element={<ConectarSesion />} />
-                    <Route path="/subir-campania" element={<SubirCampaña />} />
-                    <Route path="/campanias" element={<VerCampañas />} />
-                    <Route path="/enviar" element={<EnviarMensajes />} />
-                    <Route path="/reportes" element={<VerReportes />} />
-                    <Route path="/templates" element={<VerTemplates />} />
-                    <Route path="/metricas" element={<VerMetricas />} />
-                    <Route path="/config/tareas-programadas" element={<TareasProgramadas />} />
-                    <Route path="/email/cuentas" element={<CuentasSMTP />} />
-                    <Route path="/email/crearTemplate" element={<CrearTemplate />} />
-                    <Route path="/email/templates" element={<VerTemplatesEmail />} />
-                    <Route path="/preview-template/:id" element={<PreviewTemplate />} />
-                    <Route path="/email/campanias" element={<VerCampañasEmail />} />
-                    <Route path="/email/reportes" element={<VerReportesEmail />} />
-                    <Route path="/email/desuscripciones" element={<VerDesuscripcionesEmail />} />
-                    <Route path="/email/envio-manual" element={<EnvioManual />} />
-                    <Route path="/admin/usuarios" element={<GestionUsuarios />} />
-                    <Route path="/admin/roles" element={<GestionRoles />} />
+                    <Route path="/" element={<PaginaInicio />} />
+                    <Route path="/sesiones" element={<RutaProtegida permiso="whatsapp.sesiones"><EstadoSesiones /></RutaProtegida>} />
+                    <Route path="/conectar" element={<RutaProtegida permiso="whatsapp.conectar"><ConectarSesion /></RutaProtegida>} />
+                    <Route path="/subir-campania" element={<RutaProtegida permiso="whatsapp.campanias"><SubirCampaña /></RutaProtegida>} />
+                    <Route path="/campanias" element={<RutaProtegida permiso="whatsapp.campanias"><VerCampañas /></RutaProtegida>} />
+                    <Route path="/enviar" element={<RutaProtegida permiso="whatsapp.campanias"><EnviarMensajes /></RutaProtegida>} />
+                    <Route path="/reportes" element={<RutaProtegida permiso="whatsapp.reportes"><VerReportes /></RutaProtegida>} />
+                    <Route path="/templates" element={<RutaProtegida permiso="whatsapp.templates"><VerTemplates /></RutaProtegida>} />
+                    <Route path="/metricas" element={<RutaProtegida permiso="whatsapp.metricas"><VerMetricas /></RutaProtegida>} />
+                    <Route path="/config/tareas-programadas" element={<RutaProtegida permiso="config.tareas_programadas"><TareasProgramadas /></RutaProtegida>} />
+                    <Route path="/email/cuentas" element={<RutaProtegida permiso="email.cuentas_smtp"><CuentasSMTP /></RutaProtegida>} />
+                    <Route path="/email/crearTemplate" element={<RutaProtegida permiso="email.templates"><CrearTemplate /></RutaProtegida>} />
+                    <Route path="/email/templates" element={<RutaProtegida permiso="email.templates"><VerTemplatesEmail /></RutaProtegida>} />
+                    <Route path="/preview-template/:id" element={<RutaProtegida permiso="email.templates"><PreviewTemplate /></RutaProtegida>} />
+                    <Route path="/email/campanias" element={<RutaProtegida permiso="email.campanias"><VerCampañasEmail /></RutaProtegida>} />
+                    <Route path="/email/reportes" element={<RutaProtegida permiso="email.reportes"><VerReportesEmail /></RutaProtegida>} />
+                    <Route path="/email/desuscripciones" element={<RutaProtegida permiso="email.desuscripciones"><VerDesuscripcionesEmail /></RutaProtegida>} />
+                    <Route path="/email/envio-manual" element={<RutaProtegida permiso="email.envio_manual"><EnvioManual /></RutaProtegida>} />
+                    <Route path="/admin/usuarios" element={<RutaProtegida permiso="admin.usuarios"><GestionUsuarios /></RutaProtegida>} />
+                    <Route path="/admin/roles" element={<RutaProtegida permiso="admin.usuarios"><GestionRoles /></RutaProtegida>} />
                 </Route>
 
                 {/* Catch-all */}

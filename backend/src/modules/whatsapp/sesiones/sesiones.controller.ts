@@ -12,9 +12,11 @@ import {
 import { SesionesService } from './sesiones.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 
 @Controller('whatsapp/sesiones')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('whatsapp.sesiones')
 export class SesionesController {
     private readonly logger = new Logger(SesionesController.name);
 

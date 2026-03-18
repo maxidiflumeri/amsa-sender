@@ -566,7 +566,14 @@ export default function Layout({ children, mode, toggleTheme }) {
                             </IconButton>
                         )}
 
-                        <Box display="flex" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
+                        <Box
+                            component={RouterLink}
+                            to="/"
+                            display="flex"
+                            alignItems="center"
+                            gap={1}
+                            sx={{ minWidth: 0, textDecoration: 'none', cursor: 'pointer' }}
+                        >
                             <img
                                 src={logo}
                                 alt="amsasender logo"

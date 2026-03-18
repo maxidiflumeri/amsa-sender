@@ -1,9 +1,13 @@
 // src/scheduler/tareas.controller.ts
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { CrearTareaDto } from './dto/crear-tarea.dto';
 import { TareasService } from './tarea.service';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 
 @Controller('tareas-programadas')
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequiredPermiso('config.tareas_programadas')
 export class TareasController {
     constructor(private readonly svc: TareasService) { }
 
