@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { TemplatesEmailService } from './templates-email.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { UpdateTemplateEmailDto } from './dtos/update-template-email.dto';
@@ -16,13 +16,15 @@ export class TemplatesEmailController {
             asunto: body.asunto,
             html: body.html,
             design: body.design,
-            creadoAt: new Date()
+            creadoAt: new Date(),
+            cuentaSmtpId: body.cuentaSmtpId ? Number(body.cuentaSmtpId) : null,
         });
     }
 
     @Get()
-    listar() {
-        return this.service.obtenerTodos();
+    listar(@Query('smtpId') smtpId?: string) {
+        const id = smtpId ? Number(smtpId) : undefined;
+        return this.service.obtenerTodos(id);
     }
 
     @Get(':id')
@@ -30,7 +32,6 @@ export class TemplatesEmailController {
         return this.service.obtenerUno(Number(id));
     }
 
-    // email-templates.controller.ts
     @Put(':id')
     async updateTemplate(@Param('id') id: string, @Body() updateDto: UpdateTemplateEmailDto) {
         return this.service.update(+id, updateDto);

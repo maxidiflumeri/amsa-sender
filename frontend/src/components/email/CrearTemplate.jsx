@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
     Box,
+    FormControl,
+    FormHelperText,
     IconButton,
     Grid,
+    InputLabel,
     MenuItem,
     Paper,
     Select,
@@ -40,15 +43,22 @@ const CrearTemplate = () => {
     });
     const [errorNombre, setErrorNombre] = useState(false);
     const [errorAsunto, setErrorAsunto] = useState(false);
+    const [cuentaSmtpId, setCuentaSmtpId] = useState('');
+    const [cuentasSmtp, setCuentasSmtp] = useState([]);
+
+    useEffect(() => {
+        api.get('/email/cuentas').then(r => setCuentasSmtp(r.data || [])).catch(() => { });
+    }, []);
 
     useEffect(() => {
         if (templateId) {
             api.get(`/email/templates/${templateId}`).then((res) => {
-                const { nombre, asunto, html, design } = res.data;
+                const { nombre, asunto, html, design, cuentaSmtpId } = res.data;
                 setNombre(nombre);
                 setAsunto(asunto);
                 setDesign(design);
                 setHtml(html);
+                setCuentaSmtpId(cuentaSmtpId || '');
             });
         }
     }, [templateId]);
@@ -125,6 +135,28 @@ const CrearTemplate = () => {
                             error={errorNombre}
                             helperText={errorNombre ? 'El nombre del template es obligatorio' : ''}
                         />
+                    </Box>
+
+                    {/* Remitente asociado */}
+                    <Box mb={2}>
+                        <FormControl size="small" fullWidth>
+                            <InputLabel>Remitente asociado (opcional)</InputLabel>
+                            <Select
+                                value={cuentaSmtpId}
+                                onChange={e => setCuentaSmtpId(e.target.value)}
+                                label="Remitente asociado (opcional)"
+                            >
+                                <MenuItem value="">Global (aparece para todos los remitentes)</MenuItem>
+                                {cuentasSmtp.map(c => (
+                                    <MenuItem key={c.id} value={c.id}>
+                                        {c.nombre} — {c.emailFrom}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                            <FormHelperText>
+                                Si asignás un remitente, este template solo aparecerá al seleccionar esa cuenta SMTP
+                            </FormHelperText>
+                        </FormControl>
                     </Box>
 
                     {/* Fila 2 */}
@@ -219,7 +251,8 @@ const CrearTemplate = () => {
                                     nombre,
                                     asunto,
                                     html,
-                                    design
+                                    design,
+                                    cuentaSmtpId: cuentaSmtpId || null,
                                 }).then(() => {
                                     setFeedback({
                                         open: true,
@@ -239,7 +272,8 @@ const CrearTemplate = () => {
                                     nombre,
                                     asunto,
                                     html,
-                                    design
+                                    design,
+                                    cuentaSmtpId: cuentaSmtpId || null,
                                 }).then(() => {
                                     setFeedback({
                                         open: true,

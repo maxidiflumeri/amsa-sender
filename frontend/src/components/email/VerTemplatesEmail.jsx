@@ -29,6 +29,7 @@ import {
     Add as AddIcon
 } from '@mui/icons-material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import Chip from '@mui/material/Chip';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import dayjs from 'dayjs';
@@ -101,6 +102,7 @@ const VerTemplatesEmail = () => {
         <TableRow>
             <TableCell><Skeleton variant="text" width="60%" /></TableCell>
             <TableCell><Skeleton variant="text" width="75%" /></TableCell>
+            <TableCell><Skeleton variant="text" width="50%" /></TableCell>
             <TableCell><Skeleton variant="text" width="40%" /></TableCell>
             <TableCell align="right">
                 <Skeleton variant="rounded" width={120} height={32} sx={{ ml: 'auto' }} />
@@ -214,6 +216,7 @@ const VerTemplatesEmail = () => {
                                 <TableRow>
                                     <TableCell>Nombre</TableCell>
                                     <TableCell>Asunto</TableCell>
+                                    <TableCell>Remitente</TableCell>
                                     <TableCell>Fecha de creación</TableCell>
                                     <TableCell align="right">Acciones</TableCell>
                                 </TableRow>
@@ -228,6 +231,12 @@ const VerTemplatesEmail = () => {
                                             <TableRow key={tpl.id}>
                                                 <TableCell>{tpl.nombre}</TableCell>
                                                 <TableCell>{tpl.asunto}</TableCell>
+                                                <TableCell>
+                                                    {tpl.cuentaSmtp
+                                                        ? <Chip label={tpl.cuentaSmtp.nombre} size="small" color="primary" variant="outlined" />
+                                                        : <Chip label="Global" size="small" variant="outlined" />
+                                                    }
+                                                </TableCell>
                                                 <TableCell>
                                                     {tpl.creadoAt ? dayjs(tpl.creadoAt).format('DD/MM/YYYY HH:mm') : 'Sin fecha'}
                                                 </TableCell>

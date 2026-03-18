@@ -54,11 +54,22 @@ export default function EnvioManual() {
     const [nombreTemplateNuevo, setNombreTemplateNuevo] = useState('');
     const [guardando, setGuardando] = useState(false);
 
-    // Cargar cuentas SMTP y lista de templates al montar
+    // Cargar cuentas SMTP al montar
     useEffect(() => {
         api.get('/email/cuentas').then(r => setCuentas(r.data || [])).catch(() => { });
-        api.get('/email/templates').then(r => setTemplates(r.data || [])).catch(() => { });
     }, []);
+
+    // Recargar templates filtrados cada vez que cambia el SMTP seleccionado
+    useEffect(() => {
+        const url = smtpId ? `/email/templates?smtpId=${smtpId}` : '/email/templates';
+        api.get(url).then(r => {
+            setTemplates(r.data || []);
+            // Si el template seleccionado ya no está en los resultados, limpiarlo
+            setTemplateSeleccionado(prev =>
+                prev && !(r.data || []).find(t => t.id === prev.id) ? null : prev
+            );
+        }).catch(() => { });
+    }, [smtpId]);
 
     // Al seleccionar template: cargar HTML completo + extraer variables
     const handleSeleccionarTemplate = useCallback(async (tmpl) => {

@@ -53,11 +53,29 @@ export default function EnviarMailsModal({ open, onSendSuccess, onClose, campañ
                 .then(res => setCuentasSmtp(res.data))
                 .catch(err => console.error('Error al obtener cuentas smtp:', err));
 
+            // Cargar todos los templates al abrir (sin filtro aún)
             api.get('/email/templates')
                 .then(res => setTemplates(res.data))
                 .catch(err => console.error('Error al obtener templates:', err));
         }
     }, [open]);
+
+    // Filtrar templates cuando cambia la cuenta SMTP seleccionada
+    useEffect(() => {
+        if (!open) return;
+        const url = selectedCuentaSmtp && selectedCuentaSmtp !== ''
+            ? `/email/templates?smtpId=${selectedCuentaSmtp}`
+            : '/email/templates';
+        api.get(url)
+            .then(res => {
+                setTemplates(res.data);
+                // Limpiar template si ya no está en los resultados
+                if (selectedTemplateId && !res.data.find(t => t.id === selectedTemplateId)) {
+                    setSelectedTemplateId('');
+                }
+            })
+            .catch(err => console.error('Error al filtrar templates:', err));
+    }, [selectedCuentaSmtp]);
 
     const enviarMensajes = async () => {
         if (selectedCuentaSmtp.length === 0) {
@@ -125,6 +143,22 @@ export default function EnviarMailsModal({ open, onSendSuccess, onClose, campañ
                 </IconButton>
             </DialogTitle>
             <DialogContent dividers>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Cuenta de envío</InputLabel>
+                    <Select
+                        value={selectedCuentaSmtp}
+                        onChange={(e) => setselectedCuentaSmtp(e.target.value)}
+                        label="Cuenta de envío"
+                    >
+                        {cuentasSmtp.map((s) => (
+                            <MenuItem key={s.id} value={s.id}>
+                                <Box display="flex" justifyContent="space-between" width="100%">
+                                    <span>{s.nombre} — {s.usuario}</span>
+                                </Box>
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
                 <Autocomplete
                     fullWidth
                     sx={{ mb: 2 }}
@@ -135,28 +169,13 @@ export default function EnviarMailsModal({ open, onSendSuccess, onClose, campañ
                         setSelectedTemplateId(newValue ? newValue.id : '');
                     }}
                     renderInput={(params) => (
-                        <TextField {...params} label="Template" />
+                        <TextField
+                            {...params}
+                            label="Template"
+                            helperText={selectedCuentaSmtp ? 'Mostrando templates del remitente seleccionado y globales' : 'Seleccioná primero una cuenta de envío'}
+                        />
                     )}
                 />
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Cuentas</InputLabel>
-                    <Select
-                        value={selectedCuentaSmtp}
-                        onChange={(e) => setselectedCuentaSmtp(e.target.value)}
-                        label="Cuentas"
-                    >
-                        {cuentasSmtp.map((s) => (
-                            <MenuItem
-                                key={s.id}
-                                value={s.id}
-                            >
-                                <Box display="flex" justifyContent="space-between" width="100%">
-                                    <span>{s.usuario}</span>
-                                </Box>
-                            </MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
 
                 {mostrarCalendario && (
                     <Box display="flex" justifyContent="center" sx={{ mt: 2, mb: 4 }}>

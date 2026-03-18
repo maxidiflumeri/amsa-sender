@@ -84,7 +84,7 @@ model Mensaje {
 }
 
 model CuentaSMTP {
-  id        Int      @id @default(autoincrement())
+  id        Int             @id @default(autoincrement())
   nombre    String // ej. "Cuenta corporativa"
   host      String
   puerto    Int
@@ -93,6 +93,7 @@ model CuentaSMTP {
   remitente String // nombre del remitente que verá el destinatario
   emailFrom String // dirección de email usada en el "From"
   creadoAt  DateTime
+  templates TemplateEmail[]
   @@map("CuentaSMTP")
 }
 
@@ -119,13 +120,15 @@ model Usuario {
 }
 
 model TemplateEmail {
-  id        Int             @id @default(autoincrement())
-  nombre    String
-  asunto    String
-  html      String          @db.MediumText
-  design    Json
-  creadoAt  DateTime        
-  campanias CampañaEmail[]
+  id           Int             @id @default(autoincrement())
+  nombre       String
+  asunto       String
+  html         String          @db.MediumText
+  design       Json
+  creadoAt     DateTime
+  campanias    CampañaEmail[]
+  cuentaSmtpId Int?
+  cuentaSmtp   CuentaSMTP?     @relation(fields: [cuentaSmtpId], references: [id], onDelete: SetNull)
   @@map("TemplateEmail")
 }
 

@@ -1,5 +1,5 @@
 // dto/update-template-email.dto.ts
-import { IsOptional, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsString } from 'class-validator';
 
 export class UpdateTemplateEmailDto {
     @IsOptional()
@@ -13,4 +13,8 @@ export class UpdateTemplateEmailDto {
     @IsOptional()
     @IsString()
     html?: string;
+
+    @IsOptional()
+    @IsInt()
+    cuentaSmtpId?: number | null;
 }
