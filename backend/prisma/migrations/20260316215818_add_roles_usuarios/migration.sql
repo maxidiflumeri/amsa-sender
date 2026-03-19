@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `usuario` ADD COLUMN `activo` BOOLEAN NOT NULL DEFAULT true,
+ALTER TABLE `Usuario` ADD COLUMN `activo` BOOLEAN NOT NULL DEFAULT true,
     ADD COLUMN `rolId` INTEGER NULL;
 
 -- CreateTable
