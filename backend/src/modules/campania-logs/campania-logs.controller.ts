@@ -12,11 +12,13 @@ export class CampaniaLogsController {
     @Get(':id')
     async getLogs(
         @Param('id', ParseIntPipe) id: number,
-        @Query('tipo') tipo: 'wa' | 'email' = 'wa',
+        @Query('tipo') tipo: 'wa' | 'email' | 'wapi' = 'wa',
     ): Promise<any[]> {
         const key = tipo === 'email'
             ? `campania-email-logs:${id}`
-            : `campania-wa-logs:${id}`;
+            : tipo === 'wapi'
+                ? `campania-wapi-logs:${id}`
+                : `campania-wa-logs:${id}`;
         const raw = await this.redis.lRange(key, 0, -1);
         return raw.map(r => JSON.parse(r));
     }

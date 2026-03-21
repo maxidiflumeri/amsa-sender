@@ -33,6 +33,7 @@ import WapiTemplates from './components/wapi/WapiTemplates';
 import VerCampaniasWapi from './components/wapi/VerCampaniasWapi';
 import WapiInbox from './components/wapi/WapiInbox';
 import WapiBajas from './components/wapi/WapiBajas';
+import WapiAnalitica from './components/wapi/analitica/WapiAnalitica';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -69,18 +70,20 @@ export default function App() {
                         },
                         primary: { main: '#075E54' },
                         secondary: { main: '#128C7E' },
+                        success: { main: '#075E54' },
                         text: { primary: '#000' },
-                        error: { main: '#f44336' }, // rojo estándar
+                        error: { main: '#f44336' },
                     }
                     : {
                         background: {
                             default: '#121212',
                             paper: '#1e1e1e',
                         },
-                        primary: { main: '#25D366' },
-                        secondary: { main: '#34B7F1' },
+                        primary: { main: '#075E54' },
+                        secondary: { main: '#128C7E' },
+                        success: { main: '#075E54' },
                         text: { primary: '#fff' },
-                        error: { main: '#ff6b6b' }, // rojo más suave para dark mode
+                        error: { main: '#ff6b6b' },
                     }),
             },
             components: {
@@ -266,6 +269,7 @@ export default function App() {
                     <Route path="/wapi/bajas" element={<RutaProtegida permiso="wapi.bajas"><WapiBajas /></RutaProtegida>} />
                     {/* Inbox WA */}
                     <Route path="/wapi/inbox" element={<RutaProtegida permiso="wapi.inbox"><WapiInbox /></RutaProtegida>} />
+                    <Route path="/wapi/analitica" element={<RutaProtegida permiso="wapi.analitica"><WapiAnalitica /></RutaProtegida>} />
                 </Route>
 
                 {/* Catch-all */}

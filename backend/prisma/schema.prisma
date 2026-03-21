@@ -114,8 +114,9 @@ model Usuario {
   rol      String   @default("usuario")  // nombre del rol (sincronizado)
   rolId    Int?
   rolObj   Rol?     @relation(fields: [rolId], references: [id])
-  activo   Boolean  @default(true)
-  creadoAt DateTime
+  activo          Boolean             @default(true)
+  creadoAt        DateTime
+  conversaciones  WaApiConversacion[]
   @@map("Usuario")
 }
 
@@ -264,21 +265,26 @@ model EmailDesuscripciones {
 // ============================================================
 
 model WaApiConfig {
-  id            Int      @id @default(autoincrement())
-  phoneNumberId String   // Meta phone_number_id (ANI validado)
-  wabaId        String   // WhatsApp Business Account ID
-  token         String   @db.Text // token permanente
-  verifyToken   String   // token para verificación del webhook
-  appSecret     String?  @db.Text // App Secret de Meta para verificar firma del webhook
-  activo        Boolean  @default(true)
-  creadoAt      DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  nombre              String?  // Nombre descriptivo de la línea (ej: "Línea Principal")
+  phoneNumberId       String   // Meta phone_number_id (ANI validado)
+  wabaId              String   // WhatsApp Business Account ID
+  token               String   @db.Text // token permanente
+  verifyToken         String   // token para verificación del webhook
+  appSecret           String?  @db.Text // App Secret de Meta para verificar firma del webhook
+  msgBienvenida       String?  @db.Text // Mensaje automático al iniciar conversación
+  msgConfirmacionBaja String?  @db.Text // Mensaje automático de confirmación de baja
+  activo              Boolean  @default(true)
+  creadoAt            DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  campanias           WaApiCampaña[]
   @@map("WaApiConfig")
 }
 
 model WaApiTemplate {
   id             Int            @id @default(autoincrement())
-  metaNombre     String         @unique // nombre del template en Meta (actúa como ID)
+  metaNombre     String         // nombre del template en Meta
+  wabaId         String         @default("") // WABA al que pertenece el template
   categoria      String         // MARKETING | UTILITY | AUTHENTICATION
   idioma         String         // es, es_AR, en_US, etc.
   estado         String         // APPROVED | PENDING | REJECTED | PAUSED
@@ -287,6 +293,7 @@ model WaApiTemplate {
   sincronizadoAt DateTime
   creadoAt       DateTime       @default(now())
   campanias      WaApiCampaña[]
+  @@unique([metaNombre, wabaId])
   @@map("WaApiTemplate")
 }
 
@@ -304,6 +311,8 @@ model WaApiCampaña {
   createdAt  DateTime        @default(now())
   config     Json?           // { variableMapping: {...}, delayMs: number, batchSize: number }
   userId     Int
+  configId   Int?
+  waConfig   WaApiConfig?    @relation(fields: [configId], references: [id])
   contactos  WaApiContacto[]
   reportes   WaApiReporte[]
   @@map("WaApiCampaña")
@@ -346,16 +355,19 @@ enum EstadoConversacion {
 }
 
 model WaApiConversacion {
-  id              Int                @id @default(autoincrement())
-  numero          String             @unique // teléfono del contacto en E.164
-  nombre          String?            // nombre de display del contacto
-  estado          EstadoConversacion @default(sin_asignar)
-  asignadoAId     Int?               // FK a Usuario
-  ultimoMensajeAt DateTime?
-  ventana24hAt    DateTime?          // timestamp del último mensaje entrante (ventana vence 24h después)
-  creadoAt        DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  mensajes        WaApiMensaje[]
+  id                  Int                @id @default(autoincrement())
+  numero              String             @unique // teléfono del contacto en E.164
+  nombre              String?            // nombre de display del contacto
+  estado              EstadoConversacion @default(sin_asignar)
+  asignadoAId         Int?               // FK a Usuario
+  asignadoA           Usuario?           @relation(fields: [asignadoAId], references: [id])
+  ultimoMensajeAt     DateTime?
+  ventana24hAt        DateTime?          // timestamp del último mensaje entrante (ventana vence 24h después)
+  primeraRespuestaAt  DateTime?          // cuándo el asesor respondió por primera vez
+  resolvedAt          DateTime?          // cuándo se marcó como resuelta
+  creadoAt            DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  mensajes            WaApiMensaje[]
   @@index([asignadoAId])
   @@index([estado])
   @@map("WaApiConversacion")

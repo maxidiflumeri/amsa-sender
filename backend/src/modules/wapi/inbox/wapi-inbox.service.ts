@@ -13,6 +13,8 @@ export interface MensajeEntranteDto {
   tipo: string;
   contenido: Record<string, any>;
   timestamp: Date;
+  /** Si es true, envía bienvenida siempre (ej: botón INBOX desde template) */
+  enviarBienvenidaForzada?: boolean;
 }
 
 const META_API_VERSION = 'v20.0';
@@ -28,6 +30,9 @@ export class WapiInboxService {
     private readonly socketGateway: SocketGateway,
   ) {}
 
+  private readonly MENSAJE_BIENVENIDA_DEFAULT =
+    '¡Hola! 👋 Gracias por comunicarte con nosotros. Tu mensaje fue recibido y en breve un asesor estará disponible para ayudarte. ¡Te pedimos aguardes unos momentos!';
+
   /** Llamado desde WapiWebhookService al recibir un mensaje entrante */
   async procesarMensajeEntrante(dto: MensajeEntranteDto): Promise<void> {
     // Buscar conversación existente para decidir el estado
@@ -35,10 +40,16 @@ export class WapiInboxService {
       where: { numero: dto.numero },
     });
 
+    const esNueva = !existing;
+    const ventanaVencida = existing?.ventana24hAt
+      ? Date.now() - new Date(existing.ventana24hAt).getTime() > 24 * 60 * 60 * 1000
+      : true;
+    const esReabierta = !!existing && (ventanaVencida || existing.estado === 'resuelta');
+
     let conv: any;
     if (existing) {
-      // Si estaba resuelta → reabrirla como sin_asignar; si asignada → mantener estado
-      const nuevoEstado = existing.estado === 'resuelta' ? 'sin_asignar' : existing.estado;
+      // Si estaba resuelta o la ventana venció → reabrirla como sin_asignar
+      const nuevoEstado = esReabierta ? 'sin_asignar' : existing.estado;
       conv = await this.prisma.waApiConversacion.update({
         where: { numero: dto.numero },
         data: {
@@ -82,7 +93,131 @@ export class WapiInboxService {
     );
 
     this.logger.log(`Mensaje entrante guardado — conv ${conv.id} (${dto.numero})`);
+
+    // Ficha de contacto: misma lógica que bienvenida (nueva, ventana vencida o botón INBOX)
+    // NO se muestra si el gestor marcó resuelta y el cliente escribe dentro de las 24hs
+    const debeMostrarFicha = esNueva || ventanaVencida || dto.enviarBienvenidaForzada;
+    if (debeMostrarFicha) {
+      await this.insertarFichaContacto(conv, dto.numero).catch(err =>
+        this.logger.warn(`No se pudo generar ficha de contacto para ${dto.numero}: ${err.message}`),
+      );
+    }
+
+    // Bienvenida: conversación nueva, ventana vencida, o botón INBOX (siempre)
+    const debeEnviarBienvenida = esNueva || ventanaVencida || dto.enviarBienvenidaForzada;
+    if (debeEnviarBienvenida) {
+      await this.enviarBienvenida(conv).catch(err =>
+        this.logger.warn(`No se pudo enviar mensaje de bienvenida a ${dto.numero}: ${err.message}`),
+      );
+    }
   }
+
+  /** Busca el contacto en campañas previas y, si lo encuentra, inserta un mensaje de sistema con su ficha */
+  private async insertarFichaContacto(conv: any, numero: string): Promise<void> {
+    const contacto = await this.prisma.waApiContacto.findFirst({
+      where: { numero },
+      orderBy: { id: 'desc' },
+      include: {
+        campaña: {
+          select: { id: true, nombre: true, config: true },
+        },
+      },
+    });
+
+    if (!contacto) return;
+
+    // Mapear variables numéricas a nombres de columna usando variableMapping de la campaña
+    const variableMapping: Record<string, string> =
+      (contacto.campaña?.config as any)?.variableMapping ?? {};
+    const variables = contacto.variables as Record<string, string> | null ?? {};
+
+    const datosNombrados: Record<string, string> = {};
+    for (const [idx, valor] of Object.entries(variables)) {
+      const nombreColumna = variableMapping[idx] ?? `variable_${idx}`;
+      datosNombrados[nombreColumna] = valor;
+    }
+
+    const contenido = {
+      tipo: 'ficha_contacto',
+      nombre: contacto.nombre,
+      campañaNombre: contacto.campaña?.nombre ?? null,
+      campañaId: contacto.campañaId,
+      datos: datosNombrados,
+    };
+
+    const msgSistema = await this.prisma.waApiMensaje.create({
+      data: {
+        conversacionId: conv.id,
+        waMessageId: null,
+        fromMe: false,
+        tipo: 'sistema',
+        contenido,
+        timestamp: new Date(),
+      },
+    });
+
+    this.socketGateway.emitirEvento(
+      'wapi:nuevo_mensaje',
+      { conversacion: { id: conv.id, numero: conv.numero }, mensaje: msgSistema },
+      'inbox_wapi',
+    );
+
+    this.logger.log(`Ficha de contacto insertada para ${numero} (campaña: ${contacto.campaña?.nombre})`);
+  }
+
+  private async enviarBienvenida(conv: any): Promise<void> {
+    const config = await this.configService.obtenerConfigCompleta();
+    const texto = config.msgBienvenida?.trim() || this.MENSAJE_BIENVENIDA_DEFAULT;
+    const url = `${META_API_BASE}/${META_API_VERSION}/${config.phoneNumberId}/messages`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: conv.numero,
+        type: 'text',
+        text: { body: texto },
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Meta API ${res.status}: ${err}`);
+    }
+
+    const json = await res.json() as { messages: { id: string }[] };
+    const waMessageId = json.messages?.[0]?.id ?? null;
+
+    const mensaje = await this.prisma.waApiMensaje.create({
+      data: {
+        conversacionId: conv.id,
+        waMessageId,
+        fromMe: true,
+        tipo: 'text',
+        contenido: { text: texto },
+        timestamp: new Date(),
+      },
+    });
+
+    await this.prisma.waApiConversacion.update({
+      where: { id: conv.id },
+      data: { ultimoMensajeAt: new Date() },
+    });
+
+    this.socketGateway.emitirEvento(
+      'wapi:nuevo_mensaje',
+      { conversacion: { id: conv.id, numero: conv.numero }, mensaje },
+      'inbox_wapi',
+    );
+
+    this.logger.log(`Mensaje de bienvenida enviado a ${conv.numero}`);
+  }
+
+  private readonly INCLUDE_USUARIO = { id: true, nombre: true } as const;
 
   async listarConversaciones(userId: number, esAdmin: boolean) {
     const where = esAdmin
@@ -91,7 +226,10 @@ export class WapiInboxService {
     const convs = await this.prisma.waApiConversacion.findMany({
       where,
       orderBy: { ultimoMensajeAt: 'desc' },
-      include: { mensajes: { orderBy: { timestamp: 'desc' }, take: 1 } },
+      include: {
+        mensajes: { orderBy: { timestamp: 'desc' }, take: 1 },
+        asignadoA: { select: this.INCLUDE_USUARIO },
+      },
     });
     return convs.map(c => this.conVentana(c));
   }
@@ -100,7 +238,10 @@ export class WapiInboxService {
     const convs = await this.prisma.waApiConversacion.findMany({
       where: { estado: 'sin_asignar' },
       orderBy: { ultimoMensajeAt: 'desc' },
-      include: { mensajes: { orderBy: { timestamp: 'desc' }, take: 1 } },
+      include: {
+        mensajes: { orderBy: { timestamp: 'desc' }, take: 1 },
+        asignadoA: { select: this.INCLUDE_USUARIO },
+      },
     });
     return convs.map(c => this.conVentana(c));
   }
@@ -108,7 +249,10 @@ export class WapiInboxService {
   async obtenerConversacion(id: number) {
     const conv = await this.prisma.waApiConversacion.findUniqueOrThrow({
       where: { id },
-      include: { mensajes: { orderBy: { timestamp: 'asc' } } },
+      include: {
+        mensajes: { orderBy: { timestamp: 'asc' } },
+        asignadoA: { select: this.INCLUDE_USUARIO },
+      },
     });
     return this.conVentana(conv);
   }
@@ -126,6 +270,7 @@ export class WapiInboxService {
     const conv = await this.prisma.waApiConversacion.update({
       where: { id },
       data: { asignadoAId, estado: 'asignada' },
+      include: { asignadoA: { select: this.INCLUDE_USUARIO } },
     });
     const result = this.conVentana(conv);
     this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
@@ -139,7 +284,8 @@ export class WapiInboxService {
   async resolverConversacion(id: number) {
     const conv = await this.prisma.waApiConversacion.update({
       where: { id },
-      data: { estado: 'resuelta' },
+      data: { estado: 'resuelta', resolvedAt: new Date() },
+      include: { asignadoA: { select: this.INCLUDE_USUARIO } },
     });
     const result = this.conVentana(conv);
     this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
@@ -225,9 +371,15 @@ export class WapiInboxService {
       },
     });
 
+    // Si es la primera respuesta del asesor, registrar primeraRespuestaAt
+    const updateData: any = { ultimoMensajeAt: new Date() };
+    if (!conv.primeraRespuestaAt) {
+      updateData.primeraRespuestaAt = new Date();
+    }
+
     await this.prisma.waApiConversacion.update({
       where: { id: conversacionId },
-      data: { ultimoMensajeAt: new Date() },
+      data: updateData,
     });
 
     // Emitir en tiempo real al inbox

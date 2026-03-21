@@ -15,21 +15,29 @@ export class WapiTemplatesService {
     private readonly wapiConfigService: WapiConfigService,
   ) {}
 
-  async listarTemplates() {
+  async listarTemplates(configId?: number) {
+    if (configId) {
+      const config = await this.wapiConfigService.obtenerConfigCompleta(configId);
+      return this.prisma.waApiTemplate.findMany({
+        where: { wabaId: config.wabaId },
+        orderBy: { metaNombre: 'asc' },
+      });
+    }
     return this.prisma.waApiTemplate.findMany({
       orderBy: { metaNombre: 'asc' },
     });
   }
 
-  async sincronizarDesideMeta(): Promise<{ sincronizados: number; errores: string[] }> {
+  async sincronizarDesideMeta(configId?: number): Promise<{ sincronizados: number; errores: string[] }> {
     this.logger.log('Sincronizando templates desde Meta API...');
-    const config = await this.wapiConfigService.obtenerConfigCompleta();
+    const config = await this.wapiConfigService.obtenerConfigCompleta(configId);
+    const { wabaId, token } = config;
     const errores: string[] = [];
     let sincronizados = 0;
 
-    const url = `${META_API_BASE}/${META_API_VERSION}/${config.wabaId}/message_templates?limit=250`;
+    const url = `${META_API_BASE}/${META_API_VERSION}/${wabaId}/message_templates?limit=250`;
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${config.token}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!res.ok) {
@@ -43,7 +51,7 @@ export class WapiTemplatesService {
     for (const tpl of templates) {
       try {
         await this.prisma.waApiTemplate.upsert({
-          where: { metaNombre: tpl.name },
+          where: { metaNombre_wabaId: { metaNombre: tpl.name, wabaId } },
           update: {
             categoria: tpl.category,
             idioma: tpl.language,
@@ -53,6 +61,7 @@ export class WapiTemplatesService {
           },
           create: {
             metaNombre: tpl.name,
+            wabaId,
             categoria: tpl.category,
             idioma: tpl.language,
             estado: tpl.status,

@@ -5,6 +5,8 @@ import { WapiCampaniasModule } from './campanias/wapi-campanias.module';
 import { WapiWebhookModule } from './webhook/wapi-webhook.module';
 import { WapiInboxModule } from './inbox/wapi-inbox.module';
 import { WapiBajasModule } from './bajas/wapi-bajas.module';
+import { WapiAnaliticaModule } from './analitica/wapi-analitica.module';
+import { WapiReportesModule } from './reportes/wapi-reportes.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { WapiBajasModule } from './bajas/wapi-bajas.module';
     WapiWebhookModule,
     WapiInboxModule,
     WapiBajasModule,
+    WapiAnaliticaModule,
+    WapiReportesModule,
   ],
 })
 export class WapiModule {}

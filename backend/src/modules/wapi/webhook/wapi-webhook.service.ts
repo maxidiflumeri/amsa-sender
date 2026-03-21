@@ -119,6 +119,7 @@ export class WapiWebhookService {
         tipo: 'button',
         contenido: { buttonText: msg.button?.text },
         timestamp: new Date(Number(msg.timestamp) * 1000),
+        enviarBienvenidaForzada: true,
       });
       return;
     }
@@ -167,6 +168,7 @@ export class WapiWebhookService {
       tipo: 'button',
       contenido: { buttonPayload: payload, buttonText: msg.button?.text },
       timestamp: new Date(Number(msg.timestamp) * 1000),
+      enviarBienvenidaForzada: true, // siempre bienvenida al presionar "hablar con asesor"
     });
   }
 

@@ -18,12 +18,15 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import InboxIcon from '@mui/icons-material/Inbox';
+import TerminalIcon from '@mui/icons-material/Terminal';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { es } from 'date-fns/locale';
+import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import SubirCampaniaWapiModal from './SubirCampaniaWapiModal';
+import CampañaLogModal from '../CampañaLogModal';
 
 const ESTADO_CHIP = {
     pendiente:   { label: 'Pendiente',   color: 'default' },
@@ -55,6 +58,8 @@ export default function VerCampaniasWapi() {
 
     const [modalNueva, setModalNueva] = useState(false);
     const [feedback, setFeedback] = useState({ open: false, message: '', type: 'success' });
+    const [progresos, setProgresos] = useState({});
+    const [modalLog, setModalLog] = useState(null); // { id, nombre }
 
     // Dialogs
     const [confirmarEliminar, setConfirmarEliminar] = useState(null);
@@ -79,6 +84,26 @@ export default function VerCampaniasWapi() {
     };
 
     useEffect(() => { cargar(); }, []);
+
+    useEffect(() => {
+        const socket = io(import.meta.env.VITE_HOST_SOCKET);
+
+        campanias.forEach(c => {
+            if (c.estado === 'procesando') {
+                socket.emit('join_campaña', c.id);
+            }
+        });
+
+        socket.on('progreso', ({ enviados, total, campañaId }) => {
+            setProgresos(prev => ({ ...prev, [campañaId]: { enviados, total } }));
+        });
+
+        socket.on('campania_finalizada', () => cargar(true));
+        socket.on('campania_estado', () => cargar(true));
+        socket.on('campania_error', () => cargar(true));
+
+        return () => socket.disconnect();
+    }, [campanias]);
 
     const mostrarFeedback = (message, type = 'success') =>
         setFeedback({ open: true, message, type });
@@ -231,6 +256,20 @@ export default function VerCampaniasWapi() {
                                                     <Typography variant="body2" fontWeight={600} noWrap sx={{ maxWidth: 200 }}>
                                                         {c.nombre}
                                                     </Typography>
+                                                    {c.estado === 'procesando' && (
+                                                        <Box sx={{ mt: 0.5, minWidth: 120 }}>
+                                                            <LinearProgress
+                                                                variant={progresos[c.id] ? 'determinate' : 'indeterminate'}
+                                                                value={progresos[c.id] ? (progresos[c.id].enviados / progresos[c.id].total) * 100 : 0}
+                                                                sx={{ height: 4, borderRadius: 2 }}
+                                                            />
+                                                            {progresos[c.id] && (
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    {progresos[c.id].enviados}/{progresos[c.id].total}
+                                                                </Typography>
+                                                            )}
+                                                        </Box>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                                                     {c.contactosCount}
@@ -262,13 +301,18 @@ export default function VerCampaniasWapi() {
                                                             </IconButton>
                                                         </Tooltip>
                                                     </>}
-                                                    {c.estado === 'procesando' && (
+                                                    {c.estado === 'procesando' && (<>
+                                                        <Tooltip title="Ver logs en tiempo real">
+                                                            <IconButton color="info" size="small" onClick={() => setModalLog({ id: c.id, nombre: c.nombre })}>
+                                                                <TerminalIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
                                                         <Tooltip title="Forzar cierre">
                                                             <IconButton color="error" size="small" onClick={() => setConfirmarCierre(c)}>
                                                                 <BlockIcon fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
-                                                    )}
+                                                    </>)}
                                                     {c.estado === 'error' && (
                                                         <Tooltip title="Marcar finalizada">
                                                             <IconButton color="success" size="small" onClick={() => setConfirmarCierre(c)}>
@@ -390,6 +434,17 @@ export default function VerCampaniasWapi() {
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            <CampañaLogModal
+                open={!!modalLog}
+                onClose={() => setModalLog(null)}
+                campañaId={modalLog?.id}
+                campañaNombre={modalLog?.nombre}
+                tipo="wapi"
+                estadoCampaña={campanias.find(c => c.id === modalLog?.id)?.estado}
+                progreso={progresos[modalLog?.id] ?? null}
+                onForzarCierre={modalLog ? () => setConfirmarCierre(campanias.find(c => c.id === modalLog.id)) : null}
+            />
 
             <Snackbar
                 open={feedback.open}

@@ -1,5 +1,218 @@
 # Changelog
 
+## [2026-03-21] — WhatsApp API: analítica, métricas y reportes
+
+### Backend
+
+#### Módulo Analítica — `src/modules/wapi/analitica/` *(nuevo)*
+
+- **`wapi-analitica.service.ts`** — Servicio con 5 métodos:
+  - `metricasCampania(id)`: conteos por estado (total, enviados, entregados, leídos, fallidos, pendientes, omitidos), tasas (entrega, lectura, fallo), tiempos promedio de entrega y lectura en ms, distribución horaria de lecturas, engagement (respondieron, presionaronBoton, bajas, payloadBreakdown) y agrupación de errores
+  - `contactosCampania(id, page, limit, filtro)`: tabla paginada de contactos con 7 filtros (todos, enviados, entregados, leídos, fallidos, respondieron, bajas)
+  - `conversacionesCampania(id)`: conversaciones vinculadas a contactos de la campaña con totales por estado
+  - `metricasAgentes(desde, hasta)`: KPIs globales del período, estadísticas por agente (asignadas, resueltas, tiempo promedio de primera respuesta, mensajes enviados/recibidos) y evolución diaria
+  - `detalleAgente(userId, desde, hasta)`: detalle individual con actividad por hora y por día
+
+- **`wapi-analitica.controller.ts`** — 5 endpoints `GET` bajo `/wapi/analitica`, protegidos con `@RequiredPermiso('wapi.analitica')`:
+  - `GET /wapi/analitica/campania/:id`
+  - `GET /wapi/analitica/campania/:id/contactos`
+  - `GET /wapi/analitica/campania/:id/conversaciones`
+  - `GET /wapi/analitica/agentes`
+  - `GET /wapi/analitica/agentes/:userId`
+
+- **`wapi-analitica.module.ts`** — Importa `PrismaModule` y `AuthModule` (requerido para `JwtAuthGuard`)
+
+#### Módulo Reportes — `src/modules/wapi/reportes/` *(nuevo)*
+
+- **`wapi-reportes.service.ts`** — Generación de archivos usando `exceljs`:
+  - `generarReporteCampaniaCSV(id)`: CSV con todos los contactos de la campaña (estado, timestamps, flags de respuesta/botón/baja)
+  - `generarReporteCampaniaExcel(id)`: Excel multi-hoja (Resumen KPIs, Contactos, Errores)
+  - `generarReporteBajasCSV()`: CSV global de todas las bajas con campaña, template y fecha
+  - `generarReporteAgentesExcel(desde, hasta)`: Excel con KPIs de todos los asesores del período
+
+- **`wapi-reportes.controller.ts`** — 4 endpoints bajo `/wapi/reportes`, protegidos con `wapi.analitica`:
+  - `GET /wapi/reportes/campania/:id/csv`
+  - `GET /wapi/reportes/campania/:id/excel`
+  - `GET /wapi/reportes/bajas/csv`
+  - `GET /wapi/reportes/agentes/excel`
+
+- **`wapi-reportes.module.ts`** — Importa `PrismaModule`, `WapiAnaliticaModule` y `AuthModule`
+
+#### Schema — `prisma/schema.prisma`
+
+- **`WaApiConversacion`**: agregados campos `primeraRespuestaAt DateTime?` y `resolvedAt DateTime?` para medir tiempos de respuesta y resolución por asesor
+- **`WaApiConversacion`**: `resolverConversacion()` guarda `resolvedAt: new Date()` al resolver
+- **`WaApiConversacion`**: `enviarMensaje()` guarda `primeraRespuestaAt` en el primer mensaje saliente del asesor
+
+---
+
+### Frontend
+
+#### `WapiAnalitica.jsx` *(nuevo)* — `src/components/wapi/analitica/`
+
+Contenedor con 3 tabs:
+- **Campañas** (`BarChartIcon`)
+- **Agentes** (`PeopleIcon`)
+- **Reportes** (`DownloadIcon`)
+
+#### `MetricasCampania.jsx` *(nuevo)*
+
+Vista de métricas detalladas por campaña:
+- **Lista de campañas**: tabla con nombre, template, fecha de envío y estado; botón para entrar al detalle
+- **Vista detallada**:
+  - Header con nombre, template, línea, fecha y estado de la campaña
+  - **Fila de KPI cards** (ancho completo, `flex: 1`): Total, Enviados, Entregados, Leídos, Fallidos, Omitidos por baja, Avg entrega, Avg lectura — todos en una sola fila que se adapta al ancho disponible
+  - **Funnel de campaña**: `BarChart` horizontal (Recharts) con barras coloreadas y `LabelList` mostrando el valor a la derecha de cada barra
+  - **Distribución de estados**: `PieChart` donut con leyenda inferior
+  - **Distribución horaria de lecturas**: `BarChart` vertical por hora del día
+  - **Engagement**: cards de Respondieron / Presionaron botón / Bajas + `BarChart` horizontal de payload breakdown
+  - **Tabla de contactos paginada**: 7 chips de filtro, 9 columnas, paginación de 20 registros
+  - **Tabla de conversaciones**: con estado, asesor, primera respuesta y fecha de resolución
+  - **Acordeón de errores**: agrupados por mensaje de error con conteo
+
+#### `MetricasAgentes.jsx` *(nuevo)*
+
+Métricas de performance por asesor:
+- **Selector de período**: desde/hasta con valor por defecto de últimos 30 días
+- **KPI globales**: total conversaciones, resueltas, tiempo promedio de primera respuesta, total mensajes
+- **Tabla de ranking**: por asesor con columnas de asignadas, resueltas (con % de resolución), tiempo promedio de 1ra respuesta, mensajes enviados/recibidos
+- **Gráfico de evolución**: `BarChart` apilado con conversaciones por agente por día
+- **Heatmap de actividad**: grilla 7 días × 24 horas con celdas coloreadas por opacidad según nivel de actividad (puro MUI, sin librería extra)
+- **Fix**: sort del ranking usa `[...datos.agentes].sort()` para no mutar el estado de React (evita error de propiedad read-only)
+
+#### `WapiReportes.jsx` *(nuevo)*
+
+Generador de reportes con descarga directa:
+- **4 cards** de tipos de reporte con selección visual (borde coloreado al seleccionar): Contactos CSV, Reporte Excel, Lista de bajas CSV, Performance agentes Excel
+- **Formulario**: `TextField select` para tipo de reporte y campaña (sin layout shift — el de campaña siempre visible, deshabilitado cuando no aplica); `TextField date` para rango de fechas (solo si aplica)
+- Descarga via `blob` con nombre de archivo descriptivo
+
+#### `NavBar.jsx` — Nuevo ítem en sección WhatsApp API
+
+- Agregado `{ label: 'Analítica', path: '/wapi/analitica', icon: <InsightsIcon />, permiso: 'wapi.analitica' }`
+
+#### `App.jsx` — Nueva ruta
+
+- `/wapi/analitica` → `WapiAnalitica` con `permiso="wapi.analitica"`
+
+#### `GestionRoles.jsx` — Nuevo permiso
+
+- Agregado `{ key: 'wapi.analitica', label: 'Analítica y reportes' }` en la sección WhatsApp API
+
+#### Tema — `App.jsx`
+
+- Paleta `success` unificada con `primary` en ambos modos: `#075E54` en light, `#075E54` en dark — todos los botones/chips verdes usan el mismo color independientemente del modo
+
+---
+
+## [2026-03-21] — WhatsApp API: multi-línea, inbox completo y notificaciones
+
+### Backend
+
+#### Schema (`prisma/schema.prisma`)
+
+- **`WaApiConfig`**: agregado campo `nombre String?` para identificar cada línea; relación `campanias WaApiCampaña[]`
+- **`WaApiTemplate`**: reemplazado `configId Int?` (FK a config) por `wabaId String @default("")`; unique pasó de `@unique` en `metaNombre` a `@@unique([metaNombre, wabaId])` — los templates ahora se asocian al WABA (cuenta Meta) y no al número de teléfono, reflejando la arquitectura real de Meta donde un WABA puede tener múltiples ANIs compartiendo las mismas plantillas
+- **`WaApiCampaña`**: agregado `configId Int?` y relación `waConfig WaApiConfig?` para indicar desde qué línea se envía
+- **`WaApiConversacion`**: agregada relación explícita `asignadoA Usuario?` para poder incluir datos del asesor asignado en las consultas
+- **`Usuario`**: agregada relación inversa `conversaciones WaApiConversacion[]`
+- **`WaApiConfig`**: agregados campos `msgBienvenida String? @db.Text` y `msgConfirmacionBaja String? @db.Text` para mensajes automáticos configurables por línea
+
+#### Módulo Config — `src/modules/wapi/config/`
+
+- **`wapi-config.service.ts`** — Reescrito con CRUD completo:
+  - `listarConfigs()`: devuelve todas las configs con token/appSecret enmascarados
+  - `crearConfig()`, `actualizarConfig()`: alta y modificación de líneas; en update, token y appSecret vacíos no se sobreescriben
+  - `eliminarConfig()`, `toggleActivo()`: baja y toggle de estado activo/inactivo
+  - `obtenerConfigCompleta(id?)`: uso interno con token real; fallback a primera config activa si no se especifica id
+- **`wapi-config.controller.ts`** — CRUD REST completo: `GET /wapi/config`, `GET /wapi/config/:id`, `POST /wapi/config`, `PUT /wapi/config/:id`, `DELETE /wapi/config/:id`, `POST /wapi/config/:id/toggle`
+- **`dtos/guardar-wapi-config.dto.ts`** — Agregado campo `nombre` requerido; todos los demás campos opcionales para soportar edición parcial
+
+#### Módulo Templates — `src/modules/wapi/templates/wapi-templates.service.ts`
+
+- `listarTemplates(configId?)`: si viene `configId`, resuelve su `wabaId` y filtra templates por ese WABA; sin filtro devuelve todos
+- `sincronizarDesideMeta(configId?)`: upsert usa `{ metaNombre_wabaId }` como clave compuesta; guarda `wabaId` en cada template; múltiples líneas del mismo WABA sincronizan sin duplicar registros
+
+#### Módulo Inbox — `src/modules/wapi/inbox/wapi-inbox.service.ts`
+
+- **Mensajes de bienvenida configurables**: lee `config.msgBienvenida` con fallback al texto hardcodeado por defecto
+- **Lógica de reapertura corregida**: conversación se marca `sin_asignar` cuando `estado === 'resuelta'` OR ventana de 24hs vencida; anteriormente solo reabría por ventana vencida
+- **Lógica de bienvenida corregida**: desacoplada de la reapertura; ahora se envía solo cuando:
+  - Es la primera vez que el contacto escribe (`esNueva`)
+  - La ventana de 24hs venció (`ventanaVencida`) — nueva interacción genuina
+  - El contacto presionó un botón con acción INBOX (`enviarBienvenidaForzada: true`) — siempre, independientemente de la ventana
+  - *No se envía* si la conv estaba resuelta pero el contacto escribe texto libre dentro de las 24hs
+- **`MensajeEntranteDto`**: agregado campo opcional `enviarBienvenidaForzada?: boolean`
+- **Usuario asignado en respuestas**: todas las queries (`listarConversaciones`, `obtenerConversacion`, `asignarConversacion`, `resolverConversacion`) incluyen `asignadoA: { select: { id, nombre } }` para exponer nombre del asesor
+
+#### Módulo Bajas — `src/modules/wapi/bajas/wapi-bajas.service.ts`
+
+- Mensaje de confirmación de baja lee `config.msgConfirmacionBaja` con fallback al texto por defecto
+
+#### Worker WAPI — `src/workers/wapi-worker.service.ts`
+
+- **Logs en tiempo real**: inyectado `REDIS_CLIENT`; nuevo método `publicarLog()` que publica al canal `campania-log` y persiste en Redis List `campania-wapi-logs:{id}` (últimos 500, TTL 24hs)
+- **Progreso en tiempo real**: emite `progreso-envio` por cada contacto procesado
+- **Finalización**: emite `campania-finalizada` y `campania-estado` al terminar
+- **Multi-config**: usa `campaña.configId` para buscar la config de la campaña; fallback a primera config activa
+- **Payload dinámico en botones**: al construir los componentes del template, los placeholders del payload se resuelven por contacto:
+  - `{{N}}` → variable del template vía `variableMapping`
+  - `{{nombre_columna}}` → columna directa del CSV (cualquier campo subido, esté o no en el template)
+
+#### Webhook — `src/modules/wapi/webhook/wapi-webhook.service.ts`
+
+- Botones con acción INBOX (y botones sin payload configurado) pasan `enviarBienvenidaForzada: true` al inbox, garantizando que el mensaje de bienvenida siempre se envíe al presionar "hablar con asesor"
+
+#### Módulo Logs — `src/modules/campania-logs/campania-logs.controller.ts`
+
+- Agregado soporte para tipo `wapi`: clave Redis `campania-wapi-logs:{id}`
+
+---
+
+### Frontend
+
+#### `WapiConfig.jsx` — Reescrito completo
+
+Pantalla de gestión de líneas WhatsApp API con soporte multi-config:
+
+- **Lista de tarjetas**: muestra todas las líneas configuradas; cada card muestra nombre, Phone Number ID, WABA ID y token enmascarado
+- **Chip de estado**: verde "Activa" / gris "Inactiva" por línea
+- **Acciones por línea**: toggle activo/inactivo (`PowerSettingsNewIcon`), editar, eliminar
+- **Dialog crear/editar**: campos completos — nombre, phoneNumberId, wabaId, token (con ojo), verifyToken, appSecret (con ojo); sección "Mensajes automáticos" con campos multiline para `msgBienvenida` y `msgConfirmacionBaja` editables desde la UI
+- Al editar, token y appSecret vacíos no sobreescriben los valores existentes
+
+#### `WapiTemplates.jsx` — Selector de línea y payload dinámico
+
+- **Selector "Filtrar por línea"**: dropdown que filtra templates por el WABA de la config seleccionada (no por config directamente, reflejando que templates son por WABA)
+- **Campo "Payload del botón"** en dialog de configuración de botones: editable con helper text explicando sintaxis `{{1}}` (variable template) y `{{nombre_columna}}` (columna CSV directa)
+
+#### `SubirCampaniaWapiModal.jsx` — Selector de línea al crear campaña
+
+- Paso 1 del wizard: si hay más de una config disponible, aparece selector "Línea de envío"
+- El `configId` seleccionado se envía al backend al crear la campaña y se usa en el worker para enviar desde esa línea específica
+
+#### `VerCampaniasWapi.jsx` — Progreso y logs en tiempo real
+
+- Barra de progreso (`LinearProgress`) en campañas `procesando`
+- Botón `TerminalIcon` para abrir `CampañaLogModal` con `tipo="wapi"`
+- Listeners de socket: `campania_finalizada`, `campania_estado`, `campania_error`
+
+#### `WapiInbox.jsx` — Asesor asignado y notificaciones
+
+- **Usuario asignado visible**:
+  - En la lista: bajo el nombre de cada conversación aparece `👤 Nombre del asesor` en azul cuando la conv está asignada
+  - En el header del chat: chip outlined con ícono de persona y nombre del asesor, al lado del chip de estado
+  - Se actualiza en tiempo real vía socket al asignar o resolver
+- **Notificaciones del browser** (Web Notifications API):
+  - Al montar el componente solicita permiso de notificaciones (mismo comportamiento que WhatsApp Web)
+  - Cuando llega un mensaje entrante (`fromMe: false`): notifica si la pestaña no está en foco O si el usuario está viendo una conversación distinta
+  - No notifica si el usuario ya está viendo esa conversación con la pestaña activa
+  - `tag` por conversación: agrupa mensajes de la misma conv, no genera spam de notificaciones
+  - `renotify: true`: actualiza la notificación existente si llega otro mensaje de la misma conv
+  - Click en la notificación hace foco en la pestaña del navegador
+
+---
+
 ## [2026-03-16] — Logs en vivo, detección de campañas trabadas y envío manual de email
 
 ### Backend

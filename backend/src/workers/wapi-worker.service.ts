@@ -1,7 +1,8 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject } from '@nestjs/common';
 import { Worker, Job } from 'bullmq';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { connection } from 'src/queues/bullmq.config';
+import { RedisClientType } from 'redis';
 
 const META_API_VERSION = 'v20.0';
 const META_API_BASE = 'https://graph.facebook.com';
@@ -14,7 +15,10 @@ function sleep(ms: number) {
 export class WapiWorkerService implements OnModuleInit {
   private readonly logger = new Logger(WapiWorkerService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject('REDIS_CLIENT') private readonly redis: RedisClientType,
+  ) {}
 
   async onModuleInit() {
     const worker = new Worker('wapiEnvios', this.procesarJob.bind(this), {
@@ -50,7 +54,9 @@ export class WapiWorkerService implements OnModuleInit {
     }
 
     const config = campaña.template;
-    const wapiConfig = await this.prisma.waApiConfig.findFirst({ where: { activo: true } });
+    const wapiConfig = campaña.configId
+      ? await this.prisma.waApiConfig.findUnique({ where: { id: campaña.configId } })
+      : await this.prisma.waApiConfig.findFirst({ where: { activo: true } });
     if (!wapiConfig) throw new Error('No hay configuración de WhatsApp API guardada');
 
     const campConfig = (campaña.config as any) ?? {};
@@ -73,6 +79,7 @@ export class WapiWorkerService implements OnModuleInit {
     let enviados = contactosConReporte.length;
 
     this.logger.log(`Campaña ${campañaId}: ${pendientes.length} pendientes de ${total} total`);
+    await this.publicarLog(campañaId, 'info', `🚀 Iniciando campaña — ${pendientes.length} pendientes de ${total} total`);
 
     for (const contacto of pendientes) {
       // Verificar si la campaña fue pausada
@@ -82,6 +89,7 @@ export class WapiWorkerService implements OnModuleInit {
       });
       if (estadoActual?.pausada || estadoActual?.estado === 'pausada') {
         this.logger.log(`Campaña ${campañaId} pausada. Deteniendo worker.`);
+        await this.publicarLog(campañaId, 'warn', `⏸️ Campaña pausada. Procesados hasta ahora: ${enviados}/${total}`);
         break;
       }
 
@@ -99,6 +107,8 @@ export class WapiWorkerService implements OnModuleInit {
           },
         });
         enviados++;
+        await this.publicarLog(campañaId, 'skip', `⛔ ${contacto.numero} — en lista de bajas, omitido`);
+        await this.safePublish('progreso-envio', JSON.stringify({ campañaId, enviados, total }));
         continue;
       }
 
@@ -164,6 +174,14 @@ export class WapiWorkerService implements OnModuleInit {
       });
 
       enviados++;
+
+      if (estado === 'sent') {
+        await this.publicarLog(campañaId, 'ok', `✅ ${contacto.numero} — enviado (${enviados}/${total})`);
+      } else {
+        await this.publicarLog(campañaId, 'error', `❌ ${contacto.numero} — error: ${error}`);
+      }
+      await this.safePublish('progreso-envio', JSON.stringify({ campañaId, enviados, total }));
+
       await sleep(delayMs);
     }
 
@@ -173,7 +191,30 @@ export class WapiWorkerService implements OnModuleInit {
       data: { estado: 'finalizada' },
     });
 
+    await this.publicarLog(campañaId, 'info', `🏁 Finalizada — ${enviados}/${total} procesados`);
+    await this.safePublish('campania-finalizada', JSON.stringify({ campañaId }));
+    await this.safePublish('campania-estado', JSON.stringify({ campañaId, estado: 'finalizada' }));
+
     this.logger.log(`Campaña ${campañaId} finalizada. ${enviados}/${total} procesados.`);
+  }
+
+  private async publicarLog(campañaId: number, nivel: 'ok' | 'warn' | 'error' | 'info' | 'skip', mensaje: string): Promise<void> {
+    const payload = JSON.stringify({ campañaId, nivel, mensaje, timestamp: new Date().toISOString() });
+    await this.safePublish('campania-log', payload);
+    try {
+      const key = `campania-wapi-logs:${campañaId}`;
+      await this.redis.rPush(key, payload);
+      await this.redis.lTrim(key, -500, -1);
+      await this.redis.expire(key, 86400);
+    } catch { /* no interrumpir el envío por error de persistencia */ }
+  }
+
+  private async safePublish(channel: string, message: string): Promise<void> {
+    try {
+      await this.redis.publish(channel, message);
+    } catch (err) {
+      this.logger.error(`❌ Error publicando en "${channel}": ${err.message}`);
+    }
   }
 
   /**
@@ -208,7 +249,17 @@ export class WapiWorkerService implements OnModuleInit {
     // Botones Quick Reply
     if (Array.isArray(buttonActions)) {
       for (const accion of buttonActions) {
-        const payload = accion.payload ?? `BTN_${accion.indice}`;
+        const rawPayload = accion.payload ?? `BTN_${accion.indice}`;
+        // Resolver placeholders en el payload:
+        // {{N}}       → variable del template vía mapping (ej: {{1}})
+        // {{columna}} → columna directa del CSV (ej: {{nro_cliente}})
+        const payload = rawPayload.replace(/\{\{(\w+)\}\}/g, (_: string, key: string) => {
+          if (/^\d+$/.test(key)) {
+            const columna = variableMapping[key];
+            return columna ? (contactoVariables[columna] ?? '') : '';
+          }
+          return contactoVariables[key] ?? '';
+        });
         resultado.push({
           type: 'button',
           sub_type: 'quick_reply',

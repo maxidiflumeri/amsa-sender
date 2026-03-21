@@ -12,7 +12,7 @@ export interface RegistrarBajaDto {
 
 const META_API_VERSION = 'v20.0';
 const META_API_BASE = 'https://graph.facebook.com';
-const MSG_CONFIRMACION_BAJA = 'Hemos procesado tu solicitud de baja. No recibirás más mensajes nuestros. Si en algún momento querés volver a saber de nosotros, podés escribirnos directamente.';
+const MSG_CONFIRMACION_BAJA_DEFAULT = 'Hemos procesado tu solicitud de baja. No recibirás más mensajes nuestros. Si en algún momento querés volver a saber de nosotros, podés escribirnos directamente.';
 
 @Injectable()
 export class WapiBajasService {
@@ -51,6 +51,7 @@ export class WapiBajasService {
   private async enviarConfirmacion(numero: string): Promise<void> {
     try {
       const config = await this.configService.obtenerConfigCompleta();
+      const texto = config.msgConfirmacionBaja?.trim() || MSG_CONFIRMACION_BAJA_DEFAULT;
       const url = `${META_API_BASE}/${META_API_VERSION}/${config.phoneNumberId}/messages`;
 
       const res = await fetch(url, {
@@ -63,7 +64,7 @@ export class WapiBajasService {
           messaging_product: 'whatsapp',
           to: numero,
           type: 'text',
-          text: { body: MSG_CONFIRMACION_BAJA },
+          text: { body: texto },
         }),
       });
 

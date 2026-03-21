@@ -60,6 +60,7 @@ const TODOS_LOS_PERMISOS = [
             { key: 'wapi.templates', label: 'Templates' },
             { key: 'wapi.campanias', label: 'Campañas' },
             { key: 'wapi.bajas', label: 'Bajas' },
+            { key: 'wapi.analitica', label: 'Analítica y reportes' },
         ],
     },
     {

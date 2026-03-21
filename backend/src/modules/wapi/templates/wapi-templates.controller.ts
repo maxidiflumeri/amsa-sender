@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 import { WapiTemplatesService } from './wapi-templates.service';
@@ -11,13 +11,13 @@ export class WapiTemplatesController {
   constructor(private readonly wapiTemplatesService: WapiTemplatesService) {}
 
   @Get()
-  listar() {
-    return this.wapiTemplatesService.listarTemplates();
+  listar(@Query('configId') configId?: string) {
+    return this.wapiTemplatesService.listarTemplates(configId ? Number(configId) : undefined);
   }
 
   @Post('sincronizar')
-  sincronizar() {
-    return this.wapiTemplatesService.sincronizarDesideMeta();
+  sincronizar(@Query('configId') configId?: string) {
+    return this.wapiTemplatesService.sincronizarDesideMeta(configId ? Number(configId) : undefined);
   }
 
   @Patch(':id/button-actions')

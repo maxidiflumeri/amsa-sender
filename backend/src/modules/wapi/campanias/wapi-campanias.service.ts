@@ -34,6 +34,7 @@ export class WapiCampaniasService {
         nombre: dto.nombre,
         templateId: dto.templateId,
         userId,
+        configId: dto.configId ?? null,
         createdAt: new Date(),
         config: {
           variableMapping: dto.variableMapping ?? {},

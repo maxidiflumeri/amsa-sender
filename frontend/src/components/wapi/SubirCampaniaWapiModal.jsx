@@ -49,6 +49,18 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
     const [loading, setLoading] = useState(false);
     const [loadingTemplates, setLoadingTemplates] = useState(true);
     const [error, setError] = useState('');
+    const [configs, setConfigs] = useState([]);
+    const [configId, setConfigId] = useState('');
+
+    useEffect(() => {
+        api.get('/wapi/config')
+            .then(res => {
+                const activas = (Array.isArray(res.data) ? res.data : []).filter(c => c.activo);
+                setConfigs(activas);
+                if (activas.length === 1) setConfigId(String(activas[0].id));
+            })
+            .catch(() => {});
+    }, []);
 
     useEffect(() => {
         api.get('/wapi/templates')
@@ -79,13 +91,13 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
         setVariableMapping(Object.fromEntries(vars.map(v => [v, ''])));
     };
 
-    const puedeAvanzarPaso0 = nombre.trim() && archivo && templateId;
+    const puedeAvanzarPaso0 = nombre.trim() && archivo && templateId && (configs.length === 0 || configId);
     const puedeAvanzarPaso1 = variablesTemplate.every(v => variableMapping[v]);
 
     const handleSiguiente = () => {
         setError('');
         if (step === 0 && !puedeAvanzarPaso0) {
-            setError('Completá el nombre, el template y subí un CSV.');
+            setError('Completá el nombre, la línea de envío, el template y subí un CSV.');
             return;
         }
         if (step === 1 && !puedeAvanzarPaso1) {
@@ -107,6 +119,7 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
             formData.append('variableMapping', JSON.stringify(variableMapping));
             formData.append('delayMs', String(delayMs));
             if (user?.id) formData.append('userId', String(user.id));
+            if (configId) formData.append('configId', String(configId));
 
             const res = await api.post('/wapi/campanias', formData);
             onCreado(res.data);
@@ -137,6 +150,23 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
                         fullWidth
                         required
                     />
+
+                    {configs.length > 0 && (
+                        <FormControl fullWidth required>
+                            <InputLabel>Línea de envío</InputLabel>
+                            <Select
+                                value={configId}
+                                label="Línea de envío"
+                                onChange={e => setConfigId(e.target.value)}
+                            >
+                                {configs.map(c => (
+                                    <MenuItem key={c.id} value={String(c.id)}>
+                                        {c.nombre ?? `Línea ${c.id}`}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    )}
 
                     <FormControl fullWidth required>
                         <InputLabel>Template aprobado</InputLabel>
@@ -225,6 +255,9 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
                     <Box sx={{ backgroundColor: 'action.hover', borderRadius: 1, p: 2 }}>
                         <Typography variant="subtitle2" fontWeight="bold" mb={1}>Resumen</Typography>
                         <Typography variant="body2">Campaña: <strong>{nombre}</strong></Typography>
+                        {configId && configs.length > 0 && (
+                            <Typography variant="body2">Línea: <strong>{configs.find(c => String(c.id) === configId)?.nombre ?? configId}</strong></Typography>
+                        )}
                         <Typography variant="body2">Template: <strong>{templateSeleccionado?.metaNombre}</strong></Typography>
                         <Typography variant="body2">Archivo: <strong>{archivo?.name}</strong></Typography>
                         <Typography variant="body2">Delay: <strong>{delayMs}ms</strong></Typography>

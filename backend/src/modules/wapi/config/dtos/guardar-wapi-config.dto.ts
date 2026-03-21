@@ -2,18 +2,33 @@ import { IsOptional, IsString } from 'class-validator';
 
 export class GuardarWapiConfigDto {
   @IsString()
-  phoneNumberId: string;
+  nombre: string;
 
+  @IsOptional()
   @IsString()
-  wabaId: string;
+  phoneNumberId?: string;
 
+  @IsOptional()
   @IsString()
-  token: string;
+  wabaId?: string;
 
+  @IsOptional()
   @IsString()
-  verifyToken: string;
+  token?: string;
+
+  @IsOptional()
+  @IsString()
+  verifyToken?: string;
 
   @IsOptional()
   @IsString()
   appSecret?: string;
+
+  @IsOptional()
+  @IsString()
+  msgBienvenida?: string;
+
+  @IsOptional()
+  @IsString()
+  msgConfirmacionBaja?: string;
 }

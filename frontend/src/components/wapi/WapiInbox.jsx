@@ -17,6 +17,7 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -70,9 +71,16 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                                     </Box>
                                 }
                                 secondary={
-                                    <Typography variant="caption" noWrap sx={{ fontSize: 11, color: 'text.secondary' }}>
-                                        {conv.mensajes?.[0] ? (conv.mensajes[0].contenido?.text ?? `[${conv.mensajes[0].tipo}]`) : ''}
-                                    </Typography>
+                                    <Box component="span" sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                                        {conv.asignadoA && (
+                                            <Typography component="span" variant="caption" noWrap sx={{ fontSize: 10, color: 'info.main', fontWeight: 500 }}>
+                                                👤 {conv.asignadoA.nombre}
+                                            </Typography>
+                                        )}
+                                        <Typography component="span" variant="caption" noWrap sx={{ fontSize: 11, color: 'text.secondary' }}>
+                                            {conv.mensajes?.[0] && conv.mensajes[0].tipo !== 'sistema' ? (conv.mensajes[0].contenido?.text ?? `[${conv.mensajes[0].tipo}]`) : ''}
+                                        </Typography>
+                                    </Box>
                                 }
                             />
                         </ListItemButton>
@@ -108,6 +116,11 @@ export default function WapiInbox() {
 
     const mensajesEndRef = useRef(null);
     const socketRef = useRef(null);
+    const convActivaRef = useRef(null);
+    const mostrarNotificacionRef = useRef(null);
+
+    // Mantener refs actualizadas para handlers de socket
+    useEffect(() => { convActivaRef.current = convActiva; }, [convActiva]);
 
     // ── Secciones derivadas del array convs ───────────────────────────────
     const misActivas  = convs.filter(c => c.asignadoAId === myUserId && c.estado !== 'resuelta');
@@ -129,6 +142,39 @@ export default function WapiInbox() {
     }, []);
 
     useEffect(() => { cargarConvs(); }, [cargarConvs]);
+
+    // Pedir permiso de notificaciones al montar
+    useEffect(() => {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }, []);
+
+    const mostrarNotificacion = useCallback((conv, mensaje) => {
+        if (mensaje.fromMe) return;
+        if (mensaje.tipo === 'sistema') return;
+        if (document.visibilityState === 'visible' && convActivaRef.current?.id === conv.id) return;
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+        const nombre = conv.nombre ?? conv.numero ?? 'Nuevo mensaje';
+        const cuerpo = mensaje.contenido?.text
+            ?? (mensaje.tipo === 'button' ? `[Botón] ${mensaje.contenido?.buttonText ?? ''}` : `[${mensaje.tipo}]`);
+
+        const notif = new Notification(`💬 ${nombre}`, {
+            body: cuerpo,
+            icon: '/favicon.ico',
+            tag: `wapi-conv-${conv.id}`,
+            renotify: true,
+        });
+
+        notif.onclick = () => {
+            window.focus();
+            notif.close();
+        };
+    }, []);
+
+    // Mantener ref actualizada para el handler del socket
+    useEffect(() => { mostrarNotificacionRef.current = mostrarNotificacion; }, [mostrarNotificacion]);
 
     // ── Helpers para actualizar convs ──────────────────────────────────────
     const upsertConv = (conv) => {
@@ -159,6 +205,7 @@ export default function WapiInbox() {
                 }
                 return prev?.id === conversacion.id ? { ...prev, ...conversacion } : prev;
             });
+            mostrarNotificacionRef.current?.(conversacion, mensaje);
         });
 
         socket.on('wapi:conversacion_actualizada', (conv) => {
@@ -419,6 +466,14 @@ export default function WapiInbox() {
                                     color={{ sin_asignar: 'warning', asignada: 'info', resuelta: 'default' }[convActiva.estado]}
                                     size="small" sx={{ height: 18, fontSize: 10 }}
                                 />
+                                {convActiva.asignadoA && (
+                                    <Chip
+                                        icon={<AccountCircleIcon sx={{ fontSize: '14px !important' }} />}
+                                        label={convActiva.asignadoA.nombre}
+                                        size="small" color="info" variant="outlined"
+                                        sx={{ height: 18, fontSize: 10 }}
+                                    />
+                                )}
                                 {!convActiva.ventanaAbierta && convActiva.estado !== 'sin_asignar' && (
                                     <Chip icon={<LockClockIcon sx={{ fontSize: '14px !important' }} />} label="Ventana cerrada" size="small" color="error" sx={{ height: 18, fontSize: 10 }} />
                                 )}
@@ -447,32 +502,79 @@ export default function WapiInbox() {
                     <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: (t) => t.palette.mode === 'dark' ? '#1a1a2e' : '#e5ddd5' }}>
                         {loadingMensajes ? (
                             <Box sx={{ display: 'flex', justifyContent: 'center', pt: 4 }}><CircularProgress /></Box>
-                        ) : mensajes.map((msg) => (
-                            <Box key={msg.id} sx={{ display: 'flex', justifyContent: msg.fromMe ? 'flex-end' : 'flex-start' }}>
-                                <Paper elevation={1} sx={{
-                                    px: 1.5, py: 0.75, maxWidth: '70%',
-                                    borderRadius: msg.fromMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                                    bgcolor: (t) => msg.fromMe
-                                        ? (t.palette.mode === 'dark' ? '#005c4b' : '#dcf8c6')
-                                        : (t.palette.mode === 'dark' ? '#2a2a2a' : '#fff'),
-                                }}>
-                                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                        {renderContenido(msg)}
-                                    </Typography>
-                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
-                                            {formatHora(msg.timestamp)}
-                                        </Typography>
-                                        {msg.fromMe && (() => {
-                                            const st = messageStatuses[msg.waMessageId] ?? msg.status ?? 'sent';
-                                            if (st === 'read') return <DoneAllIcon sx={{ fontSize: 14, color: '#34B7F1' }} />;
-                                            if (st === 'delivered') return <DoneAllIcon sx={{ fontSize: 14, color: 'text.secondary' }} />;
-                                            return <DoneIcon sx={{ fontSize: 14, color: 'text.secondary' }} />;
-                                        })()}
+                        ) : mensajes.map((msg) => {
+                            // ── Burbuja de sistema (ficha de contacto) ──
+                            if (msg.tipo === 'sistema') {
+                                const c = msg.contenido ?? {};
+                                const datos = c.datos ?? {};
+                                const tieneDatos = Object.keys(datos).length > 0;
+                                return (
+                                    <Box key={msg.id} sx={{ display: 'flex', justifyContent: 'center', my: 0.5 }}>
+                                        <Paper elevation={0} sx={{
+                                            px: 2, py: 1.25, maxWidth: '85%', width: '100%',
+                                            borderRadius: 2,
+                                            border: '2px solid',
+                                            borderColor: '#f59e0b',
+                                            bgcolor: (t) => t.palette.mode === 'dark' ? 'rgba(245,158,11,0.1)' : '#fffbeb',
+                                        }}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+                                                <InfoOutlinedIcon sx={{ fontSize: 15, color: '#d97706' }} />
+                                                <Typography variant="caption" fontWeight="bold" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, color: '#d97706' }}>
+                                                    Ficha de contacto — generado por el sistema
+                                                </Typography>
+                                            </Box>
+                                            {c.nombre && (
+                                                <Typography variant="body2" fontWeight="bold" mb={0.5}>
+                                                    {c.nombre}
+                                                </Typography>
+                                            )}
+                                            {tieneDatos && (
+                                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}>
+                                                    {Object.entries(datos).map(([k, v]) => (
+                                                        <Typography key={k} sx={{ fontSize: 15 }} color="text.secondary">
+                                                            <Box component="span" fontWeight="bold" color="text.primary">{k}:</Box> {v}
+                                                        </Typography>
+                                                    ))}
+                                                </Box>
+                                            )}
+                                            {c.campañaNombre && (
+                                                <Typography variant="caption" color="text.disabled" display="block" mt={0.5}>
+                                                    Campaña: {c.campañaNombre}
+                                                </Typography>
+                                            )}
+                                        </Paper>
                                     </Box>
-                                </Paper>
-                            </Box>
-                        ))}
+                                );
+                            }
+
+                            // ── Burbuja normal ──
+                            return (
+                                <Box key={msg.id} sx={{ display: 'flex', justifyContent: msg.fromMe ? 'flex-end' : 'flex-start' }}>
+                                    <Paper elevation={1} sx={{
+                                        px: 1.5, py: 0.75, maxWidth: '70%',
+                                        borderRadius: msg.fromMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                                        bgcolor: (t) => msg.fromMe
+                                            ? (t.palette.mode === 'dark' ? '#005c4b' : '#dcf8c6')
+                                            : (t.palette.mode === 'dark' ? '#2a2a2a' : '#fff'),
+                                    }}>
+                                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                            {renderContenido(msg)}
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
+                                                {formatHora(msg.timestamp)}
+                                            </Typography>
+                                            {msg.fromMe && (() => {
+                                                const st = messageStatuses[msg.waMessageId] ?? msg.status ?? 'sent';
+                                                if (st === 'read') return <DoneAllIcon sx={{ fontSize: 14, color: '#34B7F1' }} />;
+                                                if (st === 'delivered') return <DoneAllIcon sx={{ fontSize: 14, color: 'text.secondary' }} />;
+                                                return <DoneIcon sx={{ fontSize: 14, color: 'text.secondary' }} />;
+                                            })()}
+                                        </Box>
+                                    </Paper>
+                                </Box>
+                            );
+                        })}
                         <div ref={mensajesEndRef} />
                     </Box>
 

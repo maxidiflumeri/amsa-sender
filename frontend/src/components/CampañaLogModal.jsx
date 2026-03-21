@@ -124,7 +124,7 @@ export default function CampañaLogModal({
 
         // 2. Cargar historial
         setCargandoHistorial(true);
-        api.get(`/campania-logs/${campañaId}?tipo=${tipo === 'whatsapp' ? 'wa' : 'email'}`)
+        api.get(`/campania-logs/${campañaId}?tipo=${tipo === 'whatsapp' ? 'wa' : tipo === 'wapi' ? 'wapi' : 'email'}`)
             .then(res => {
                 const historico = res.data ?? [];
                 if (historico.length > 0) {
@@ -224,7 +224,7 @@ export default function CampañaLogModal({
                                 noWrap
                                 sx={{ lineHeight: 1.3 }}
                             >
-                                {tipo === 'whatsapp' ? '📱' : '📧'} {campañaNombre}
+                                {tipo === 'whatsapp' ? '📱' : tipo === 'wapi' ? '🤖' : '📧'} {campañaNombre}
                             </Typography>
                             {esProcesando && (
                                 <Box sx={{

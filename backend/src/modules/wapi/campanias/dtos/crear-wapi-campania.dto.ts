@@ -10,6 +10,11 @@ export class CrearWapiCampaniaDto {
   templateId: number;
 
   @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  configId?: number;
+
+  @IsOptional()
   @IsObject()
   variableMapping?: Record<string, string>; // { "1": "columna_csv", "2": "otra_columna" }
 

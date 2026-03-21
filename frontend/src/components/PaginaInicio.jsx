@@ -11,6 +11,7 @@ import SendIcon from '@mui/icons-material/Send';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import GroupIcon from '@mui/icons-material/Group';
 import ScheduleIcon from '@mui/icons-material/Schedule';
+import InboxIcon from '@mui/icons-material/Inbox';
 import { motion } from 'framer-motion';
 import logo from '../assets/amsasender.png';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +23,13 @@ const features = [
         descripcion: 'Enviá mensajes masivos personalizados desde múltiples sesiones de WhatsApp. Templates Handlebars con variables dinámicas.',
         color: '#25D366',
         bg: 'rgba(37, 211, 102, 0.08)',
+    },
+    {
+        icon: <InboxIcon sx={{ fontSize: 32 }} />,
+        titulo: 'Inbox WhatsApp',
+        descripcion: 'Recibí y respondé mensajes entrantes de WhatsApp. Conversaciones organizadas por estado, asignación a agentes y respuestas con adjuntos.',
+        color: '#00BCD4',
+        bg: 'rgba(0, 188, 212, 0.08)',
     },
     {
         icon: <EmailIcon sx={{ fontSize: 32 }} />,
@@ -97,7 +105,7 @@ export default function PaginaInicio() {
                             AMSA Sender
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                            Plataforma de marketing masivo multicanal
+                            Plataforma de comunicación multicanal
                         </Typography>
                     </Box>
                 </Box>
@@ -117,6 +125,7 @@ export default function PaginaInicio() {
                     <Chip label="Reportes" icon={<BarChartIcon />} sx={{ bgcolor: 'rgba(139,92,246,0.12)', color: '#8b5cf6', fontWeight: 600 }} size="small" />
                     <Chip label="Multi-cuenta SMTP" sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', fontWeight: 600 }} size="small" />
                     <Chip label="Tracking en tiempo real" sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', fontWeight: 600 }} size="small" />
+                    <Chip label="Inbox WhatsApp" icon={<InboxIcon />} sx={{ bgcolor: 'rgba(0,188,212,0.12)', color: '#00BCD4', fontWeight: 600 }} size="small" />
                 </Box>
             </motion.div>
 

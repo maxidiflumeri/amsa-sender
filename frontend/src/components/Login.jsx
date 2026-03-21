@@ -20,6 +20,7 @@ import GroupsIcon from '@mui/icons-material/Groups';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import SecurityIcon from '@mui/icons-material/Security';
+import InboxIcon from '@mui/icons-material/Inbox';
 
 const features = [
     {
@@ -27,6 +28,12 @@ const features = [
         title: 'Campañas de WhatsApp',
         desc: 'Enviá mensajes masivos con sesiones multi-cuenta y seguimiento en tiempo real.',
         color: '#25D366',
+    },
+    {
+        icon: <InboxIcon sx={{ fontSize: 26 }} />,
+        title: 'Inbox WhatsApp',
+        desc: 'Recibí y respondé mensajes entrantes de WhatsApp con asignación de conversaciones por agente.',
+        color: '#00BCD4',
     },
     {
         icon: <EmailIcon sx={{ fontSize: 26 }} />,
@@ -252,7 +259,7 @@ const Login = () => {
                     transition={{ duration: 0.7, ease: 'easeOut' }}
                 >
                     <Chip
-                        label="Plataforma de comunicación masiva"
+                        label="Plataforma de comunicación multicanal"
                         size="small"
                         sx={{
                             mb: 2,
@@ -299,7 +306,7 @@ const Login = () => {
                             fontSize: { md: '1rem', lg: '1.1rem' },
                         }}
                     >
-                        Enviá campañas de WhatsApp y Email de forma masiva, gestioná contactos y analizá resultados — todo desde un solo lugar.
+                        Enviá campañas, gestioná conversaciones entrantes y analizá resultados de WhatsApp y Email — todo desde un solo lugar.
                     </Typography>
                 </motion.div>
 
@@ -312,9 +319,9 @@ const Login = () => {
                     <Box
                         sx={{
                             display: 'grid',
-                            gridTemplateColumns: { md: '1fr', lg: '1fr 1fr' },
+                            gridTemplateColumns: { md: '1fr 1fr', lg: '1fr 1fr 1fr' },
                             gap: 2,
-                            maxWidth: 640,
+                            maxWidth: 960,
                         }}
                     >
                         {features.map((f) => (

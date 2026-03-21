@@ -4,6 +4,7 @@ import {
     Snackbar, Dialog, DialogTitle, DialogContent, DialogActions,
     Select, MenuItem, FormControl, InputLabel, FormControlLabel,
     Switch, Alert, Tooltip, IconButton, Divider, useTheme,
+    TextField,
 } from '@mui/material';
 import MuiAlert from '@mui/material/Alert';
 import SyncIcon from '@mui/icons-material/Sync';
@@ -191,6 +192,16 @@ function DialogButtonActions({ open, template, onClose, onGuardado }) {
                                     </Select>
                                 </FormControl>
 
+                                <TextField
+                                    label="Payload del botón"
+                                    size="small"
+                                    fullWidth
+                                    value={accion.payload}
+                                    onChange={(e) => update(i, 'payload', e.target.value)}
+                                    helperText="Usá {{1}}, {{2}}... (variables del template) o {{nombre_columna}} (columna del CSV). Ej: INBOX|ref={{nro_cliente}}"
+                                    inputProps={{ maxLength: 128 }}
+                                />
+
                                 {accion.accion === 'BAJA' && (
                                     <FormControlLabel
                                         control={
@@ -229,18 +240,27 @@ function DialogButtonActions({ open, template, onClose, onGuardado }) {
 export default function WapiTemplates() {
     const theme = useTheme();
     const [templates, setTemplates] = useState([]);
+    const [configs, setConfigs] = useState([]);
+    const [configId, setConfigId] = useState('');
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [templateSeleccionado, setTemplateSeleccionado] = useState(null);
     const [feedback, setFeedback] = useState({ open: false, message: '', type: 'success' });
 
-    useEffect(() => { fetchTemplates(); }, []);
+    useEffect(() => {
+        api.get('/wapi/config')
+            .then(res => setConfigs(Array.isArray(res.data) ? res.data : []))
+            .catch(() => {});
+    }, []);
+
+    useEffect(() => { fetchTemplates(); }, [configId]);
 
     const fetchTemplates = async () => {
         setLoading(true);
         try {
-            const res = await api.get('/wapi/templates');
+            const url = configId ? `/wapi/templates?configId=${configId}` : '/wapi/templates';
+            const res = await api.get(url);
             setTemplates(res.data);
         } catch {
             setFeedback({ open: true, message: 'Error al cargar templates.', type: 'error' });
@@ -252,7 +272,8 @@ export default function WapiTemplates() {
     const handleSincronizar = async () => {
         setSyncing(true);
         try {
-            const res = await api.post('/wapi/templates/sincronizar');
+            const url = configId ? `/wapi/templates/sincronizar?configId=${configId}` : '/wapi/templates/sincronizar';
+            const res = await api.post(url);
             const { sincronizados, errores } = res.data;
             const msg = errores.length > 0
                 ? `${sincronizados} sincronizados, ${errores.length} con error.`
@@ -304,6 +325,27 @@ export default function WapiTemplates() {
                     {syncing ? 'Sincronizando...' : 'Sincronizar desde Meta'}
                 </Button>
             </Box>
+
+            {/* Filtro por línea */}
+            {configs.length > 0 && (
+                <Box mb={3} maxWidth={320}>
+                    <FormControl fullWidth size="small">
+                        <InputLabel>Filtrar por línea</InputLabel>
+                        <Select
+                            value={configId}
+                            label="Filtrar por línea"
+                            onChange={(e) => setConfigId(e.target.value)}
+                        >
+                            <MenuItem value="">Todas las líneas</MenuItem>
+                            {configs.map(c => (
+                                <MenuItem key={c.id} value={c.id}>
+                                    {c.nombre ?? `Línea ${c.id}`}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
+            )}
 
             {templates.length === 0 && !loading && (
                 <Alert severity="info">

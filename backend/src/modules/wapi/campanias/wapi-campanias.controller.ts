@@ -39,6 +39,7 @@ export class WapiCampaniasController {
       delayMs: body.delayMs ? Number(body.delayMs) : undefined,
       batchSize: body.batchSize ? Number(body.batchSize) : undefined,
       agendadoAt: body.agendadoAt,
+      configId: body.configId ? Number(body.configId) : undefined,
     };
     return this.wapiCampaniasService.crearCampania(dto, file.path, req['usuario']?.sub);
   }
