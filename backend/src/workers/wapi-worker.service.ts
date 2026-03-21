@@ -1,0 +1,223 @@
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Worker, Job } from 'bullmq';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { connection } from 'src/queues/bullmq.config';
+
+const META_API_VERSION = 'v20.0';
+const META_API_BASE = 'https://graph.facebook.com';
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+@Injectable()
+export class WapiWorkerService implements OnModuleInit {
+  private readonly logger = new Logger(WapiWorkerService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit() {
+    const worker = new Worker('wapiEnvios', this.procesarJob.bind(this), {
+      connection,
+      concurrency: 1, // una campaña a la vez para respetar rate limits de Meta
+    });
+
+    worker.on('failed', async (job, err) => {
+      this.logger.error(`Job ${job?.id ?? 'unknown'} falló: ${err.message}`);
+      const campañaId = job?.data?.campañaId;
+      if (campañaId) {
+        await this.prisma.waApiCampaña
+          .update({ where: { id: campañaId }, data: { estado: 'error' } })
+          .catch(() => null);
+      }
+    });
+
+    worker.on('error', err => this.logger.error(`Worker error: ${err.message}`));
+    this.logger.log('Worker WA API iniciado y escuchando cola "wapiEnvios"');
+  }
+
+  private async procesarJob(job: Job) {
+    const { campañaId } = job.data as { campañaId: number };
+    this.logger.log(`Procesando campaña WA API ${campañaId}`);
+
+    const campaña = await this.prisma.waApiCampaña.findUnique({
+      where: { id: campañaId },
+      include: { template: true },
+    });
+
+    if (!campaña || !campaña.template) {
+      throw new Error(`Campaña ${campañaId} o su template no encontrados`);
+    }
+
+    const config = campaña.template;
+    const wapiConfig = await this.prisma.waApiConfig.findFirst({ where: { activo: true } });
+    if (!wapiConfig) throw new Error('No hay configuración de WhatsApp API guardada');
+
+    const campConfig = (campaña.config as any) ?? {};
+    const delayMs: number = campConfig.delayMs ?? 1200;
+    const variableMapping: Record<string, string> = campConfig.variableMapping ?? {};
+
+    // Obtener contactos que aún no tienen reporte (permite reanudar si falla a mitad)
+    const contactosConReporte = await this.prisma.waApiReporte.findMany({
+      where: { campañaId },
+      select: { contactoId: true },
+    });
+    const yaEnviadosIds = new Set(contactosConReporte.map(r => r.contactoId));
+
+    const contactos = await this.prisma.waApiContacto.findMany({
+      where: { campañaId },
+    });
+
+    const pendientes = contactos.filter(c => !yaEnviadosIds.has(c.id));
+    const total = contactos.length;
+    let enviados = contactosConReporte.length;
+
+    this.logger.log(`Campaña ${campañaId}: ${pendientes.length} pendientes de ${total} total`);
+
+    for (const contacto of pendientes) {
+      // Verificar si la campaña fue pausada
+      const estadoActual = await this.prisma.waApiCampaña.findUnique({
+        where: { id: campañaId },
+        select: { pausada: true, estado: true },
+      });
+      if (estadoActual?.pausada || estadoActual?.estado === 'pausada') {
+        this.logger.log(`Campaña ${campañaId} pausada. Deteniendo worker.`);
+        break;
+      }
+
+      // Verificar supresión en tiempo real
+      const enBajas = await this.prisma.waApiBaja.findUnique({ where: { numero: contacto.numero } });
+      if (enBajas) {
+        await this.prisma.waApiReporte.create({
+          data: {
+            campañaId,
+            contactoId: contacto.id,
+            numero: contacto.numero,
+            estado: 'failed',
+            error: 'Número en lista de bajas',
+            creadoAt: new Date(),
+          },
+        });
+        enviados++;
+        continue;
+      }
+
+      // Construir componentes del template
+      const componentes = this.construirComponentes(
+        config.componentes as any[],
+        config.buttonActions as any[] ?? [],
+        (contacto.variables as Record<string, string>) ?? {},
+        variableMapping,
+      );
+
+      let waMessageId: string | null = null;
+      let estado: string = 'failed';
+      let error: string | null = null;
+
+      try {
+        const url = `${META_API_BASE}/${META_API_VERSION}/${wapiConfig.phoneNumberId}/messages`;
+        const body = {
+          messaging_product: 'whatsapp',
+          to: contacto.numero,
+          type: 'template',
+          template: {
+            name: config.metaNombre,
+            language: { code: config.idioma },
+            components: componentes,
+          },
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${wapiConfig.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+
+        const json = await res.json() as any;
+
+        if (res.ok && json.messages?.[0]?.id) {
+          waMessageId = json.messages[0].id;
+          estado = 'sent';
+        } else {
+          error = json.error?.message ?? `HTTP ${res.status}`;
+          this.logger.warn(`Error enviando a ${contacto.numero}: ${error}`);
+        }
+      } catch (err) {
+        error = err.message;
+        this.logger.error(`Error en fetch para ${contacto.numero}: ${err.message}`);
+      }
+
+      await this.prisma.waApiReporte.create({
+        data: {
+          campañaId,
+          contactoId: contacto.id,
+          numero: contacto.numero,
+          waMessageId,
+          estado,
+          error,
+          enviadoAt: estado === 'sent' ? new Date() : null,
+          creadoAt: new Date(),
+        },
+      });
+
+      enviados++;
+      await sleep(delayMs);
+    }
+
+    // Finalizar campaña
+    await this.prisma.waApiCampaña.update({
+      where: { id: campañaId },
+      data: { estado: 'finalizada' },
+    });
+
+    this.logger.log(`Campaña ${campañaId} finalizada. ${enviados}/${total} procesados.`);
+  }
+
+  /**
+   * Construye el array de componentes para la API de Meta.
+   * - Body parameters: mapeados desde variables del contacto
+   * - Buttons Quick Reply: payload definido en buttonActions por índice
+   */
+  private construirComponentes(
+    templateComponents: any[],
+    buttonActions: any[],
+    contactoVariables: Record<string, string>,
+    variableMapping: Record<string, string>,
+  ): any[] {
+    const resultado: any[] = [];
+
+    const bodyComp = templateComponents?.find(c => c.type === 'BODY');
+    if (bodyComp) {
+      const matches = (bodyComp.text ?? '').match(/\{\{(\d+)\}\}/g) ?? [];
+      const variableCount = matches.length;
+
+      if (variableCount > 0) {
+        const parameters = Array.from({ length: variableCount }, (_, i) => {
+          const idx = String(i + 1);
+          const columna = variableMapping[idx];
+          const valor = columna ? (contactoVariables[columna] ?? '') : '';
+          return { type: 'text', text: valor };
+        });
+        resultado.push({ type: 'body', parameters });
+      }
+    }
+
+    // Botones Quick Reply
+    if (Array.isArray(buttonActions)) {
+      for (const accion of buttonActions) {
+        const payload = accion.payload ?? `BTN_${accion.indice}`;
+        resultado.push({
+          type: 'button',
+          sub_type: 'quick_reply',
+          index: String(accion.indice),
+          parameters: [{ type: 'payload', payload }],
+        });
+      }
+    }
+
+    return resultado;
+  }
+}

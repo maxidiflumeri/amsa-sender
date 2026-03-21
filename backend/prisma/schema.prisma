@@ -259,6 +259,135 @@ model EmailDesuscripciones {
   @@map("EmailDesuscripciones")
 }
 
+// ============================================================
+// WhatsApp Business API (Meta) Module
+// ============================================================
+
+model WaApiConfig {
+  id            Int      @id @default(autoincrement())
+  phoneNumberId String   // Meta phone_number_id (ANI validado)
+  wabaId        String   // WhatsApp Business Account ID
+  token         String   @db.Text // token permanente
+  verifyToken   String   // token para verificación del webhook
+  appSecret     String?  @db.Text // App Secret de Meta para verificar firma del webhook
+  activo        Boolean  @default(true)
+  creadoAt      DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@map("WaApiConfig")
+}
+
+model WaApiTemplate {
+  id             Int            @id @default(autoincrement())
+  metaNombre     String         @unique // nombre del template en Meta (actúa como ID)
+  categoria      String         // MARKETING | UTILITY | AUTHENTICATION
+  idioma         String         // es, es_AR, en_US, etc.
+  estado         String         // APPROVED | PENDING | REJECTED | PAUSED
+  componentes    Json           // raw components de la API de Meta
+  buttonActions  Json?          // [{ payload: string, accion: "INBOX"|"BAJA"|"IGNORAR", enviarConfirmacion: bool }]
+  sincronizadoAt DateTime
+  creadoAt       DateTime       @default(now())
+  campanias      WaApiCampaña[]
+  @@map("WaApiTemplate")
+}
+
+model WaApiCampaña {
+  id         Int             @id @default(autoincrement())
+  nombre     String
+  templateId Int?
+  template   WaApiTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  estado     String          @default("pendiente") // pendiente | agendada | procesando | pausada | finalizada | error
+  pausada    Boolean         @default(false)
+  archivada  Boolean         @default(false)
+  jobId      String?
+  agendadoAt DateTime?
+  enviadoAt  DateTime?
+  createdAt  DateTime        @default(now())
+  config     Json?           // { variableMapping: {...}, delayMs: number, batchSize: number }
+  userId     Int
+  contactos  WaApiContacto[]
+  reportes   WaApiReporte[]
+  @@map("WaApiCampaña")
+}
+
+model WaApiContacto {
+  id        Int           @id @default(autoincrement())
+  numero    String        // formato E.164: 5491112345678
+  nombre    String?
+  variables Json?         // { "1": "Juan", "2": "producto X" }
+  campañaId Int
+  campaña  WaApiCampaña @relation(fields: [campañaId], references: [id], onDelete: Cascade)
+  reporte   WaApiReporte?
+  @@map("WaApiContacto")
+}
+
+model WaApiReporte {
+  id          Int           @id @default(autoincrement())
+  campañaId  Int
+  contactoId  Int           @unique
+  numero      String
+  waMessageId String?       @unique // wamid devuelto por Meta
+  estado      String        @default("pendiente") // pendiente | sent | delivered | read | failed
+  error       String?       @db.Text
+  enviadoAt   DateTime?
+  entregadoAt DateTime?
+  leidoAt     DateTime?
+  fallidoAt   DateTime?
+  creadoAt    DateTime      @default(now())
+  campaña    WaApiCampaña @relation(fields: [campañaId], references: [id], onDelete: Cascade)
+  contacto    WaApiContacto @relation(fields: [contactoId], references: [id], onDelete: Cascade)
+  @@index([campañaId])
+  @@map("WaApiReporte")
+}
+
+enum EstadoConversacion {
+  sin_asignar
+  asignada
+  resuelta
+}
+
+model WaApiConversacion {
+  id              Int                @id @default(autoincrement())
+  numero          String             @unique // teléfono del contacto en E.164
+  nombre          String?            // nombre de display del contacto
+  estado          EstadoConversacion @default(sin_asignar)
+  asignadoAId     Int?               // FK a Usuario
+  ultimoMensajeAt DateTime?
+  ventana24hAt    DateTime?          // timestamp del último mensaje entrante (ventana vence 24h después)
+  creadoAt        DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  mensajes        WaApiMensaje[]
+  @@index([asignadoAId])
+  @@index([estado])
+  @@map("WaApiConversacion")
+}
+
+model WaApiMensaje {
+  id             Int               @id @default(autoincrement())
+  conversacionId Int
+  conversacion   WaApiConversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  waMessageId    String?           @unique
+  fromMe         Boolean           // true = enviado por asesor, false = recibido del contacto
+  tipo           String            // text | button | image | document | audio | video
+  contenido      Json              // { text?, buttonPayload?, buttonText?, mediaUrl?, caption?, mimeType? }
+  status         String            @default("sent") // sent | delivered | read
+  timestamp      DateTime
+  creadoAt       DateTime          @default(now())
+  @@index([conversacionId, timestamp])
+  @@map("WaApiMensaje")
+}
+
+model WaApiBaja {
+  id                  Int      @id @default(autoincrement())
+  numero              String   @unique
+  campañaId          Int?
+  campañaNombre      String?
+  templateNombre      String?
+  buttonPayload       String?
+  confirmacionEnviada Boolean  @default(false)
+  creadoAt            DateTime @default(now())
+  @@map("WaApiBaja")
+}
+
 enum TipoTareaProgramada {
   REPORTE_EMAIL_DIARIO
 }

@@ -41,6 +41,9 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import PeopleIcon from '@mui/icons-material/People';
 import LockIcon from '@mui/icons-material/Lock';
+import ApiIcon from '@mui/icons-material/Api';
+import InboxIcon from '@mui/icons-material/Inbox';
+import BlockIcon from '@mui/icons-material/Block';
 import { useAuth } from '../context/AuthContext';
 
 const drawerWidth = 220;
@@ -70,6 +73,17 @@ const configItems = [
 const adminItems = [
     { label: 'Usuarios', path: '/admin/usuarios', icon: <PeopleIcon />, permiso: 'admin.usuarios' },
     { label: 'Roles', path: '/admin/roles', icon: <LockIcon />, permiso: 'admin.usuarios' },
+];
+
+const wapiItems = [
+    { label: 'Configuración', path: '/wapi/config', icon: <SettingsIcon />, permiso: 'wapi.config' },
+    { label: 'Templates', path: '/wapi/templates', icon: <ArticleIcon />, permiso: 'wapi.templates' },
+    { label: 'Campañas', path: '/wapi/campanias', icon: <CampaignIcon />, permiso: 'wapi.campanias' },
+    { label: 'Bajas', path: '/wapi/bajas', icon: <BlockIcon />, permiso: 'wapi.bajas' },
+];
+
+const inboxItems = [
+    { label: 'Conversaciones', path: '/wapi/inbox', icon: <InboxIcon />, permiso: 'wapi.inbox' },
 ];
 
 // Switch estilo iOS con íconos dentro del track
@@ -137,6 +151,8 @@ export default function Layout({ children, mode, toggleTheme }) {
     const [openEmail, setOpenEmail] = useState(false);
     const [openConfig, setOpenConfig] = useState(false);
     const [openAdmin, setOpenAdmin] = useState(false);
+    const [openWapi, setOpenWapi] = useState(false);
+    const [openInbox, setOpenInbox] = useState(false);
     const { hasPermiso } = useAuth();
 
     const handleMenuOpen = (event) => {
@@ -201,6 +217,14 @@ export default function Layout({ children, mode, toggleTheme }) {
 
     useEffect(() => {
         setOpenAdmin(location.pathname.startsWith('/admin'));
+    }, [location.pathname]);
+
+    useEffect(() => {
+        setOpenWapi(location.pathname.startsWith('/wapi') && !location.pathname.startsWith('/wapi/inbox'));
+    }, [location.pathname]);
+
+    useEffect(() => {
+        setOpenInbox(location.pathname.startsWith('/wapi/inbox'));
     }, [location.pathname]);
 
     const drawerContent = (
@@ -434,6 +458,128 @@ export default function Layout({ children, mode, toggleTheme }) {
                                         component={RouterLink}
                                         to={path}
                                         selected={location.pathname === path}
+                                        onClick={isMobile ? handleDrawerToggle : undefined}
+                                        sx={{
+                                            pl: collapsed ? 0 : 4,
+                                            justifyContent: collapsed ? 'center' : 'flex-start',
+                                            '&.Mui-selected': {
+                                                backgroundColor: theme.palette.action.selected,
+                                                fontWeight: 'bold',
+                                            }
+                                        }}
+                                    >
+                                        <ListItemIcon
+                                            sx={{
+                                                minWidth: 'auto',
+                                                mr: collapsed ? 0 : 1.5,
+                                                justifyContent: collapsed ? 'center' : 'flex-start',
+                                                width: collapsed ? '100%' : 'auto',
+                                                display: 'flex',
+                                            }}
+                                        >
+                                            {icon}
+                                        </ListItemIcon>
+                                        {!collapsed && <ListItemText primary={label} />}
+                                    </ListItemButton>
+                                </Tooltip>
+                            </ListItem>
+                        ))}
+                    </Collapse>
+                    </>}
+                    {/* WhatsApp API */}
+                    {wapiItems.some(i => hasPermiso(i.permiso)) && <>
+                    <ListItemButton onClick={() => setOpenWapi(!openWapi)}>
+                        <ListItemIcon
+                            sx={{
+                                minWidth: 'auto',
+                                mr: collapsed ? 0 : 1.5,
+                                backgroundColor: '#E0F2F1',
+                                borderRadius: '50%',
+                                width: 36, height: 36,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: '#00695C',
+                                '& svg': { fontSize: collapsed ? 26 : 22 }
+                            }}
+                        >
+                            <ApiIcon />
+                        </ListItemIcon>
+                        {!collapsed && (
+                            <ListItemText
+                                primary="WhatsApp API"
+                                primaryTypographyProps={{ sx: { fontWeight: 'bold' } }}
+                            />
+                        )}
+                        {!collapsed && (openWapi ? <ExpandLess /> : <ExpandMore />)}
+                    </ListItemButton>
+                    <Collapse in={openWapi} timeout="auto" unmountOnExit>
+                        {wapiItems.filter(i => hasPermiso(i.permiso)).map(({ label, path, icon }) => (
+                            <ListItem key={path} disablePadding>
+                                <Tooltip title={collapsed ? label : ''} placement="right">
+                                    <ListItemButton
+                                        component={RouterLink}
+                                        to={path}
+                                        selected={location.pathname === path}
+                                        onClick={isMobile ? handleDrawerToggle : undefined}
+                                        sx={{
+                                            pl: collapsed ? 0 : 4,
+                                            justifyContent: collapsed ? 'center' : 'flex-start',
+                                            '&.Mui-selected': {
+                                                backgroundColor: theme.palette.action.selected,
+                                                fontWeight: 'bold',
+                                            }
+                                        }}
+                                    >
+                                        <ListItemIcon
+                                            sx={{
+                                                minWidth: 'auto',
+                                                mr: collapsed ? 0 : 1.5,
+                                                justifyContent: collapsed ? 'center' : 'flex-start',
+                                                width: collapsed ? '100%' : 'auto',
+                                                display: 'flex',
+                                            }}
+                                        >
+                                            {icon}
+                                        </ListItemIcon>
+                                        {!collapsed && <ListItemText primary={label} />}
+                                    </ListItemButton>
+                                </Tooltip>
+                            </ListItem>
+                        ))}
+                    </Collapse>
+                    </>}
+                    {/* Inbox WA */}
+                    {inboxItems.some(i => hasPermiso(i.permiso)) && <>
+                    <ListItemButton onClick={() => setOpenInbox(!openInbox)}>
+                        <ListItemIcon
+                            sx={{
+                                minWidth: 'auto',
+                                mr: collapsed ? 0 : 1.5,
+                                backgroundColor: '#FFF3E0',
+                                borderRadius: '50%',
+                                width: 36, height: 36,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: '#E65100',
+                                '& svg': { fontSize: collapsed ? 26 : 22 }
+                            }}
+                        >
+                            <InboxIcon />
+                        </ListItemIcon>
+                        {!collapsed && (
+                            <ListItemText
+                                primary="Inbox WA"
+                                primaryTypographyProps={{ sx: { fontWeight: 'bold' } }}
+                            />
+                        )}
+                        {!collapsed && (openInbox ? <ExpandLess /> : <ExpandMore />)}
+                    </ListItemButton>
+                    <Collapse in={openInbox} timeout="auto" unmountOnExit>
+                        {inboxItems.filter(i => hasPermiso(i.permiso)).map(({ label, path, icon }) => (
+                            <ListItem key={path} disablePadding>
+                                <Tooltip title={collapsed ? label : ''} placement="right">
+                                    <ListItemButton
+                                        component={RouterLink}
+                                        to={path}
+                                        selected={location.pathname.startsWith('/wapi/inbox')}
                                         onClick={isMobile ? handleDrawerToggle : undefined}
                                         sx={{
                                             pl: collapsed ? 0 : 4,

@@ -27,7 +27,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
                 ? exception.getResponse()
                 : 'Internal server error';
 
-        this.logger.error(`${request.method} ${request.url} → ${status}: ${JSON.stringify(message)}`);
+        if (exception instanceof HttpException) {
+            this.logger.error(`${request.method} ${request.url} → ${status}: ${JSON.stringify(message)}`);
+        } else {
+            const err = exception as any;
+            this.logger.error(`${request.method} ${request.url} → ${status}: ${err?.message ?? 'unknown'}\n${err?.stack ?? ''}`);
+        }
 
         response.status(status).json({
             statusCode: status,

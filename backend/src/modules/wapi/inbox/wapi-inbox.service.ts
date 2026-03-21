@@ -1,0 +1,338 @@
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Response } from 'express';
+import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { WapiConfigService } from '../config/wapi-config.service';
+import { SocketGateway } from 'src/websocket/socket.gateway';
+
+export interface MensajeEntranteDto {
+  numero: string;
+  nombre: string | null;
+  waMessageId: string;
+  tipo: string;
+  contenido: Record<string, any>;
+  timestamp: Date;
+}
+
+const META_API_VERSION = 'v20.0';
+const META_API_BASE = 'https://graph.facebook.com';
+
+@Injectable()
+export class WapiInboxService {
+  private readonly logger = new Logger(WapiInboxService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: WapiConfigService,
+    private readonly socketGateway: SocketGateway,
+  ) {}
+
+  /** Llamado desde WapiWebhookService al recibir un mensaje entrante */
+  async procesarMensajeEntrante(dto: MensajeEntranteDto): Promise<void> {
+    // Buscar conversación existente para decidir el estado
+    const existing = await this.prisma.waApiConversacion.findUnique({
+      where: { numero: dto.numero },
+    });
+
+    let conv: any;
+    if (existing) {
+      // Si estaba resuelta → reabrirla como sin_asignar; si asignada → mantener estado
+      const nuevoEstado = existing.estado === 'resuelta' ? 'sin_asignar' : existing.estado;
+      conv = await this.prisma.waApiConversacion.update({
+        where: { numero: dto.numero },
+        data: {
+          nombre: dto.nombre ?? undefined,
+          ultimoMensajeAt: dto.timestamp,
+          ventana24hAt: dto.timestamp,
+          estado: nuevoEstado,
+        },
+      });
+    } else {
+      conv = await this.prisma.waApiConversacion.create({
+        data: {
+          numero: dto.numero,
+          nombre: dto.nombre,
+          estado: 'sin_asignar',
+          ultimoMensajeAt: dto.timestamp,
+          ventana24hAt: dto.timestamp,
+        },
+      });
+    }
+
+    const mensaje = await this.prisma.waApiMensaje.create({
+      data: {
+        conversacionId: conv.id,
+        waMessageId: dto.waMessageId,
+        fromMe: false,
+        tipo: dto.tipo,
+        contenido: dto.contenido,
+        timestamp: dto.timestamp,
+      },
+    });
+
+    // Emitir al inbox en tiempo real
+    this.socketGateway.emitirEvento(
+      'wapi:nuevo_mensaje',
+      {
+        conversacion: this.conVentana(conv),
+        mensaje: { ...mensaje },
+      },
+      'inbox_wapi',
+    );
+
+    this.logger.log(`Mensaje entrante guardado — conv ${conv.id} (${dto.numero})`);
+  }
+
+  async listarConversaciones(userId: number, esAdmin: boolean) {
+    const where = esAdmin
+      ? {}
+      : { OR: [{ asignadoAId: userId }, { estado: 'sin_asignar' as const }] };
+    const convs = await this.prisma.waApiConversacion.findMany({
+      where,
+      orderBy: { ultimoMensajeAt: 'desc' },
+      include: { mensajes: { orderBy: { timestamp: 'desc' }, take: 1 } },
+    });
+    return convs.map(c => this.conVentana(c));
+  }
+
+  async listarSinAsignar() {
+    const convs = await this.prisma.waApiConversacion.findMany({
+      where: { estado: 'sin_asignar' },
+      orderBy: { ultimoMensajeAt: 'desc' },
+      include: { mensajes: { orderBy: { timestamp: 'desc' }, take: 1 } },
+    });
+    return convs.map(c => this.conVentana(c));
+  }
+
+  async obtenerConversacion(id: number) {
+    const conv = await this.prisma.waApiConversacion.findUniqueOrThrow({
+      where: { id },
+      include: { mensajes: { orderBy: { timestamp: 'asc' } } },
+    });
+    return this.conVentana(conv);
+  }
+
+  private conVentana(conv: any) {
+    return {
+      ...conv,
+      ventanaAbierta: conv.ventana24hAt
+        ? Date.now() - new Date(conv.ventana24hAt).getTime() < 24 * 60 * 60 * 1000
+        : false,
+    };
+  }
+
+  async asignarConversacion(id: number, asignadoAId: number) {
+    const conv = await this.prisma.waApiConversacion.update({
+      where: { id },
+      data: { asignadoAId, estado: 'asignada' },
+    });
+    const result = this.conVentana(conv);
+    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
+    return result;
+  }
+
+  async tomarConversacion(id: number, userId: number) {
+    return this.asignarConversacion(id, userId);
+  }
+
+  async resolverConversacion(id: number) {
+    const conv = await this.prisma.waApiConversacion.update({
+      where: { id },
+      data: { estado: 'resuelta' },
+    });
+    const result = this.conVentana(conv);
+    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
+    return result;
+  }
+
+  async proxyMedia(mediaId: string, res: Response): Promise<void> {
+    const config = await this.configService.obtenerConfigCompleta();
+
+    // 1. Obtener URL temporal del media
+    const metaRes = await fetch(
+      `${META_API_BASE}/${META_API_VERSION}/${mediaId}`,
+      { headers: { Authorization: `Bearer ${config.token}` } },
+    );
+    if (!metaRes.ok) {
+      res.status(502).json({ message: 'No se pudo obtener el media de Meta' });
+      return;
+    }
+    const { url, mime_type } = await metaRes.json() as { url: string; mime_type: string };
+
+    // 2. Descargar el archivo y hacer pipe al response
+    const fileRes = await fetch(url, {
+      headers: { Authorization: `Bearer ${config.token}` },
+    });
+    if (!fileRes.ok) {
+      res.status(502).json({ message: 'No se pudo descargar el archivo de Meta' });
+      return;
+    }
+
+    res.setHeader('Content-Type', mime_type ?? 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    const buffer = await fileRes.arrayBuffer();
+    res.end(Buffer.from(buffer));
+  }
+
+  async enviarMensaje(conversacionId: number, texto: string) {
+    const conv = await this.prisma.waApiConversacion.findUniqueOrThrow({
+      where: { id: conversacionId },
+    });
+
+    // Verificar ventana de 24hs
+    if (!conv.ventana24hAt) {
+      throw new Error('Ventana de 24hs no iniciada. El contacto debe escribir primero.');
+    }
+    const diff = Date.now() - new Date(conv.ventana24hAt).getTime();
+    if (diff > 24 * 60 * 60 * 1000) {
+      throw new Error('La ventana de 24hs está cerrada. Solo se pueden enviar templates.');
+    }
+
+    const config = await this.configService.obtenerConfigCompleta();
+    const url = `${META_API_BASE}/${META_API_VERSION}/${config.phoneNumberId}/messages`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: conv.numero,
+        type: 'text',
+        text: { body: texto },
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Error enviando mensaje: ${res.status} ${err}`);
+    }
+
+    const json = await res.json() as { messages: { id: string }[] };
+    const waMessageId = json.messages?.[0]?.id ?? null;
+
+    const mensaje = await this.prisma.waApiMensaje.create({
+      data: {
+        conversacionId,
+        waMessageId,
+        fromMe: true,
+        tipo: 'text',
+        contenido: { text: texto },
+        timestamp: new Date(),
+      },
+    });
+
+    await this.prisma.waApiConversacion.update({
+      where: { id: conversacionId },
+      data: { ultimoMensajeAt: new Date() },
+    });
+
+    // Emitir en tiempo real al inbox
+    this.socketGateway.emitirEvento(
+      'wapi:nuevo_mensaje',
+      { conversacion: { id: conversacionId, numero: conv.numero }, mensaje },
+      'inbox_wapi',
+    );
+
+    return mensaje;
+  }
+
+  async enviarMedia(
+    conversacionId: number,
+    file: Express.Multer.File,
+    caption?: string,
+  ) {
+    const conv = await this.prisma.waApiConversacion.findUniqueOrThrow({
+      where: { id: conversacionId },
+    });
+
+    if (!conv.ventana24hAt) throw new BadRequestException('Ventana de 24hs no iniciada.');
+    const diff = Date.now() - new Date(conv.ventana24hAt).getTime();
+    if (diff > 24 * 60 * 60 * 1000) throw new BadRequestException('Ventana de 24hs cerrada.');
+
+    const config = await this.configService.obtenerConfigCompleta();
+
+    // 1. Subir el archivo a Meta
+    const formData = new FormData();
+    const fileBuffer = await fs.readFile(file.path);
+    const blob = new Blob([new Uint8Array(fileBuffer)], { type: file.mimetype });
+    formData.append('file', blob, file.originalname);
+    formData.append('messaging_product', 'whatsapp');
+
+    const uploadRes = await fetch(
+      `${META_API_BASE}/${META_API_VERSION}/${config.phoneNumberId}/media`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.token}` },
+        body: formData,
+      },
+    );
+    await fs.unlink(file.path).catch(() => null);
+
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      throw new Error(`Error subiendo media a Meta: ${uploadRes.status} ${err}`);
+    }
+    const { id: mediaId } = await uploadRes.json() as { id: string };
+
+    // 2. Detectar tipo de mensaje
+    const mime = file.mimetype;
+    let tipo: string;
+    if (mime.startsWith('image/')) tipo = 'image';
+    else if (mime.startsWith('audio/')) tipo = 'audio';
+    else if (mime.startsWith('video/')) tipo = 'video';
+    else tipo = 'document';
+
+    // 3. Enviar el mensaje con el media_id
+    const msgBody: any = {
+      messaging_product: 'whatsapp',
+      to: conv.numero,
+      type: tipo,
+      [tipo]: { id: mediaId, ...(caption ? { caption } : {}) },
+    };
+
+    const sendRes = await fetch(
+      `${META_API_BASE}/${META_API_VERSION}/${config.phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(msgBody),
+      },
+    );
+
+    if (!sendRes.ok) {
+      const err = await sendRes.text();
+      throw new Error(`Error enviando media: ${sendRes.status} ${err}`);
+    }
+
+    const sendJson = await sendRes.json() as { messages: { id: string }[] };
+    const waMessageId = sendJson.messages?.[0]?.id ?? null;
+
+    const mensaje = await this.prisma.waApiMensaje.create({
+      data: {
+        conversacionId,
+        waMessageId,
+        fromMe: true,
+        tipo,
+        contenido: { mediaUrl: mediaId, caption: caption ?? null, mimeType: mime },
+        timestamp: new Date(),
+      },
+    });
+
+    await this.prisma.waApiConversacion.update({
+      where: { id: conversacionId },
+      data: { ultimoMensajeAt: new Date() },
+    });
+
+    this.socketGateway.emitirEvento(
+      'wapi:nuevo_mensaje',
+      { conversacion: { id: conversacionId, numero: conv.numero }, mensaje },
+      'inbox_wapi',
+    );
+
+    return mensaje;
+  }
+}

@@ -22,6 +22,11 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             client.join(sala);
             this.logger.log(`🧩 Cliente ${client.id} se unió a sala ${sala}`);
         });
+
+        client.on('join_inbox', () => {
+            client.join('inbox_wapi');
+            this.logger.log(`📬 Cliente ${client.id} se unió al inbox WA`);
+        });
     }
 
     handleDisconnect(client: Socket) {

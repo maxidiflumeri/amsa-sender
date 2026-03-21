@@ -14,6 +14,8 @@ import MailIcon from '@mui/icons-material/Mail';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import ShieldIcon from '@mui/icons-material/Shield';
+import ApiIcon from '@mui/icons-material/Api';
+import InboxIcon from '@mui/icons-material/Inbox';
 import api from '../../api/axios';
 
 const TODOS_LOS_PERMISOS = [
@@ -49,6 +51,22 @@ const TODOS_LOS_PERMISOS = [
         seccion: 'Admin',
         items: [
             { key: 'admin.usuarios', label: 'Usuarios y roles' },
+        ],
+    },
+    {
+        seccion: 'WhatsApp API',
+        items: [
+            { key: 'wapi.config', label: 'Configuración' },
+            { key: 'wapi.templates', label: 'Templates' },
+            { key: 'wapi.campanias', label: 'Campañas' },
+            { key: 'wapi.bajas', label: 'Bajas' },
+        ],
+    },
+    {
+        seccion: 'Inbox WA',
+        items: [
+            { key: 'wapi.inbox', label: 'Ver conversaciones propias' },
+            { key: 'wapi.inbox.admin', label: 'Admin inbox (todas + reasignar)' },
         ],
     },
 ];
@@ -147,6 +165,22 @@ const SECCION_META = [
         color: '#c2185b',
         bg: '#FCE4EC',
         permisos: ['admin.usuarios'],
+    },
+    {
+        key: 'wapi',
+        label: 'WA API',
+        icon: <ApiIcon sx={{ fontSize: 14 }} />,
+        color: '#00695C',
+        bg: '#E0F2F1',
+        permisos: ['wapi.config', 'wapi.templates', 'wapi.campanias', 'wapi.bajas'],
+    },
+    {
+        key: 'inbox',
+        label: 'Inbox WA',
+        icon: <InboxIcon sx={{ fontSize: 14 }} />,
+        color: '#E65100',
+        bg: '#FFF3E0',
+        permisos: ['wapi.inbox', 'wapi.inbox.admin'],
     },
 ];
 
