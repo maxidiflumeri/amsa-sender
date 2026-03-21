@@ -3,7 +3,7 @@ import {
     Box, Typography, Paper, TextField, IconButton, Chip, Avatar, List,
     ListItemAvatar, ListItemText, ListItemButton, Divider, CircularProgress,
     Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button,
-    Select, MenuItem, FormControl, InputLabel, Alert, Collapse,
+    Select, MenuItem, FormControl, InputLabel, Alert, Collapse, Autocomplete,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -635,12 +635,15 @@ export default function WapiInbox() {
             <Dialog open={dialogAsignar} onClose={() => setDialogAsignar(false)} maxWidth="xs" fullWidth>
                 <DialogTitle>Asignar conversación</DialogTitle>
                 <DialogContent>
-                    <FormControl fullWidth sx={{ mt: 1 }}>
-                        <InputLabel>Asesor</InputLabel>
-                        <Select value={asignarUserId} onChange={(e) => setAsignarUserId(e.target.value)} label="Asesor">
-                            {usuarios.map(u => <MenuItem key={u.id} value={u.id}>{u.nombre} ({u.email})</MenuItem>)}
-                        </Select>
-                    </FormControl>
+                    <Autocomplete
+                        sx={{ mt: 1 }}
+                        options={usuarios}
+                        getOptionLabel={u => `${u.nombre} (${u.email})`}
+                        value={usuarios.find(u => u.id === asignarUserId) ?? null}
+                        onChange={(_, u) => setAsignarUserId(u?.id ?? '')}
+                        renderInput={(params) => <TextField {...params} label="Asesor" placeholder="Buscar..." />}
+                        noOptionsText="Sin resultados"
+                    />
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setDialogAsignar(false)}>Cancelar</Button>

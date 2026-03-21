@@ -4,7 +4,9 @@ import {
     TableHead, TableRow, IconButton, Chip, Button, Dialog, DialogTitle,
     DialogContent, DialogActions, TextField, Select, MenuItem, FormControl,
     InputLabel, Tooltip, CircularProgress, Alert, Switch, FormControlLabel,
+    TablePagination, InputAdornment,
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -28,6 +30,10 @@ export default function GestionUsuarios() {
     const [editarForm, setEditarForm] = useState({ nombre: '', rolId: '', activo: true });
     const [editarError, setEditarError] = useState('');
     const [editarLoading, setEditarLoading] = useState(false);
+
+    const [busqueda, setBusqueda] = useState('');
+    const [page, setPage] = useState(0);
+    const ROWS_PER_PAGE = 10;
 
     // Dialog eliminar
     const [eliminarOpen, setEliminarOpen] = useState(false);
@@ -128,6 +134,16 @@ export default function GestionUsuarios() {
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
             <TableContainer component={Paper}>
+                <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <TextField
+                        size="small"
+                        placeholder="Buscar por nombre o email..."
+                        value={busqueda}
+                        onChange={(e) => { setBusqueda(e.target.value); setPage(0); }}
+                        InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+                        sx={{ width: 300 }}
+                    />
+                </Box>
                 <Table>
                     <TableHead>
                         <TableRow>
@@ -139,41 +155,62 @@ export default function GestionUsuarios() {
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {usuarios.map((u) => (
-                            <TableRow key={u.id}>
-                                <TableCell>{u.nombre || '—'}</TableCell>
-                                <TableCell>{u.email}</TableCell>
-                                <TableCell>
-                                    <Chip label={u.rolObj?.nombre || u.rol || '—'} size="small" />
-                                </TableCell>
-                                <TableCell>
-                                    <Chip
-                                        label={u.activo ? 'Activo' : 'Suspendido'}
-                                        color={u.activo ? 'success' : 'default'}
-                                        size="small"
-                                    />
-                                </TableCell>
-                                <TableCell align="right">
-                                    <Tooltip title="Editar">
-                                        <IconButton size="small" onClick={() => abrirEditar(u)}>
-                                            <EditIcon fontSize="small" />
-                                        </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="Eliminar">
-                                        <IconButton size="small" color="error" onClick={() => abrirEliminar(u)}>
-                                            <DeleteIcon fontSize="small" />
-                                        </IconButton>
-                                    </Tooltip>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                        {usuarios.length === 0 && (
-                            <TableRow>
-                                <TableCell colSpan={5} align="center">No hay usuarios</TableCell>
-                            </TableRow>
-                        )}
+                        {(() => {
+                            const filtrados = usuarios.filter(u =>
+                                u.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+                                u.email?.toLowerCase().includes(busqueda.toLowerCase())
+                            );
+                            const pagina = filtrados.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);
+                            if (filtrados.length === 0) return (
+                                <TableRow>
+                                    <TableCell colSpan={5} align="center">
+                                        {busqueda ? 'Sin resultados para la búsqueda' : 'No hay usuarios'}
+                                    </TableCell>
+                                </TableRow>
+                            );
+                            return pagina.map((u) => (
+                                <TableRow key={u.id} hover>
+                                    <TableCell>{u.nombre || '—'}</TableCell>
+                                    <TableCell>{u.email}</TableCell>
+                                    <TableCell>
+                                        <Chip label={u.rolObj?.nombre || u.rol || '—'} size="small" />
+                                    </TableCell>
+                                    <TableCell>
+                                        <Chip
+                                            label={u.activo ? 'Activo' : 'Suspendido'}
+                                            color={u.activo ? 'success' : 'default'}
+                                            size="small"
+                                        />
+                                    </TableCell>
+                                    <TableCell align="right">
+                                        <Tooltip title="Editar">
+                                            <IconButton size="small" onClick={() => abrirEditar(u)}>
+                                                <EditIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                        <Tooltip title="Eliminar">
+                                            <IconButton size="small" color="error" onClick={() => abrirEliminar(u)}>
+                                                <DeleteIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </TableCell>
+                                </TableRow>
+                            ));
+                        })()}
                     </TableBody>
                 </Table>
+                <TablePagination
+                    component="div"
+                    count={usuarios.filter(u =>
+                        u.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+                        u.email?.toLowerCase().includes(busqueda.toLowerCase())
+                    ).length}
+                    page={page}
+                    onPageChange={(_, p) => setPage(p)}
+                    rowsPerPage={ROWS_PER_PAGE}
+                    rowsPerPageOptions={[ROWS_PER_PAGE]}
+                    labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+                />
             </TableContainer>
 
             {/* Dialog Crear */}
