@@ -34,13 +34,18 @@ export class WapiAnaliticaController {
     return this.analiticaService.conversacionesCampania(+id);
   }
 
+  private parseFechas(desde?: string, hasta?: string) {
+    const desdeDate = desde ? new Date(`${desde}T00:00:00.000`) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const hastaDate = hasta ? new Date(`${hasta}T23:59:59.999`) : new Date();
+    return { desdeDate, hastaDate };
+  }
+
   @Get('agentes')
   metricasAgentes(
     @Query('desde') desde: string,
     @Query('hasta') hasta: string,
   ) {
-    const desdeDate = desde ? new Date(desde) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const hastaDate = hasta ? new Date(hasta) : new Date();
+    const { desdeDate, hastaDate } = this.parseFechas(desde, hasta);
     return this.analiticaService.metricasAgentes(desdeDate, hastaDate);
   }
 
@@ -50,8 +55,7 @@ export class WapiAnaliticaController {
     @Query('desde') desde: string,
     @Query('hasta') hasta: string,
   ) {
-    const desdeDate = desde ? new Date(desde) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const hastaDate = hasta ? new Date(hasta) : new Date();
+    const { desdeDate, hastaDate } = this.parseFechas(desde, hasta);
     return this.analiticaService.detalleAgente(+userId, desdeDate, hastaDate);
   }
 }
