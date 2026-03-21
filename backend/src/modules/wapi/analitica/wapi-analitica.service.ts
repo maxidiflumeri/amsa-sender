@@ -298,16 +298,16 @@ export class WapiAnaliticaService {
       include: {
         conversaciones: {
           where: {
-            creadoAt: { gte: desde, lte: hasta },
+            ultimoMensajeAt: { gte: desde, lte: hasta },
           },
         },
       },
     });
 
-    // Conversaciones globales en el período
+    // Conversaciones globales con actividad en el período
     const todasConvs = await this.prisma.waApiConversacion.findMany({
-      where: { creadoAt: { gte: desde, lte: hasta } },
-      select: { id: true, estado: true, primeraRespuestaAt: true, resolvedAt: true, creadoAt: true },
+      where: { ultimoMensajeAt: { gte: desde, lte: hasta } },
+      select: { id: true, estado: true, primeraRespuestaAt: true, resolvedAt: true, ultimoMensajeAt: true },
     });
 
     const totalConvs = todasConvs.length;
@@ -315,11 +315,11 @@ export class WapiAnaliticaService {
 
     const tiemposPrimResp = todasConvs
       .filter(c => c.primeraRespuestaAt)
-      .map(c => new Date(c.primeraRespuestaAt!).getTime() - new Date(c.creadoAt).getTime());
+      .map(c => new Date(c.primeraRespuestaAt!).getTime() - new Date(c.ultimoMensajeAt).getTime());
 
     const tiemposResolucion = todasConvs
       .filter(c => c.resolvedAt)
-      .map(c => new Date(c.resolvedAt!).getTime() - new Date(c.creadoAt).getTime());
+      .map(c => new Date(c.resolvedAt!).getTime() - new Date(c.ultimoMensajeAt).getTime());
 
     const avgPrimeraRespuestaMs = tiemposPrimResp.length > 0
       ? Math.round(tiemposPrimResp.reduce((a, b) => a + b, 0) / tiemposPrimResp.length)
@@ -405,7 +405,7 @@ export class WapiAnaliticaService {
     }
 
     todasConvs.forEach(c => {
-      const key = new Date(c.creadoAt).toISOString().slice(0, 10);
+      const key = new Date(c.ultimoMensajeAt).toISOString().slice(0, 10);
       if (evolucionMap[key]) {
         evolucionMap[key].convs++;
         if (c.estado === 'resuelta') evolucionMap[key].resueltas++;
@@ -436,7 +436,7 @@ export class WapiAnaliticaService {
     const conversaciones = await this.prisma.waApiConversacion.findMany({
       where: {
         asignadoAId: userId,
-        creadoAt: { gte: desde, lte: hasta },
+        ultimoMensajeAt: { gte: desde, lte: hasta },
       },
       orderBy: { creadoAt: 'desc' },
     });
