@@ -91,17 +91,17 @@ export default function WapiBajas() {
     };
 
     return (
-        <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+        <Box sx={{ py: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5, mb: 3 }}>
                 <BlockIcon color="error" />
-                <Typography variant="h5" fontWeight={700}>Lista de Bajas — WhatsApp API</Typography>
+                <Typography variant="h5" fontWeight={700} sx={{ fontSize: { xs: '1.1rem', sm: '1.5rem' } }}>Lista de Bajas — WhatsApp API</Typography>
             </Box>
 
             {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
             {success && <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>{success}</Alert>}
 
             {/* Barra de búsqueda + agregar */}
-            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
                 <TextField
                     size="small"
                     placeholder="Buscar por número..."
@@ -111,7 +111,7 @@ export default function WapiBajas() {
                     InputProps={{
                         startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
                     }}
-                    sx={{ width: 280 }}
+                    sx={{ flex: '1 1 200px', maxWidth: 340 }}
                 />
                 <Button variant="outlined" onClick={buscar}>Buscar</Button>
                 <Box sx={{ flex: 1 }} />
@@ -121,15 +121,15 @@ export default function WapiBajas() {
             </Box>
 
             {/* Tabla */}
-            <TableContainer component={Paper} elevation={2}>
-                <Table size="small">
+            <TableContainer component={Paper} elevation={2} sx={{ overflowX: 'auto' }}>
+                <Table size="small" sx={{ minWidth: { xs: 400, sm: 600 } }}>
                     <TableHead>
                         <TableRow>
                             <TableCell>Número</TableCell>
-                            <TableCell>Campaña</TableCell>
-                            <TableCell>Template</TableCell>
-                            <TableCell>Payload botón</TableCell>
-                            <TableCell>Confirmación</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Campaña</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Template</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Payload botón</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Confirmación</TableCell>
                             <TableCell>Fecha</TableCell>
                             <TableCell align="center">Acciones</TableCell>
                         </TableRow>
@@ -150,15 +150,15 @@ export default function WapiBajas() {
                         ) : rows.map((row) => (
                             <TableRow key={row.id} hover>
                                 <TableCell sx={{ fontWeight: 600 }}>{row.numero}</TableCell>
-                                <TableCell>{row.campañaNombre ?? '-'}</TableCell>
-                                <TableCell>{row.templateNombre ?? '-'}</TableCell>
-                                <TableCell>
+                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{row.campañaNombre ?? '-'}</TableCell>
+                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{row.templateNombre ?? '-'}</TableCell>
+                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                                     {row.buttonPayload
                                         ? <Chip label={row.buttonPayload} size="small" variant="outlined" />
                                         : <Typography variant="caption" color="text.secondary">Manual</Typography>
                                     }
                                 </TableCell>
-                                <TableCell>
+                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                                     <Chip
                                         label={row.confirmacionEnviada ? 'Enviada' : 'No'}
                                         color={row.confirmacionEnviada ? 'success' : 'default'}

@@ -447,7 +447,7 @@ export default function GestionRoles() {
 
     return (
         <Box py={3}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Box display="flex" justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} flexDirection={{ xs: 'column', sm: 'row' }} gap={1.5} mb={3}>
                 <Typography variant="h5" fontWeight="bold">Gestión de roles</Typography>
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCrearError(''); setCrearOpen(true); }}>
                     Nuevo rol

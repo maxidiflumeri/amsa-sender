@@ -201,10 +201,11 @@ export default function WapiReportes() {
                         <Button
                             variant="contained"
                             size="large"
+                            fullWidth
                             startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <DownloadIcon />}
                             onClick={descargar}
                             disabled={loading || !tipoKey}
-                            sx={{ whiteSpace: 'nowrap' }}
+                            sx={{ whiteSpace: 'nowrap', width: { sm: 'auto' } }}
                         >
                             {loading ? 'Generando...' : 'Generar y descargar'}
                         </Button>

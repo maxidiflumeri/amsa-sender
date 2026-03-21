@@ -190,15 +190,16 @@ export default function MetricasAgentes() {
                         {/* Conversaciones del asesor */}
                         <Paper variant="outlined" sx={{ p: 2 }}>
                             <Typography variant="subtitle2" fontWeight="bold" mb={2}>Conversaciones en el período</Typography>
-                            <Table size="small">
+                            <Box sx={{ overflowX: 'auto' }}>
+                            <Table size="small" sx={{ minWidth: { xs: 300, sm: 520 } }}>
                                 <TableHead>
                                     <TableRow>
                                         <TableCell>Número</TableCell>
-                                        <TableCell>Nombre</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Nombre</TableCell>
                                         <TableCell>Estado</TableCell>
-                                        <TableCell>Creada</TableCell>
-                                        <TableCell>1ra resp.</TableCell>
-                                        <TableCell>Resuelta</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Creada</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>1ra resp.</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Resuelta</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -208,7 +209,7 @@ export default function MetricasAgentes() {
                                     {detalle.conversaciones.map(c => (
                                         <TableRow key={c.id} hover>
                                             <TableCell>{c.numero}</TableCell>
-                                            <TableCell>{c.nombre ?? '—'}</TableCell>
+                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{c.nombre ?? '—'}</TableCell>
                                             <TableCell>
                                                 <Chip
                                                     label={c.estado.replace('_', ' ')}
@@ -216,13 +217,14 @@ export default function MetricasAgentes() {
                                                     size="small"
                                                 />
                                             </TableCell>
-                                            <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatFecha(c.creadoAt)}</TableCell>
-                                            <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatFecha(c.primeraRespuestaAt)}</TableCell>
-                                            <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatFecha(c.resolvedAt)}</TableCell>
+                                            <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', sm: 'table-cell' } }}>{formatFecha(c.creadoAt)}</TableCell>
+                                            <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.primeraRespuestaAt)}</TableCell>
+                                            <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.resolvedAt)}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
                             </Table>
+                            </Box>
                         </Paper>
                     </Box>
                 )}
@@ -233,7 +235,7 @@ export default function MetricasAgentes() {
     return (
         <Box>
             {/* Selector período */}
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} mb={3}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} mb={3} flexWrap="wrap">
                 <ButtonGroup size="small" variant="outlined">
                     {[{ k: '1d', l: 'Hoy' }, { k: '7d', l: '7 días' }, { k: '30d', l: '30 días' }].map(({ k, l }) => (
                         <Button key={k} variant={periodo === k ? 'contained' : 'outlined'} onClick={() => setPeriodo(k)}>
@@ -241,12 +243,12 @@ export default function MetricasAgentes() {
                         </Button>
                     ))}
                 </ButtonGroup>
-                <Stack direction="row" spacing={1} alignItems="center">
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                     <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
-                        style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc' }} />
+                        style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: 14, minWidth: 0, width: '100%', maxWidth: 140 }} />
                     <Typography variant="body2">—</Typography>
                     <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
-                        style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc' }} />
+                        style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: 14, minWidth: 0, width: '100%', maxWidth: 140 }} />
                     <Button size="small" variant="outlined" onClick={aplicarRangoCustom}>Aplicar</Button>
                 </Stack>
             </Stack>
@@ -323,44 +325,48 @@ export default function MetricasAgentes() {
                         const maxCount = Math.max(1, ...horasData.map(h => h.count));
 
                         return (
-                            <Paper variant="outlined" sx={{ p: 2, mb: 3, overflowX: 'auto' }}>
+                            <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
                                 <Typography variant="subtitle2" fontWeight="bold" mb={2}>Actividad por hora (agregada)</Typography>
-                                <Box>
-                                    {/* Heatmap simplificado: agentes en filas, horas en columnas */}
-                                    <Box display="flex" alignItems="center" mb={0.5}>
-                                        <Box width={90} />
-                                        {Array.from({ length: 24 }, (_, h) => (
-                                            <Box key={h} width={22} textAlign="center">
-                                                <Typography variant="caption" sx={{ fontSize: 9 }}>{h}</Typography>
-                                            </Box>
-                                        ))}
-                                    </Box>
-                                    {datos.agentes.map(agente => (
-                                        <Box key={agente.id} display="flex" alignItems="center" mb={0.25}>
-                                            <Box width={90}>
-                                                <Typography variant="caption" noWrap sx={{ fontSize: 10 }}>{agente.nombre}</Typography>
-                                            </Box>
-                                            {(agente.actividadPorHora || Array.from({ length: 24 }, (_, h) => ({ hora: h, count: 0 }))).map(h => (
-                                                <Tooltip key={h.hora} title={`${h.hora}:00 — ${h.count} msgs`}>
-                                                    <Box
-                                                        width={20} height={16}
-                                                        mx={0.1}
-                                                        sx={{
-                                                            backgroundColor: `rgba(25, 118, 210, ${h.count / maxCount})`,
-                                                            borderRadius: 0.5,
-                                                            border: '1px solid rgba(0,0,0,0.08)',
-                                                        }}
-                                                    />
-                                                </Tooltip>
+                                {/* Wrapper con scroll horizontal para el heatmap en mobile */}
+                                <Box sx={{ overflowX: 'auto', pb: 1 }}>
+                                    <Box sx={{ minWidth: 620 }}>
+                                        {/* Cabecera de horas */}
+                                        <Box display="flex" alignItems="center" mb={0.5}>
+                                            <Box width={90} flexShrink={0} />
+                                            {Array.from({ length: 24 }, (_, h) => (
+                                                <Box key={h} width={22} textAlign="center" flexShrink={0}>
+                                                    <Typography variant="caption" sx={{ fontSize: 9 }}>{h}</Typography>
+                                                </Box>
                                             ))}
                                         </Box>
-                                    ))}
-                                    <Box display="flex" alignItems="center" mt={1} gap={1}>
-                                        <Typography variant="caption">Menos</Typography>
-                                        {[0.1, 0.3, 0.5, 0.7, 1].map(o => (
-                                            <Box key={o} width={16} height={16} sx={{ backgroundColor: `rgba(25, 118, 210, ${o})`, borderRadius: 0.5 }} />
+                                        {datos.agentes.map(agente => (
+                                            <Box key={agente.id} display="flex" alignItems="center" mb={0.25}>
+                                                <Box width={90} flexShrink={0}>
+                                                    <Typography variant="caption" noWrap sx={{ fontSize: 10 }}>{agente.nombre}</Typography>
+                                                </Box>
+                                                {(agente.actividadPorHora || Array.from({ length: 24 }, (_, h) => ({ hora: h, count: 0 }))).map(h => (
+                                                    <Tooltip key={h.hora} title={`${h.hora}:00 — ${h.count} msgs`}>
+                                                        <Box
+                                                            width={20} height={16}
+                                                            mx={0.1}
+                                                            flexShrink={0}
+                                                            sx={{
+                                                                backgroundColor: `rgba(25, 118, 210, ${h.count / maxCount})`,
+                                                                borderRadius: 0.5,
+                                                                border: '1px solid rgba(0,0,0,0.08)',
+                                                            }}
+                                                        />
+                                                    </Tooltip>
+                                                ))}
+                                            </Box>
                                         ))}
-                                        <Typography variant="caption">Más</Typography>
+                                        <Box display="flex" alignItems="center" mt={1} gap={1}>
+                                            <Typography variant="caption">Menos</Typography>
+                                            {[0.1, 0.3, 0.5, 0.7, 1].map(o => (
+                                                <Box key={o} width={16} height={16} sx={{ backgroundColor: `rgba(25, 118, 210, ${o})`, borderRadius: 0.5 }} />
+                                            ))}
+                                            <Typography variant="caption">Más</Typography>
+                                        </Box>
                                     </Box>
                                 </Box>
                             </Paper>
@@ -370,16 +376,17 @@ export default function MetricasAgentes() {
                     {/* Tabla ranking */}
                     <Paper variant="outlined" sx={{ p: 2 }}>
                         <Typography variant="subtitle2" fontWeight="bold" mb={2}>Ranking de agentes</Typography>
-                        <Table size="small">
+                        <Box sx={{ overflowX: 'auto' }}>
+                        <Table size="small" sx={{ minWidth: { xs: 360, sm: 600 } }}>
                             <TableHead>
                                 <TableRow>
                                     <TableCell>Agente</TableCell>
                                     <TableCell align="right">Asignadas</TableCell>
                                     <TableCell align="right">Resueltas (%)</TableCell>
-                                    <TableCell align="right">Activas</TableCell>
-                                    <TableCell align="right">Avg 1ra resp.</TableCell>
-                                    <TableCell align="right">Avg resolución</TableCell>
-                                    <TableCell align="right">Mensajes</TableCell>
+                                    <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Activas</TableCell>
+                                    <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>Avg 1ra resp.</TableCell>
+                                    <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>Avg resolución</TableCell>
+                                    <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Mensajes</TableCell>
                                     <TableCell></TableCell>
                                 </TableRow>
                             </TableHead>
@@ -399,10 +406,10 @@ export default function MetricasAgentes() {
                                                 </Typography>
                                             )}
                                         </TableCell>
-                                        <TableCell align="right">{a.activas}</TableCell>
-                                        <TableCell align="right">{formatMs(a.avgPrimeraRespuestaMs)}</TableCell>
-                                        <TableCell align="right">{formatMs(a.avgResolucionMs)}</TableCell>
-                                        <TableCell align="right">{a.mensajesEnviados}</TableCell>
+                                        <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{a.activas}</TableCell>
+                                        <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>{formatMs(a.avgPrimeraRespuestaMs)}</TableCell>
+                                        <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>{formatMs(a.avgResolucionMs)}</TableCell>
+                                        <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{a.mensajesEnviados}</TableCell>
                                         <TableCell>
                                             <Tooltip title="Ver detalle">
                                                 <IconButton size="small" onClick={() => verDetalle(a)}>
@@ -414,6 +421,7 @@ export default function MetricasAgentes() {
                                 ))}
                             </TableBody>
                         </Table>
+                        </Box>
                     </Paper>
                 </Box>
             )}

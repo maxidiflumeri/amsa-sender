@@ -783,13 +783,12 @@ export default function Layout({ children, mode, toggleTheme }) {
                 sx={{
                     flexGrow: 1,
                     mt: '64px',
-                    px: { xs: 2, sm: 3 },
                     width: '100%',
                     display: 'flex',
                     justifyContent: 'center',
                 }}
             >
-                <Box sx={{ flex: 1, px: { xs: 2, md: 3, lg: 4 }, width: '100%', transition: 'width 0.3s ease' }}>
+                <Box sx={{ flex: 1, px: { xs: 1.5, sm: 2, md: 3, lg: 4 }, width: '100%', transition: 'width 0.3s ease' }}>
                     {children}
                 </Box>
             </Box>

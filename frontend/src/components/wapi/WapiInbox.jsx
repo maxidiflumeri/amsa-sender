@@ -11,6 +11,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LockClockIcon from '@mui/icons-material/LockClock';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DoneIcon from '@mui/icons-material/Done';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -21,6 +22,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import { useMediaQuery } from '@mui/material';
 
 const formatHora = (ts) => {
     if (!ts) return '';
@@ -96,6 +98,7 @@ export default function WapiInbox() {
     const { permisos, user } = useAuth();
     const esAdmin = permisos.includes('wapi.inbox.admin');
     const myUserId = user?.sub;
+    const isMobile = useMediaQuery('(max-width:768px)');
 
     const [convs, setConvs] = useState([]);
     const [convActiva, setConvActiva] = useState(null);
@@ -390,9 +393,24 @@ export default function WapiInbox() {
 
     // ── Layout ─────────────────────────────────────────────────────────────
     return (
-        <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden', bgcolor: 'background.default' }}>
-            {/* Panel izquierdo */}
-            <Paper elevation={2} sx={{ width: 320, minWidth: 260, display: 'flex', flexDirection: 'column', borderRadius: 0, borderRight: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{
+            display: 'flex',
+            height: 'calc(100vh - 64px)',
+            overflow: 'hidden',
+            bgcolor: 'background.default',
+            // Salir del padding del contenedor para ocupar el ancho completo en mobile
+            mx: { xs: -1.5, sm: -2, md: 0 },
+        }}>
+            {/* Panel izquierdo — en mobile se oculta cuando hay conv activa */}
+            <Paper elevation={2} sx={{
+                width: isMobile ? '100%' : 320,
+                minWidth: isMobile ? 'unset' : 260,
+                display: (!isMobile || !convActiva) ? 'flex' : 'none',
+                flexDirection: 'column',
+                borderRadius: 0,
+                borderRight: '1px solid',
+                borderColor: 'divider',
+            }}>
                 <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid', borderColor: 'divider' }}>
                     <Typography variant="h6" fontWeight={700}>Inbox WA</Typography>
                     <IconButton size="small" onClick={cargarConvs}><RefreshIcon /></IconButton>
@@ -449,18 +467,26 @@ export default function WapiInbox() {
                 </Box>
             </Paper>
 
-            {/* Panel derecho — chat */}
+            {/* Panel derecho — chat (en mobile ocupa todo el ancho cuando hay conv activa) */}
+            {(!isMobile || convActiva) && (
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {convActiva ? (
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                    {/* Header */}
-                    <Paper elevation={1} square sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-                        <Avatar sx={{ bgcolor: convActiva.estado === 'resuelta' ? '#757575' : convActiva.estado === 'sin_asignar' ? '#E65100' : '#00695C' }}>
+                <>
+                    {/* Header del chat */}
+                    <Paper elevation={1} square sx={{ px: { xs: 1, sm: 2 }, py: 1.5, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        {/* Botón volver — solo mobile */}
+                        {isMobile && (
+                            <IconButton edge="start" onClick={() => setConvActiva(null)} size="small">
+                                <ArrowBackIcon />
+                            </IconButton>
+                        )}
+                        <Avatar sx={{ width: { xs: 34, sm: 40 }, height: { xs: 34, sm: 40 }, bgcolor: convActiva.estado === 'resuelta' ? '#757575' : convActiva.estado === 'sin_asignar' ? '#E65100' : '#00695C' }}>
                             {(convActiva.nombre ?? convActiva.numero)[0].toUpperCase()}
                         </Avatar>
-                        <Box sx={{ flex: 1 }}>
-                            <Typography fontWeight={700}>{convActiva.nombre ?? convActiva.numero}</Typography>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                                <Typography variant="caption" color="text.secondary">{convActiva.numero}</Typography>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography fontWeight={700} noWrap>{convActiva.nombre ?? convActiva.numero}</Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>{convActiva.numero}</Typography>
                                 <Chip
                                     label={{ sin_asignar: 'Sin asignar', asignada: 'Asignada', resuelta: 'Resuelta' }[convActiva.estado]}
                                     color={{ sin_asignar: 'warning', asignada: 'info', resuelta: 'default' }[convActiva.estado]}
@@ -488,12 +514,12 @@ export default function WapiInbox() {
                         )}
                         {esAdmin && (
                             <Tooltip title="Asignar a asesor">
-                                <IconButton onClick={abrirDialogAsignar}><PersonAddIcon /></IconButton>
+                                <IconButton size="small" onClick={abrirDialogAsignar}><PersonAddIcon /></IconButton>
                             </Tooltip>
                         )}
                         {convActiva.estado === 'asignada' && (
                             <Tooltip title="Marcar como resuelta">
-                                <IconButton color="success" onClick={resolverConv}><CheckCircleIcon /></IconButton>
+                                <IconButton size="small" color="success" onClick={resolverConv}><CheckCircleIcon /></IconButton>
                             </Tooltip>
                         )}
                     </Paper>
@@ -623,12 +649,14 @@ export default function WapiInbox() {
                             </>
                         )}
                     </Paper>
-                </Box>
+                </>
             ) : (
                 <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2 }}>
                     <AccountCircleIcon sx={{ fontSize: 80, opacity: 0.15 }} />
                     <Typography variant="h6" color="text.secondary">Seleccioná una conversación</Typography>
                 </Box>
+            )}
+            </Box>
             )}
 
             {/* Dialog asignar */}

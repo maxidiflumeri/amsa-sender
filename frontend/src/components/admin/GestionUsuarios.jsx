@@ -124,7 +124,7 @@ export default function GestionUsuarios() {
 
     return (
         <Box py={3}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Box display="flex" justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} flexDirection={{ xs: 'column', sm: 'row' }} gap={1.5} mb={3}>
                 <Typography variant="h5" fontWeight="bold">Gestión de usuarios</Typography>
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCrearError(''); setCrearOpen(true); }}>
                     Nuevo usuario
@@ -133,23 +133,24 @@ export default function GestionUsuarios() {
 
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-            <TableContainer component={Paper}>
+            <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
                 <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
                     <TextField
                         size="small"
+                        fullWidth
                         placeholder="Buscar por nombre o email..."
                         value={busqueda}
                         onChange={(e) => { setBusqueda(e.target.value); setPage(0); }}
                         InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-                        sx={{ width: 300 }}
+                        sx={{ maxWidth: 400 }}
                     />
                 </Box>
-                <Table>
+                <Table sx={{ minWidth: { xs: 320, sm: 500 } }}>
                     <TableHead>
                         <TableRow>
                             <TableCell>Nombre</TableCell>
-                            <TableCell>Email</TableCell>
-                            <TableCell>Rol</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Email</TableCell>
+                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Rol</TableCell>
                             <TableCell>Estado</TableCell>
                             <TableCell align="right">Acciones</TableCell>
                         </TableRow>
@@ -171,8 +172,8 @@ export default function GestionUsuarios() {
                             return pagina.map((u) => (
                                 <TableRow key={u.id} hover>
                                     <TableCell>{u.nombre || '—'}</TableCell>
-                                    <TableCell>{u.email}</TableCell>
-                                    <TableCell>
+                                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{u.email}</TableCell>
+                                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                                         <Chip label={u.rolObj?.nombre || u.rol || '—'} size="small" />
                                     </TableCell>
                                     <TableCell>

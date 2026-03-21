@@ -163,13 +163,13 @@ export default function MetricasCampania() {
                 {loadingList ? (
                     <Box display="flex" justifyContent="center" py={4}><CircularProgress /></Box>
                 ) : (
-                    <Paper variant="outlined">
-                        <Table size="small">
+                    <Paper variant="outlined" sx={{ overflowX: 'auto' }}>
+                        <Table size="small" sx={{ minWidth: { sm: 480 } }}>
                             <TableHead>
                                 <TableRow>
                                     <TableCell>Nombre</TableCell>
-                                    <TableCell>Template</TableCell>
-                                    <TableCell>Fecha envío</TableCell>
+                                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Template</TableCell>
+                                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Fecha envío</TableCell>
                                     <TableCell>Estado</TableCell>
                                     <TableCell></TableCell>
                                 </TableRow>
@@ -183,8 +183,8 @@ export default function MetricasCampania() {
                                     return (
                                         <TableRow key={c.id} hover>
                                             <TableCell>{c.nombre}</TableCell>
-                                            <TableCell>{c.template?.metaNombre ?? '—'}</TableCell>
-                                            <TableCell>{formatFecha(c.enviadoAt)}</TableCell>
+                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{c.template?.metaNombre ?? '—'}</TableCell>
+                                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.enviadoAt)}</TableCell>
                                             <TableCell>
                                                 <Chip label={chip.label} color={chip.color} size="small" />
                                             </TableCell>
@@ -223,11 +223,13 @@ export default function MetricasCampania() {
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
                             <Box flexGrow={1}>
                                 <Typography variant="h6" fontWeight="bold">{metricas.campania.nombre}</Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    Template: {metricas.campania.template?.metaNombre ?? '—'} &nbsp;|&nbsp;
-                                    Línea: {metricas.campania.config?.nombre ?? '—'} &nbsp;|&nbsp;
-                                    Envío: {formatFecha(metricas.campania.enviadoAt)}
-                                </Typography>
+                                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 0.25, sm: 1 }}>
+                                    <Typography variant="body2" color="text.secondary">Template: {metricas.campania.template?.metaNombre ?? '—'}</Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>|</Typography>
+                                    <Typography variant="body2" color="text.secondary">Línea: {metricas.campania.config?.nombre ?? '—'}</Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>|</Typography>
+                                    <Typography variant="body2" color="text.secondary">Envío: {formatFecha(metricas.campania.enviadoAt)}</Typography>
+                                </Stack>
                             </Box>
                             {(() => {
                                 const chip = ESTADO_CAMPANIA_CHIP[metricas.campania.estado] || { label: metricas.campania.estado, color: 'default' };
@@ -236,8 +238,8 @@ export default function MetricasCampania() {
                         </Stack>
                     </Paper>
 
-                    {/* KPI Cards — una sola fila que ocupa todo el ancho */}
-                    <Box display="flex" gap={2} mb={3} flexWrap="wrap">
+                    {/* KPI Cards */}
+                    <Grid container spacing={1.5} mb={3}>
                         {[
                             { label: 'Total',            value: metricas.conteos.total },
                             { label: 'Enviados',         value: metricas.conteos.enviados,         color: 'info.main',    subtitle: `${metricas.tasas.entrega}% entrega` },
@@ -248,11 +250,11 @@ export default function MetricasCampania() {
                             { label: 'Avg entrega',      value: formatMs(metricas.tiempos.avgEntregaMs) },
                             { label: 'Avg lectura',      value: formatMs(metricas.tiempos.avgLecturaMs) },
                         ].map(k => (
-                            <Box key={k.label} flex={1} minWidth={100}>
+                            <Grid item xs={6} sm={4} md={3} lg={true} key={k.label}>
                                 <KpiCard {...k} />
-                            </Box>
+                            </Grid>
                         ))}
-                    </Box>
+                    </Grid>
 
                     {/* Funnel */}
                     <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
@@ -373,17 +375,18 @@ export default function MetricasCampania() {
                         {loadingCont ? (
                             <Box display="flex" justifyContent="center" py={3}><CircularProgress size={24} /></Box>
                         ) : (
-                            <Table size="small">
+                            <Box sx={{ overflowX: 'auto' }}>
+                            <Table size="small" sx={{ minWidth: { xs: 380, sm: 640 } }}>
                                 <TableHead>
                                     <TableRow>
                                         <TableCell>Número</TableCell>
-                                        <TableCell>Nombre</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Nombre</TableCell>
                                         <TableCell>Estado</TableCell>
-                                        <TableCell>Enviado</TableCell>
-                                        <TableCell>Entregado</TableCell>
-                                        <TableCell>Leído</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Enviado</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Entregado</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Leído</TableCell>
                                         <TableCell>Resp.</TableCell>
-                                        <TableCell>Botón</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Botón</TableCell>
                                         <TableCell>Baja</TableCell>
                                     </TableRow>
                                 </TableHead>
@@ -397,15 +400,15 @@ export default function MetricasCampania() {
                                             <TableRow key={i} hover sx={{ cursor: c.conversacionId ? 'pointer' : 'default' }}
                                                 onClick={() => c.conversacionId && alert(`Conversación #${c.conversacionId} — Ver en Inbox`)}>
                                                 <TableCell>{c.numero}</TableCell>
-                                                <TableCell>{c.nombre ?? '—'}</TableCell>
+                                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{c.nombre ?? '—'}</TableCell>
                                                 <TableCell>
                                                     <Chip label={chip.label} color={chip.color} size="small" />
                                                 </TableCell>
-                                                <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatFecha(c.enviadoAt)}</TableCell>
-                                                <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatFecha(c.entregadoAt)}</TableCell>
-                                                <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatFecha(c.leidoAt)}</TableCell>
+                                                <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.enviadoAt)}</TableCell>
+                                                <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.entregadoAt)}</TableCell>
+                                                <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.leidoAt)}</TableCell>
                                                 <TableCell>{c.respondio ? '✓' : '✗'}</TableCell>
-                                                <TableCell>
+                                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                                                     {c.presionoBoton ? (
                                                         <Tooltip title={`Payload: ${c.payload ?? '?'}`}><span>✓</span></Tooltip>
                                                     ) : '—'}
@@ -416,6 +419,7 @@ export default function MetricasCampania() {
                                     })}
                                 </TableBody>
                             </Table>
+                            </Box>
                         )}
                         <TablePagination
                             component="div"
@@ -441,15 +445,16 @@ export default function MetricasCampania() {
                         {loadingConvs ? (
                             <Box display="flex" justifyContent="center" py={3}><CircularProgress size={24} /></Box>
                         ) : (
-                            <Table size="small">
+                            <Box sx={{ overflowX: 'auto' }}>
+                            <Table size="small" sx={{ minWidth: { xs: 300, sm: 520 } }}>
                                 <TableHead>
                                     <TableRow>
                                         <TableCell>Número</TableCell>
-                                        <TableCell>Nombre</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Nombre</TableCell>
                                         <TableCell>Estado</TableCell>
-                                        <TableCell>Asesor</TableCell>
-                                        <TableCell>1ra respuesta</TableCell>
-                                        <TableCell>Resuelta</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Asesor</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>1ra respuesta</TableCell>
+                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Resuelta</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -459,7 +464,7 @@ export default function MetricasCampania() {
                                     {convs.map(c => (
                                         <TableRow key={c.id} hover>
                                             <TableCell>{c.numero}</TableCell>
-                                            <TableCell>{c.nombre ?? '—'}</TableCell>
+                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{c.nombre ?? '—'}</TableCell>
                                             <TableCell>
                                                 <Chip
                                                     label={c.estado.replace('_', ' ')}
@@ -467,13 +472,14 @@ export default function MetricasCampania() {
                                                     size="small"
                                                 />
                                             </TableCell>
-                                            <TableCell>{c.asignadoA?.nombre ?? '—'}</TableCell>
-                                            <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatFecha(c.primeraRespuestaAt)}</TableCell>
-                                            <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatFecha(c.resolvedAt)}</TableCell>
+                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{c.asignadoA?.nombre ?? '—'}</TableCell>
+                                            <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.primeraRespuestaAt)}</TableCell>
+                                            <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.resolvedAt)}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
                             </Table>
+                            </Box>
                         )}
                     </Paper>
 
@@ -486,6 +492,7 @@ export default function MetricasCampania() {
                                 </Typography>
                             </AccordionSummary>
                             <AccordionDetails>
+                                <Box sx={{ overflowX: 'auto' }}>
                                 <Table size="small">
                                     <TableHead>
                                         <TableRow>
@@ -502,6 +509,7 @@ export default function MetricasCampania() {
                                         ))}
                                     </TableBody>
                                 </Table>
+                                </Box>
                             </AccordionDetails>
                         </Accordion>
                     )}
