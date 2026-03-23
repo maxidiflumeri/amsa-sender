@@ -39,6 +39,7 @@ export class WapiWebhookService {
 
     // Typing indicator
     if (changes.typing?.length) {
+      this.logger.log(`Typing event recibido: ${JSON.stringify(changes.typing)}`);
       for (const t of changes.typing) {
         this.socketGateway.emitirEvento(
           'wapi:typing',
@@ -46,6 +47,9 @@ export class WapiWebhookService {
           'inbox_wapi',
         );
       }
+    } else {
+      // Log del payload completo para detectar si Meta usa otro campo
+      this.logger.debug(`Webhook sin typing — campos: ${Object.keys(changes).join(', ')}`);
     }
   }
 
