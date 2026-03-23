@@ -365,6 +365,8 @@ model WaApiConversacion {
   ventana24hAt        DateTime?          // timestamp del último mensaje entrante (ventana vence 24h después)
   primeraRespuestaAt  DateTime?          // cuándo el asesor respondió por primera vez
   resolvedAt          DateTime?          // cuándo se marcó como resuelta
+  unreadCount         Int                @default(0) // mensajes no leídos por el agente
+  lastReadAt          DateTime?          // cuándo el agente vio la conversación por última vez
   creadoAt            DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   mensajes            WaApiMensaje[]

@@ -49,6 +49,11 @@ export class WapiInboxController {
     return this.inboxService.resolverConversacion(+id);
   }
 
+  @Post(':id/marcar-leido')
+  marcarLeido(@Param('id') id: string) {
+    return this.inboxService.marcarLeido(+id);
+  }
+
   @Post(':id/mensajes')
   enviarMensaje(@Param('id') id: string, @Body() body: { texto: string }) {
     return this.inboxService.enviarMensaje(+id, body.texto);

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    Box, Typography, Paper, TextField, IconButton, Chip, Avatar, List,
+    Box, Typography, Paper, TextField, IconButton, Chip, Avatar, List, Badge,
     ListItemAvatar, ListItemText, ListItemButton, Divider, CircularProgress,
     Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button,
     Select, MenuItem, FormControl, InputLabel, Alert, Collapse, Autocomplete,
@@ -37,7 +37,7 @@ const formatFecha = (ts) => {
     return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 };
 
-function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, badge }) {
+function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums }) {
     const [open, setOpen] = useState(defaultOpen);
     if (!convs.length) return null;
     return (
@@ -54,7 +54,10 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
             </Box>
             <Collapse in={open}>
                 <List dense disablePadding>
-                    {convs.map(conv => (
+                    {convs.map(conv => {
+                        const isTyping = typingNums?.has(conv.numero);
+                        const hasUnread = conv.unreadCount > 0;
+                        return (
                         <ListItemButton key={conv.id} selected={convActivaId === conv.id} onClick={() => onSelect(conv)} sx={{ py: 0.75 }}>
                             <ListItemAvatar sx={{ minWidth: 44 }}>
                                 <Avatar sx={{ width: 34, height: 34, fontSize: 14, bgcolor: conv.estado === 'resuelta' ? '#757575' : conv.estado === 'sin_asignar' ? '#E65100' : '#00695C' }}>
@@ -64,12 +67,25 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                             <ListItemText
                                 primary={
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <Typography variant="body2" fontWeight={600} noWrap sx={{ flex: 1, fontSize: 13 }}>
+                                        <Typography variant="body2" fontWeight={hasUnread ? 700 : 600} noWrap sx={{ flex: 1, fontSize: 13 }}>
                                             {conv.nombre ?? conv.numero}
                                         </Typography>
-                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, flexShrink: 0 }}>
-                                            {formatFecha(conv.ultimoMensajeAt)}
-                                        </Typography>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                                            <Typography variant="caption" color={hasUnread ? 'success.main' : 'text.secondary'} sx={{ fontSize: 10 }}>
+                                                {formatFecha(conv.ultimoMensajeAt)}
+                                            </Typography>
+                                            {hasUnread && (
+                                                <Box sx={{
+                                                    minWidth: 18, height: 18, borderRadius: '50%',
+                                                    bgcolor: 'success.main', color: 'white',
+                                                    fontSize: 10, fontWeight: 700,
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    px: conv.unreadCount > 9 ? 0.5 : 0,
+                                                }}>
+                                                    {conv.unreadCount > 99 ? '99+' : conv.unreadCount}
+                                                </Box>
+                                            )}
+                                        </Box>
                                     </Box>
                                 }
                                 secondary={
@@ -79,14 +95,21 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                                                 👤 {conv.asignadoA.nombre}
                                             </Typography>
                                         )}
-                                        <Typography component="span" variant="caption" noWrap sx={{ fontSize: 11, color: 'text.secondary' }}>
-                                            {conv.mensajes?.[0] && conv.mensajes[0].tipo !== 'sistema' ? (conv.mensajes[0].contenido?.text ?? `[${conv.mensajes[0].tipo}]`) : ''}
-                                        </Typography>
+                                        {isTyping ? (
+                                            <Typography component="span" variant="caption" noWrap sx={{ fontSize: 11, color: 'success.main', fontStyle: 'italic' }}>
+                                                Escribiendo...
+                                            </Typography>
+                                        ) : (
+                                            <Typography component="span" variant="caption" noWrap sx={{ fontSize: 11, color: 'text.secondary', fontWeight: hasUnread ? 600 : 400 }}>
+                                                {conv.mensajes?.[0] && conv.mensajes[0].tipo !== 'sistema' ? (conv.mensajes[0].contenido?.text ?? `[${conv.mensajes[0].tipo}]`) : ''}
+                                            </Typography>
+                                        )}
                                     </Box>
                                 }
                             />
                         </ListItemButton>
-                    ))}
+                        );
+                    })}
                 </List>
             </Collapse>
             <Divider />
@@ -117,10 +140,13 @@ export default function WapiInbox() {
     const [asignarUserId, setAsignarUserId] = useState('');
     const [asignando, setAsignando] = useState(false);
 
+    const [typingNums, setTypingNums] = useState(new Set());
+
     const mensajesEndRef = useRef(null);
     const socketRef = useRef(null);
     const convActivaRef = useRef(null);
     const mostrarNotificacionRef = useRef(null);
+    const typingTimers = useRef({});
 
     // Mantener refs actualizadas para handlers de socket
     useEffect(() => { convActivaRef.current = convActiva; }, [convActiva]);
@@ -220,7 +246,18 @@ export default function WapiInbox() {
             setMessageStatuses(prev => ({ ...prev, [waMessageId]: status }));
         });
 
-        return () => socket.disconnect();
+        socket.on('wapi:typing', ({ numero }) => {
+            setTypingNums(prev => new Set([...prev, numero]));
+            clearTimeout(typingTimers.current[numero]);
+            typingTimers.current[numero] = setTimeout(() => {
+                setTypingNums(prev => { const s = new Set(prev); s.delete(numero); return s; });
+            }, 5000);
+        });
+
+        return () => {
+            socket.disconnect();
+            Object.values(typingTimers.current).forEach(clearTimeout);
+        };
     }, []);
 
     useEffect(() => {
@@ -237,6 +274,9 @@ export default function WapiInbox() {
             const { data } = await api.get(`/wapi/inbox/${conv.id}`);
             setConvActiva(data);
             setMensajes(data.mensajes ?? []);
+            // Marcar como leído y resetear badge
+            api.post(`/wapi/inbox/${conv.id}/marcar-leido`).catch(() => {});
+            setConvs(prev => prev.map(c => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
         } catch {
             setError('Error cargando mensajes');
         } finally {
@@ -430,6 +470,7 @@ export default function WapiInbox() {
                                 onSelect={abrirConv}
                                 color="primary.main"
                                 defaultOpen={true}
+                                typingNums={typingNums}
                             />
                             <SeccionLista
                                 titulo="Sin asignar"
@@ -438,6 +479,7 @@ export default function WapiInbox() {
                                 onSelect={abrirConv}
                                 color="warning.main"
                                 defaultOpen={true}
+                                typingNums={typingNums}
                             />
                             {esAdmin && (
                                 <SeccionLista
@@ -447,6 +489,7 @@ export default function WapiInbox() {
                                     onSelect={abrirConv}
                                     color="info.main"
                                     defaultOpen={false}
+                                    typingNums={typingNums}
                                 />
                             )}
                             <SeccionLista
@@ -456,6 +499,7 @@ export default function WapiInbox() {
                                 onSelect={abrirConv}
                                 color="text.disabled"
                                 defaultOpen={false}
+                                typingNums={typingNums}
                             />
                             {!misActivas.length && !sinAsignar.length && !misResueltas.length && !otrasActivas.length && (
                                 <Box sx={{ p: 4, textAlign: 'center' }}>
@@ -486,7 +530,11 @@ export default function WapiInbox() {
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography fontWeight={700} noWrap>{convActiva.nombre ?? convActiva.numero}</Typography>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>{convActiva.numero}</Typography>
+                                {typingNums.has(convActiva.numero) ? (
+                                    <Typography variant="caption" color="success.main" sx={{ fontStyle: 'italic' }}>Escribiendo...</Typography>
+                                ) : (
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>{convActiva.numero}</Typography>
+                                )}
                                 <Chip
                                     label={{ sin_asignar: 'Sin asignar', asignada: 'Asignada', resuelta: 'Resuelta' }[convActiva.estado]}
                                     color={{ sin_asignar: 'warning', asignada: 'info', resuelta: 'default' }[convActiva.estado]}

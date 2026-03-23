@@ -82,6 +82,12 @@ export class WapiInboxService {
       },
     });
 
+    // Incrementar contador de no leídos
+    conv = await this.prisma.waApiConversacion.update({
+      where: { id: conv.id },
+      data: { unreadCount: { increment: 1 } },
+    });
+
     // Emitir al inbox en tiempo real
     this.socketGateway.emitirEvento(
       'wapi:nuevo_mensaje',
@@ -285,6 +291,17 @@ export class WapiInboxService {
     const conv = await this.prisma.waApiConversacion.update({
       where: { id },
       data: { estado: 'resuelta', resolvedAt: new Date() },
+      include: { asignadoA: { select: this.INCLUDE_USUARIO } },
+    });
+    const result = this.conVentana(conv);
+    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
+    return result;
+  }
+
+  async marcarLeido(id: number) {
+    const conv = await this.prisma.waApiConversacion.update({
+      where: { id },
+      data: { unreadCount: 0, lastReadAt: new Date() },
       include: { asignadoA: { select: this.INCLUDE_USUARIO } },
     });
     const result = this.conVentana(conv);

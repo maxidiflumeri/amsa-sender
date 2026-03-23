@@ -36,6 +36,17 @@ export class WapiWebhookService {
         await this.procesarMensajeEntrante(msg, changes.contacts?.[0]);
       }
     }
+
+    // Typing indicator
+    if (changes.typing?.length) {
+      for (const t of changes.typing) {
+        this.socketGateway.emitirEvento(
+          'wapi:typing',
+          { numero: t.from, isTyping: true },
+          'inbox_wapi',
+        );
+      }
+    }
   }
 
   private async procesarStatusUpdate(status: any): Promise<void> {
