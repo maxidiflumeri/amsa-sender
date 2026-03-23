@@ -12,7 +12,8 @@
       "Bash(npm run:*)",
       "Bash(echo \"EXIT CODE: $?\")",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(find /c/Users/MDIFLUME/Documents/Proyectos/Propios/amsa-sender/frontend/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))"
     ]
   }
 }

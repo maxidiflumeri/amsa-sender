@@ -201,7 +201,7 @@ export default function WapiInbox() {
         socket.on('connect', () => socket.emit('join_inbox'));
 
         socket.on('wapi:nuevo_mensaje', ({ conversacion, mensaje }) => {
-            upsertConv({ ...conversacion, ultimoMensajeAt: mensaje.timestamp });
+            upsertConv({ ...conversacion, ultimoMensajeAt: mensaje.timestamp, mensajes: [mensaje] });
             setConvActiva(prev => {
                 if (prev?.id === conversacion.id) {
                     setMensajes(m => m.some(x => x.id === mensaje.id) ? m : [...m, mensaje]);
