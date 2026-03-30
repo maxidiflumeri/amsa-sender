@@ -245,6 +245,7 @@ export default function MetricasCampania() {
                             { label: 'Enviados',         value: metricas.conteos.enviados,         color: 'info.main',    subtitle: `${metricas.tasas.entrega}% entrega` },
                             { label: 'Entregados',       value: metricas.conteos.entregados,       color: 'primary.main' },
                             { label: 'Leídos',           value: metricas.conteos.leidos,           color: 'success.main', subtitle: `${metricas.tasas.lectura}% lectura` },
+                            { label: 'Respondidos',      value: metricas.engagement.respondieron,  color: 'secondary.main', subtitle: `${metricas.conteos.enviados > 0 ? ((metricas.engagement.respondieron / metricas.conteos.enviados) * 100).toFixed(1) : 0}% respuesta` },
                             { label: 'Fallidos',         value: metricas.conteos.fallidos,         color: 'error.main',   subtitle: `${metricas.tasas.fallo}% fallo` },
                             { label: 'Omitidos por baja',value: metricas.conteos.omitidosPorBaja,  color: 'warning.main' },
                             { label: 'Avg entrega',      value: formatMs(metricas.tiempos.avgEntregaMs) },
