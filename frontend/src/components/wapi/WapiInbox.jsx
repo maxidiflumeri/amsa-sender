@@ -869,9 +869,9 @@ export default function WapiInbox() {
                             const reaccion = reactionMap[msg.waMessageId];
                             return (
                                 <Box key={msg.id} sx={{ display: 'flex', justifyContent: msg.fromMe ? 'flex-end' : 'flex-start' }}>
-                                    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                    <Box sx={{ position: 'relative', maxWidth: '70%', mb: reaccion ? 1.5 : 0 }}>
                                         <Paper elevation={1} sx={{
-                                            px: 1.5, py: 0.75, maxWidth: '70%',
+                                            px: 1.5, py: 0.75,
                                             borderRadius: msg.fromMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
                                             bgcolor: (t) => msg.fromMe
                                                 ? (t.palette.mode === 'dark' ? '#005c4b' : '#dcf8c6')
@@ -894,9 +894,9 @@ export default function WapiInbox() {
                                         </Paper>
                                         {reaccion && (
                                             <Box sx={{
-                                                position: 'absolute', bottom: -10,
-                                                right: msg.fromMe ? 'auto' : -10,
-                                                left: msg.fromMe ? -10 : 'auto',
+                                                position: 'absolute', bottom: -20,
+                                                right: msg.fromMe ? 4 : 'auto',
+                                                left: msg.fromMe ? 'auto' : 4,
                                                 bgcolor: (t) => t.palette.mode === 'dark' ? '#3a3a3a' : '#fff',
                                                 border: '1px solid', borderColor: 'divider',
                                                 borderRadius: '10px', px: 0.6, py: 0.1,
