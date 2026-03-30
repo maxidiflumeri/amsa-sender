@@ -190,9 +190,18 @@ export class WapiWebhookService {
       case 'image':
         return { mediaUrl: msg.image?.id, caption: msg.image?.caption, mimeType: msg.image?.mime_type };
       case 'document':
-        return { mediaUrl: msg.document?.id, caption: msg.document?.caption, mimeType: msg.document?.mime_type };
+        return { mediaUrl: msg.document?.id, caption: msg.document?.caption, filename: msg.document?.filename, mimeType: msg.document?.mime_type };
       case 'audio':
         return { mediaUrl: msg.audio?.id, mimeType: msg.audio?.mime_type };
+      case 'contacts':
+        return {
+          contacts: (msg.contacts ?? []).map((c: any) => ({
+            nombre: c.name?.formatted_name ?? c.name?.first_name ?? 'Contacto',
+            telefonos: (c.phones ?? []).map((p: any) => p.phone),
+            emails: (c.emails ?? []).map((e: any) => e.email),
+            empresa: c.org?.company ?? null,
+          })),
+        };
       default:
         return { raw: msg };
     }

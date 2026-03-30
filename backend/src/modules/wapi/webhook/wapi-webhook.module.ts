@@ -11,5 +11,6 @@ import { WebsocketModule } from 'src/websocket/websocket.module';
   imports: [PrismaModule, WapiConfigModule, WapiInboxModule, WapiBajasModule, WebsocketModule],
   controllers: [WapiWebhookController],
   providers: [WapiWebhookService],
+  exports: [WapiWebhookService],
 })
 export class WapiWebhookModule {}

@@ -1,5 +1,76 @@
 # Changelog
 
+## [2026-03-30] — WAPI: soporte de contactos compartidos y mejoras del simulador
+
+### Inbox — `WapiInbox.jsx`
+
+- **Card visual para mensajes de tipo `contacts`**: muestra avatar con inicial, nombre en negrita, teléfono y empresa. Reemplaza el texto `[contact]` que se mostraba antes.
+- **Preview enriquecido en la lista de conversaciones**: en lugar de `[tipo]` ahora muestra `📷 Imagen`, `🎵 Audio`, `📄 Documento`, `📇 Contacto` según el tipo del último mensaje.
+- **Documento**: ahora prioriza `filename` sobre `caption` al mostrar el nombre del archivo y en el link de descarga.
+
+### Backend webhook — `wapi-webhook.service.ts`
+
+- **Nuevo case `contacts` en `extraerContenido`**: extrae nombre (`formatted_name`), teléfonos, emails y empresa de cada contacto del array `contacts` que envía Meta. Antes caía al default `{ raw: msg }`.
+- **Campo `filename` en documentos**: agregado a la extracción del tipo `document`.
+
+### Simulador dev — `dev-simulador.controller.ts` / `DevSimulador.jsx`
+
+- **Nuevos endpoints**: `POST /dev/simular/audio`, `POST /dev/simular/documento`, `POST /dev/simular/contacto`.
+- **UI del simulador**: nueva fila de paneles para Audio (nota de voz ogg/opus), Documento (nombre de archivo + caption) y Contacto (nombre + teléfono + empresa).
+- **Nuevo escenario rápido** "Cliente comparte contacto" en las cards de acceso rápido.
+
+---
+
+## [2026-03-30] — WAPI: plantillas rápidas (respuestas rápidas) en el inbox
+
+### Nuevo modelo — `prisma/schema.prisma`
+
+- **Modelo `WaApiRespuestaRapida`**: `id`, `titulo`, `contenido` (Text, soporta markdown WhatsApp), `tags` (Json), `activo` (Bool), `creadoAt`, `updatedAt`. Sincronizado con la BD vía `prisma db push`.
+
+### Backend — `src/modules/wapi/respuestas-rapidas/` *(nuevo módulo)*
+
+- **`wapi-respuestas-rapidas.service.ts`**: CRUD completo — `listar()` (solo activas, para agentes), `listarTodas()` (admin), `crear()`, `actualizar()`, `eliminar()`.
+- **`wapi-respuestas-rapidas.controller.ts`**: endpoints bajo `/wapi/respuestas-rapidas`:
+  - `GET /` — solo activas, requiere permiso `wapi.inbox`
+  - `GET /todas` — todas incluyendo inactivas, requiere `wapi.inbox.admin`
+  - `POST /`, `PUT /:id`, `DELETE /:id` — requieren `wapi.inbox.admin`
+- **`wapi-respuestas-rapidas.module.ts`**: importa `PrismaModule` y `AuthModule`. Registrado en `WapiModule`.
+
+### Frontend — administración (`WapiRespuestasRapidas.jsx`)
+
+- **Pantalla de administración** accesible desde `/config/respuestas-rapidas` (sidebar Config, solo admin).
+- Editor de contenido con toolbar de markdown WhatsApp: **negrita** (`*`), _cursiva_ (`_`), ~~tachado~~ (`~`), `monoespaciado` (` ``` `).
+- **Preview en tiempo real** del mensaje con formato WhatsApp renderizado.
+- Soporte de **tags** para categorizar plantillas; filtro por tag en la lista.
+- Activar/desactivar plantillas sin eliminarlas.
+
+### Frontend — atajo en el inbox (`WapiInbox.jsx`)
+
+- **Panel flotante de respuestas rápidas** (Popper) que se activa escribiendo `/` en el campo de texto o pulsando el botón ⚡.
+- Filtra en tiempo real por título, contenido o tag mientras se escribe.
+- Navegación con ↑↓ y selección con Enter o clic; al seleccionar inserta el contenido en el campo de texto.
+- Solo carga plantillas activas. Se cierra con Escape o al borrar el `/` inicial.
+
+---
+
+## [2026-03-30] — WAPI: marcar como no leído, búsqueda por ID y fix módulo respuestas rápidas
+
+### Inbox — `WapiInbox.jsx`
+
+- **Marcar conversación como no leída**: click derecho sobre cualquier conversación abre un menú contextual (estilo WhatsApp Web) con la opción "Marcar como no leído". Restaura el badge verde con contador 1. La opción se deshabilita si la conversación ya tiene mensajes sin leer.
+- **Búsqueda por ID con prefijo `#`**: escribir `#14` en el buscador filtra exactamente la conversación con ID 14, consistente con el chip `#ID` mostrado en el header del chat. La búsqueda normal (número/nombre) no mezcla resultados de ID para evitar falsos positivos.
+
+### Backend — `wapi-inbox.service.ts` / `wapi-inbox.controller.ts`
+
+- **Nuevo método `marcarNoLeido(id)`**: setea `unreadCount: 1` y emite el evento socket `wapi:conversacion_actualizada` para actualizar el badge en tiempo real en todos los clientes conectados.
+- **Nuevo endpoint `POST /wapi/inbox/:id/marcar-no-leido`**.
+
+### Fix — `wapi-respuestas-rapidas.module.ts`
+
+- **Fix: error de arranque `UnknownDependenciesException`** en `WapiRespuestasRapidasModule`. El módulo solo importaba `PrismaModule` pero `JwtAuthGuard` requiere `JwtService` provisto por `AuthModule`. Agregado `AuthModule` a los imports del módulo.
+
+---
+
 ## [2026-03-30] — WAPI: pausa/reanudación de campañas y fix forzar cierre
 
 ### Campañas — backend (`wapi-campanias.service.ts` / `wapi-campanias.controller.ts`)

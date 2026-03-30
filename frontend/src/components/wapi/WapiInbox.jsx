@@ -4,7 +4,7 @@ import {
     ListItemAvatar, ListItemText, ListItemButton, Divider, CircularProgress,
     Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button,
     Select, MenuItem, FormControl, InputLabel, Alert, Collapse, Autocomplete,
-    Popper, Fade,
+    Popper, Fade, Menu,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -22,6 +22,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import BoltIcon from '@mui/icons-material/Bolt';
+import MarkChatUnreadIcon from '@mui/icons-material/MarkChatUnread';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -40,7 +41,7 @@ const formatFecha = (ts) => {
     return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 };
 
-function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums }) {
+function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums, onContextMenuConv }) {
     const [open, setOpen] = useState(defaultOpen);
     if (!convs.length) return null;
     return (
@@ -61,7 +62,13 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                         const isTyping = typingNums?.has(conv.numero);
                         const hasUnread = conv.unreadCount > 0;
                         return (
-                        <ListItemButton key={conv.id} selected={convActivaId === conv.id} onClick={() => onSelect(conv)} sx={{ py: 0.75 }}>
+                        <ListItemButton
+                            key={conv.id}
+                            selected={convActivaId === conv.id}
+                            onClick={() => onSelect(conv)}
+                            onContextMenu={(e) => { e.preventDefault(); onContextMenuConv?.(e, conv); }}
+                            sx={{ py: 0.75 }}
+                        >
                             <ListItemAvatar sx={{ minWidth: 44 }}>
                                 <Avatar sx={{ width: 34, height: 34, fontSize: 14, bgcolor: conv.estado === 'resuelta' ? '#757575' : conv.estado === 'sin_asignar' ? '#E65100' : '#00695C' }}>
                                     {(conv.nombre ?? conv.numero)[0].toUpperCase()}
@@ -104,7 +111,11 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                                             </Typography>
                                         ) : (
                                             <Typography component="span" variant="caption" noWrap sx={{ fontSize: 11, color: 'text.secondary', fontWeight: hasUnread ? 600 : 400 }}>
-                                                {conv.mensajes?.[0] && conv.mensajes[0].tipo !== 'sistema' ? (conv.mensajes[0].contenido?.text ?? `[${conv.mensajes[0].tipo}]`) : ''}
+                                                {conv.mensajes?.[0] && conv.mensajes[0].tipo !== 'sistema' ? (() => {
+    const m = conv.mensajes[0];
+    const previewTipo = { image: '📷 Imagen', audio: '🎵 Audio', document: '📄 Documento', contacts: '📇 Contacto', video: '🎬 Video' };
+    return m.contenido?.text ?? previewTipo[m.tipo] ?? `[${m.tipo}]`;
+})() : ''}
                                             </Typography>
                                         )}
                                     </Box>
@@ -152,6 +163,8 @@ export default function WapiInbox() {
     const [rrTagFiltro, setRrTagFiltro] = useState('');
     const [rrIndexActivo, setRrIndexActivo] = useState(0);
 
+    const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, conv }
+
     const mensajesEndRef = useRef(null);
     const socketRef = useRef(null);
     const convActivaRef = useRef(null);
@@ -173,11 +186,16 @@ export default function WapiInbox() {
     // ── Búsqueda por ANI / nombre ─────────────────────────────────────────
     const terminoBusqueda = busqueda.trim().toLowerCase();
     const resultadosBusqueda = terminoBusqueda
-        ? convs.filter(c =>
-            c.numero?.toLowerCase().includes(terminoBusqueda) ||
-            c.nombre?.toLowerCase().includes(terminoBusqueda) ||
-            String(c.id).includes(terminoBusqueda)
-          )
+        ? convs.filter(c => {
+            if (terminoBusqueda.startsWith('#')) {
+                const idBuscado = terminoBusqueda.slice(1);
+                return idBuscado !== '' && String(c.id) === idBuscado;
+            }
+            return (
+                c.numero?.toLowerCase().includes(terminoBusqueda) ||
+                c.nombre?.toLowerCase().includes(terminoBusqueda)
+            );
+          })
         : [];
 
     // ── Cargar conversaciones ──────────────────────────────────────────────
@@ -311,6 +329,24 @@ export default function WapiInbox() {
             setError('Error cargando mensajes');
         } finally {
             setLoadingMensajes(false);
+        }
+    };
+
+    // ── Context menu de conversación ──────────────────────────────────────
+    const handleContextMenuConv = (e, conv) => {
+        setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, conv });
+    };
+
+    const handleMarcarNoLeido = async () => {
+        const conv = contextMenu?.conv;
+        setContextMenu(null);
+        if (!conv) return;
+        try {
+            await api.post(`/wapi/inbox/${conv.id}/marcar-no-leido`);
+            setConvs(prev => prev.map(c => c.id === conv.id ? { ...c, unreadCount: 1 } : c));
+            if (convActiva?.id === conv.id) setConvActiva(prev => ({ ...prev, unreadCount: 1 }));
+        } catch {
+            setError('Error al marcar como no leído');
         }
     };
 
@@ -451,8 +487,35 @@ export default function WapiInbox() {
             const url = mediaUrl(c.mediaUrl);
             return (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="body2">📄 {c.caption || 'Documento'}</Typography>
-                    {url ? <Button size="small" variant="outlined" href={url} download={c.caption || 'documento'}>Descargar</Button> : <CircularProgress size={16} />}
+                    <Typography variant="body2">📄 {c.filename || c.caption || 'Documento'}</Typography>
+                    {url ? <Button size="small" variant="outlined" href={url} download={c.filename || c.caption || 'documento'}>Descargar</Button> : <CircularProgress size={16} />}
+                </Box>
+            );
+        }
+        if (msg.tipo === 'contacts') {
+            const lista = c.contacts ?? [];
+            return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {lista.map((ct, i) => (
+                        <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1, border: '1px solid', borderColor: 'divider', borderRadius: 2, minWidth: 200, bgcolor: 'background.paper' }}>
+                            <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.main', fontSize: 16 }}>
+                                {ct.nombre?.[0]?.toUpperCase() ?? '?'}
+                            </Avatar>
+                            <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" fontWeight={700} noWrap>{ct.nombre}</Typography>
+                                {ct.telefonos?.[0] && (
+                                    <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                                        📞 {ct.telefonos[0]}
+                                    </Typography>
+                                )}
+                                {ct.empresa && (
+                                    <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                                        🏢 {ct.empresa}
+                                    </Typography>
+                                )}
+                            </Box>
+                        </Box>
+                    ))}
                 </Box>
             );
         }
@@ -533,6 +596,7 @@ export default function WapiInbox() {
                                 color="primary.main"
                                 defaultOpen={true}
                                 typingNums={typingNums}
+                                onContextMenuConv={handleContextMenuConv}
                             />
                             {!resultadosBusqueda.length && (
                                 <Box sx={{ p: 4, textAlign: 'center' }}>
@@ -551,6 +615,7 @@ export default function WapiInbox() {
                                 color="primary.main"
                                 defaultOpen={true}
                                 typingNums={typingNums}
+                                onContextMenuConv={handleContextMenuConv}
                             />
                             <SeccionLista
                                 titulo="Sin asignar"
@@ -560,6 +625,7 @@ export default function WapiInbox() {
                                 color="warning.main"
                                 defaultOpen={true}
                                 typingNums={typingNums}
+                                onContextMenuConv={handleContextMenuConv}
                             />
                             {esAdmin && (
                                 <SeccionLista
@@ -570,6 +636,7 @@ export default function WapiInbox() {
                                     color="info.main"
                                     defaultOpen={false}
                                     typingNums={typingNums}
+                                    onContextMenuConv={handleContextMenuConv}
                                 />
                             )}
                             <SeccionLista
@@ -580,6 +647,7 @@ export default function WapiInbox() {
                                 color="text.disabled"
                                 defaultOpen={false}
                                 typingNums={typingNums}
+                                onContextMenuConv={handleContextMenuConv}
                             />
                             {esAdmin && (
                                 <SeccionLista
@@ -590,6 +658,7 @@ export default function WapiInbox() {
                                     color="text.disabled"
                                     defaultOpen={false}
                                     typingNums={typingNums}
+                                    onContextMenuConv={handleContextMenuConv}
                                 />
                             )}
                             {!misActivas.length && !sinAsignar.length && !misResueltas.length && !otrasActivas.length && !resueltasPorOtros.length && (
@@ -921,6 +990,22 @@ export default function WapiInbox() {
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            {/* Context menu click derecho en conversación */}
+            <Menu
+                open={!!contextMenu}
+                onClose={() => setContextMenu(null)}
+                anchorReference="anchorPosition"
+                anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+            >
+                <MenuItem
+                    onClick={handleMarcarNoLeido}
+                    disabled={contextMenu?.conv?.unreadCount > 0}
+                >
+                    <MarkChatUnreadIcon fontSize="small" sx={{ mr: 1 }} />
+                    Marcar como no leído
+                </MenuItem>
+            </Menu>
         </Box>
     );
 }

@@ -1,0 +1,140 @@
+# AMSA Sender — Simulador de Webhook WAPI (local)
+# Requiere extensión "REST Client" en VS Code (humao.rest-client)
+# Backend corriendo en http://localhost:5001
+
+@base = http://localhost:5001/api
+@numero1 = 5491155550001
+@numero2 = 5491155550002
+@numero3 = 5491155550003
+
+###
+# ── Mensajes de texto ────────────────────────────────────────────────────────
+
+### Cliente nuevo escribe por primera vez
+POST {{base}}/dev/simular/mensaje
+Content-Type: application/json
+
+{
+  "numero": "{{numero1}}",
+  "nombre": "Maxi Test",
+  "texto": "Hola, quiero consultar por mi cuenta"
+}
+
+### Cliente existente responde (misma conv, no dispara bienvenida)
+POST {{base}}/dev/simular/mensaje
+Content-Type: application/json
+
+{
+  "numero": "{{numero1}}",
+  "nombre": "Maxi Test",
+  "texto": "¿Cuándo puedo pagar?"
+}
+
+### Segundo cliente (crea conv 2)
+POST {{base}}/dev/simular/mensaje
+Content-Type: application/json
+
+{
+  "numero": "{{numero2}}",
+  "nombre": "Ana García",
+  "texto": "Necesito el saldo de mi cuenta urgente"
+}
+
+###
+# ── Botones de template ───────────────────────────────────────────────────────
+
+### Botón "Hablar con asesor" (INBOX) — crea conv + bienvenida forzada
+POST {{base}}/dev/simular/boton
+Content-Type: application/json
+
+{
+  "numero": "{{numero3}}",
+  "nombre": "Carlos Ruiz",
+  "payload": "INBOX",
+  "textoBoton": "Hablar con asesor"
+}
+
+### Botón "Dar de baja" — registra en lista de bajas
+POST {{base}}/dev/simular/boton
+Content-Type: application/json
+
+{
+  "numero": "{{numero1}}",
+  "nombre": "Maxi Test",
+  "payload": "BAJA",
+  "textoBoton": "No deseo recibir mensajes"
+}
+
+###
+# ── Status updates ────────────────────────────────────────────────────────────
+# Reemplazá waMessageId con el ID real de un mensaje enviado desde el inbox
+
+### Marcar mensaje como entregado
+POST {{base}}/dev/simular/status
+Content-Type: application/json
+
+{
+  "waMessageId": "wamid.REEMPLAZAR_CON_ID_REAL",
+  "status": "delivered",
+  "numero": "{{numero1}}"
+}
+
+### Marcar mensaje como leído (ticks azules)
+POST {{base}}/dev/simular/status
+Content-Type: application/json
+
+{
+  "waMessageId": "wamid.REEMPLAZAR_CON_ID_REAL",
+  "status": "read",
+  "numero": "{{numero1}}"
+}
+
+###
+# ── Imagen entrante ───────────────────────────────────────────────────────────
+
+### Cliente envía imagen (mediaUrl simulado, no descargable)
+POST {{base}}/dev/simular/imagen
+Content-Type: application/json
+
+{
+  "numero": "{{numero1}}",
+  "nombre": "Maxi Test",
+  "texto": "Foto del comprobante de pago"
+}
+
+###
+# ── Escenario completo: flujo de atención ────────────────────────────────────
+# Ejecutar en orden para simular una atención completa
+
+### 1. Cliente presiona botón INBOX desde template de campaña
+POST {{base}}/dev/simular/boton
+Content-Type: application/json
+
+{
+  "numero": "5491155559999",
+  "nombre": "Cliente Flujo Completo",
+  "payload": "INBOX",
+  "textoBoton": "Hablar con asesor"
+}
+
+### 2. Cliente escribe un mensaje adicional
+POST {{base}}/dev/simular/mensaje
+Content-Type: application/json
+
+{
+  "numero": "5491155559999",
+  "nombre": "Cliente Flujo Completo",
+  "texto": "Quiero saber cómo regularizar mi deuda"
+}
+
+### 3. (Desde el inbox: tomá la conv, respondé, copiá el waMessageId del response)
+
+### 4. Simulá que el cliente leyó la respuesta
+POST {{base}}/dev/simular/status
+Content-Type: application/json
+
+{
+  "waMessageId": "wamid.REEMPLAZAR",
+  "status": "read",
+  "numero": "5491155559999"
+}

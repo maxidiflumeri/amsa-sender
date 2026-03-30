@@ -35,6 +35,7 @@ import WapiInbox from './components/wapi/WapiInbox';
 import WapiBajas from './components/wapi/WapiBajas';
 import WapiAnalitica from './components/wapi/analitica/WapiAnalitica';
 import WapiRespuestasRapidas from './components/wapi/WapiRespuestasRapidas';
+import DevSimulador from './components/dev/DevSimulador';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -272,6 +273,9 @@ export default function App() {
                     {/* Inbox WA */}
                     <Route path="/wapi/inbox" element={<RutaProtegida permiso="wapi.inbox"><WapiInbox /></RutaProtegida>} />
                     <Route path="/wapi/analitica" element={<RutaProtegida permiso="wapi.analitica"><WapiAnalitica /></RutaProtegida>} />
+                    {import.meta.env.DEV && (
+                        <Route path="/dev/simulador" element={<DevSimulador />} />
+                    )}
                 </Route>
 
                 {/* Catch-all */}

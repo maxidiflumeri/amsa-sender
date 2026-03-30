@@ -662,6 +662,33 @@ export default function Layout({ children, mode, toggleTheme }) {
                             </Collapse>
                         </>
                     )}
+                {/* Dev simulator — solo en desarrollo */}
+                {import.meta.env.DEV && (
+                    <>
+                        <Divider />
+                        <ListItem disablePadding>
+                            <Tooltip title={collapsed ? 'Simulador Dev' : ''} placement="right">
+                                <ListItemButton
+                                    component={RouterLink}
+                                    to="/dev/simulador"
+                                    selected={location.pathname === '/dev/simulador'}
+                                    onClick={isMobile ? handleDrawerToggle : undefined}
+                                    sx={{ pl: collapsed ? 0 : 2, justifyContent: collapsed ? 'center' : 'flex-start' }}
+                                >
+                                    <ListItemIcon sx={{ minWidth: 'auto', mr: collapsed ? 0 : 1.5, color: 'warning.main' }}>
+                                        <BoltIcon />
+                                    </ListItemIcon>
+                                    {!collapsed && (
+                                        <ListItemText
+                                            primary="Simulador Dev"
+                                            primaryTypographyProps={{ sx: { fontWeight: 600, fontSize: 13, color: 'warning.main' } }}
+                                        />
+                                    )}
+                                </ListItemButton>
+                            </Tooltip>
+                        </ListItem>
+                    </>
+                )}
                 </List>
             </Box>
 

@@ -309,6 +309,17 @@ export class WapiInboxService {
     return result;
   }
 
+  async marcarNoLeido(id: number) {
+    const conv = await this.prisma.waApiConversacion.update({
+      where: { id },
+      data: { unreadCount: 1 },
+      include: { asignadoA: { select: this.INCLUDE_USUARIO } },
+    });
+    const result = this.conVentana(conv);
+    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
+    return result;
+  }
+
   async proxyMedia(mediaId: string, res: Response): Promise<void> {
     const config = await this.configService.obtenerConfigCompleta();
 
