@@ -41,7 +41,7 @@ const formatFecha = (ts) => {
     return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 };
 
-function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums, onContextMenuConv }) {
+function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums, onContextMenuConv, drafts = {} }) {
     const [open, setOpen] = useState(defaultOpen);
     if (!convs.length) return null;
     return (
@@ -111,11 +111,23 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                                             </Typography>
                                         ) : (
                                             <Typography component="span" variant="caption" noWrap sx={{ fontSize: 11, color: 'text.secondary', fontWeight: hasUnread ? 600 : 400 }}>
-                                                {conv.mensajes?.[0] && conv.mensajes[0].tipo !== 'sistema' ? (() => {
-    const m = conv.mensajes[0];
-    const previewTipo = { image: '📷 Imagen', audio: '🎵 Audio', document: '📄 Documento', contacts: '📇 Contacto', video: '🎬 Video' };
-    return m.contenido?.text ?? previewTipo[m.tipo] ?? `[${m.tipo}]`;
-})() : ''}
+                                                {(() => {
+    const draft = drafts[conv.id];
+    if (draft) {
+        return (
+            <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography component="span" variant="caption" sx={{ fontSize: 11, color: '#25D366', fontWeight: 700, flexShrink: 0 }}>Borrador:</Typography>
+                <Typography component="span" variant="caption" noWrap sx={{ fontSize: 11, color: 'text.secondary' }}>{draft}</Typography>
+            </Box>
+        );
+    }
+    if (conv.mensajes?.[0] && conv.mensajes[0].tipo !== 'sistema') {
+        const m = conv.mensajes[0];
+        const previewTipo = { image: '📷 Imagen', audio: '🎵 Audio', document: '📄 Documento', contacts: '📇 Contacto', video: '🎬 Video' };
+        return m.contenido?.text ?? previewTipo[m.tipo] ?? `[${m.tipo}]`;
+    }
+    return '';
+})()}
                                             </Typography>
                                         )}
                                     </Box>
@@ -164,6 +176,7 @@ export default function WapiInbox() {
     const [rrIndexActivo, setRrIndexActivo] = useState(0);
 
     const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, conv }
+    const [drafts, setDrafts] = useState({}); // { [convId]: texto }
 
     const mensajesEndRef = useRef(null);
     const socketRef = useRef(null);
@@ -314,6 +327,22 @@ export default function WapiInbox() {
 
     // ── Abrir conversación ─────────────────────────────────────────────────
     const abrirConv = async (conv) => {
+        // Guardar borrador de la conversación actual antes de cambiar
+        if (convActiva && convActiva.id !== conv.id) {
+            setDrafts(prev => {
+                const next = { ...prev };
+                if (texto.trim()) {
+                    next[convActiva.id] = texto;
+                } else {
+                    delete next[convActiva.id];
+                }
+                return next;
+            });
+        }
+        // Restaurar borrador de la conversación que se abre
+        setTexto(drafts[conv.id] ?? '');
+        setRrOpen(false);
+        setRrBusqueda('');
         setConvActiva(conv);
         setMensajes([]);
         setMessageStatuses({});
@@ -400,6 +429,7 @@ export default function WapiInbox() {
         const adjuntoEnviar = adjunto;
         setTexto('');
         setAdjunto(null);
+        setDrafts(prev => { const n = { ...prev }; delete n[convActiva.id]; return n; });
         try {
             if (adjuntoEnviar) {
                 const formData = new FormData();
@@ -597,6 +627,7 @@ export default function WapiInbox() {
                                 defaultOpen={true}
                                 typingNums={typingNums}
                                 onContextMenuConv={handleContextMenuConv}
+                                drafts={drafts}
                             />
                             {!resultadosBusqueda.length && (
                                 <Box sx={{ p: 4, textAlign: 'center' }}>
@@ -616,6 +647,7 @@ export default function WapiInbox() {
                                 defaultOpen={true}
                                 typingNums={typingNums}
                                 onContextMenuConv={handleContextMenuConv}
+                                drafts={drafts}
                             />
                             <SeccionLista
                                 titulo="Sin asignar"
@@ -626,6 +658,7 @@ export default function WapiInbox() {
                                 defaultOpen={true}
                                 typingNums={typingNums}
                                 onContextMenuConv={handleContextMenuConv}
+                                drafts={drafts}
                             />
                             {esAdmin && (
                                 <SeccionLista
@@ -648,6 +681,7 @@ export default function WapiInbox() {
                                 defaultOpen={false}
                                 typingNums={typingNums}
                                 onContextMenuConv={handleContextMenuConv}
+                                drafts={drafts}
                             />
                             {esAdmin && (
                                 <SeccionLista
@@ -893,6 +927,8 @@ export default function WapiInbox() {
                                             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensaje(); }
                                         }}
                                         disabled={enviando}
+                                        inputProps={{ spellCheck: true, lang: 'es' }}
+                                        inputRef={(el) => { if (el) { el.spellcheck = true; el.lang = 'es'; } }}
                                     />
                                     <IconButton color="primary" onClick={enviarMensaje} disabled={(!texto.trim() && !adjunto) || enviando}>
                                         {enviando ? <CircularProgress size={20} /> : <SendIcon />}
