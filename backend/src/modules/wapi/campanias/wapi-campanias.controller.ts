@@ -74,6 +74,11 @@ export class WapiCampaniasController {
     return this.wapiCampaniasService.pausarCampania(+id);
   }
 
+  @Post(':id/reanudar')
+  reanudar(@Param('id') id: string) {
+    return this.wapiCampaniasService.reanudarCampania(+id);
+  }
+
   @Post(':id/forzar-cierre')
   forzarCierre(@Param('id') id: string, @Body() body: { estado: 'finalizada' | 'error' }) {
     return this.wapiCampaniasService.forzarCierre(+id, body.estado ?? 'error');

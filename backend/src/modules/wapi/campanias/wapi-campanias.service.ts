@@ -163,6 +163,24 @@ export class WapiCampaniasService {
     });
   }
 
+  async reanudarCampania(id: number) {
+    const campaña = await this.prisma.waApiCampaña.findUniqueOrThrow({ where: { id } });
+    if (campaña.estado !== 'pausada') {
+      throw new Error(`No se puede reanudar una campaña en estado "${campaña.estado}"`);
+    }
+
+    const job = await this.wapiQueue.add(
+      'enviar-campania',
+      { campañaId: id },
+      { removeOnComplete: true, removeOnFail: false },
+    );
+
+    return this.prisma.waApiCampaña.update({
+      where: { id },
+      data: { pausada: false, estado: 'procesando', jobId: job.id as string },
+    });
+  }
+
   async forzarCierre(id: number, nuevoEstado: 'finalizada' | 'error') {
     const campaña = await this.prisma.waApiCampaña.findUniqueOrThrow({ where: { id } });
     if (campaña.jobId) {

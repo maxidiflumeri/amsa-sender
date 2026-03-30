@@ -7,6 +7,9 @@ import { RedisClientType } from 'redis';
 const META_API_VERSION = 'v20.0';
 const META_API_BASE = 'https://graph.facebook.com';
 
+// Códigos de error Meta que requieren backoff — no son fallos definitivos
+const META_RATE_LIMIT_CODES = new Set([131056, 130429, 131048]);
+
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -60,8 +63,11 @@ export class WapiWorkerService implements OnModuleInit {
     if (!wapiConfig) throw new Error('No hay configuración de WhatsApp API guardada');
 
     const campConfig = (campaña.config as any) ?? {};
-    const delayMs: number = campConfig.delayMs ?? 1200;
+    const delayMs: number = campConfig.delayMs ?? 5000;
+    const backoffMs: number = campConfig.backoffMs ?? 60_000;
+    const maxErroresConsecutivos: number = campConfig.maxErroresConsecutivos ?? 5;
     const variableMapping: Record<string, string> = campConfig.variableMapping ?? {};
+    let erroresConsecutivos = 0;
 
     // Obtener contactos que aún no tienen reporte (permite reanudar si falla a mitad)
     const contactosConReporte = await this.prisma.waApiReporte.findMany({
@@ -82,7 +88,7 @@ export class WapiWorkerService implements OnModuleInit {
     await this.publicarLog(campañaId, 'info', `🚀 Iniciando campaña — ${pendientes.length} pendientes de ${total} total`);
 
     for (const contacto of pendientes) {
-      // Verificar si la campaña fue pausada
+      // Verificar si la campaña fue pausada o forzada a cerrar externamente
       const estadoActual = await this.prisma.waApiCampaña.findUnique({
         where: { id: campañaId },
         select: { pausada: true, estado: true },
@@ -91,6 +97,11 @@ export class WapiWorkerService implements OnModuleInit {
         this.logger.log(`Campaña ${campañaId} pausada. Deteniendo worker.`);
         await this.publicarLog(campañaId, 'warn', `⏸️ Campaña pausada. Procesados hasta ahora: ${enviados}/${total}`);
         break;
+      }
+      if (estadoActual?.estado === 'finalizada' || estadoActual?.estado === 'error') {
+        this.logger.warn(`Campaña ${campañaId} detenida externamente (estado: ${estadoActual.estado}). Abortando worker.`);
+        await this.publicarLog(campañaId, 'warn', `🛑 Campaña detenida externamente — procesados hasta el corte: ${enviados}/${total}`);
+        return;
       }
 
       // Verificar supresión en tiempo real
@@ -151,9 +162,63 @@ export class WapiWorkerService implements OnModuleInit {
         if (res.ok && json.messages?.[0]?.id) {
           waMessageId = json.messages[0].id;
           estado = 'sent';
+          erroresConsecutivos = 0;
         } else {
+          const metaCode: number | undefined = json.error?.code;
           error = json.error?.message ?? `HTTP ${res.status}`;
-          this.logger.warn(`Error enviando a ${contacto.numero}: ${error}`);
+
+          if (metaCode && META_RATE_LIMIT_CODES.has(metaCode)) {
+            // Rate limit de Meta — backoff y reintentar este mismo contacto
+            erroresConsecutivos++;
+            this.logger.warn(`Rate limit Meta (${metaCode}) en ${contacto.numero} — backoff ${backoffMs}ms [errores consecutivos: ${erroresConsecutivos}]`);
+            await this.publicarLog(campañaId, 'warn', `⏳ Rate limit Meta (${metaCode}) — esperando ${backoffMs / 1000}s antes de reintentar`);
+            await sleep(backoffMs);
+
+            // Verificar si hay que auto-pausar antes del reintento
+            if (erroresConsecutivos >= maxErroresConsecutivos) {
+              await this.prisma.waApiCampaña.update({ where: { id: campañaId }, data: { estado: 'pausada', pausada: true } });
+              await this.publicarLog(campañaId, 'error', `🛑 Campaña auto-pausada: ${erroresConsecutivos} errores de rate limit consecutivos`);
+              this.logger.error(`Campaña ${campañaId} auto-pausada por rate limit acumulado`);
+              return;
+            }
+
+            // Reintento único del mismo contacto
+            try {
+              const url = `${META_API_BASE}/${META_API_VERSION}/${wapiConfig.phoneNumberId}/messages`;
+              const retryRes = await fetch(url, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${wapiConfig.token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  to: contacto.numero,
+                  type: 'template',
+                  template: {
+                    name: config.metaNombre,
+                    language: { code: config.idioma },
+                    components: this.construirComponentes(
+                      config.componentes as any[],
+                      config.buttonActions as any[] ?? [],
+                      (contacto.variables as Record<string, string>) ?? {},
+                      variableMapping,
+                    ),
+                  },
+                }),
+              });
+              const retryJson = await retryRes.json() as any;
+              if (retryRes.ok && retryJson.messages?.[0]?.id) {
+                waMessageId = retryJson.messages[0].id;
+                estado = 'sent';
+                erroresConsecutivos = 0;
+                error = null;
+              } else {
+                error = `[retry] ${retryJson.error?.message ?? `HTTP ${retryRes.status}`}`;
+              }
+            } catch (retryErr) {
+              error = `[retry] ${retryErr.message}`;
+            }
+          } else {
+            this.logger.warn(`Error enviando a ${contacto.numero}: ${error}`);
+          }
         }
       } catch (err) {
         error = err.message;

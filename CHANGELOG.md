@@ -1,5 +1,46 @@
 # Changelog
 
+## [2026-03-30] — WAPI: pausa/reanudación de campañas y fix forzar cierre
+
+### Campañas — backend (`wapi-campanias.service.ts` / `wapi-campanias.controller.ts`)
+
+- **Nuevo método `reanudarCampania(id)`**: valida que la campaña esté en estado `pausada`, re-encola el job en BullMQ y actualiza `pausada: false` + `estado: 'procesando'`. El worker retoma desde el último contacto no enviado gracias al set `yaEnviadosIds` existente.
+- **Nuevo endpoint `POST /wapi/campanias/:id/reanudar`**.
+
+### Worker — `wapi-worker.service.ts` / `wapi-worker.ts`
+
+- **Fix: forzar cierre desde el frontend no detenía el worker**. `forzarCierre` en el service solo actualizaba el estado en BD pero el worker activo no lo chequeaba. El loop ahora detecta `estado === 'finalizada'` y `estado === 'error'` (además de `pausada`) y hace `return` inmediato, abortando el envío sin pisar el estado final ya seteado externamente.
+- **Fix: logs del worker no visibles en consola**. `createApplicationContext` ahora pasa `logger: ['log', 'warn', 'error', 'debug']` explícitamente para garantizar la salida en cualquier entorno.
+
+### Campañas — frontend (`VerCampaniasWapi.jsx`)
+
+- **Botón pausar (⏸️)** visible en campañas `procesando`, al lado del botón de logs. Llama a `POST /pausar` y recarga la lista.
+- **Botón reanudar (▶️)** visible en campañas `pausada`. Llama a `POST /reanudar` y recarga la lista.
+- Ambos botones se deshabilitan mientras hay una acción en curso (`accionLoading`).
+
+---
+
+## [2026-03-30] — WAPI: rate limit adaptativo, mejoras de inbox
+
+### Worker de envíos — `wapi-worker.service.ts`
+
+- **Delay por defecto aumentado de 1200ms a 5000ms** para reducir errores `131056` (Spam Rate Limit) de Meta en templates con calidad PENDING.
+- **Backoff adaptativo ante rate limits**: cuando la API devuelve códigos `131056`, `130429` o `131048`, el worker espera `backoffMs` (default 60s) y reintenta el mismo contacto una vez antes de continuar.
+- **Auto-pausa por errores consecutivos**: si se acumulan `maxErroresConsecutivos` (default 5) errores de rate limit seguidos, la campaña se pausa automáticamente para evitar quemar la calidad del template. Los tres parámetros son configurables por campaña vía `campConfig`.
+
+### Formulario de campaña — `SubirCampaniaWapiModal.jsx`
+
+- **Delay por defecto actualizado a 5000ms** en el formulario de nueva campaña (era 1200ms).
+
+### Inbox — `WapiInbox.jsx`
+
+- **Buscador por ANI, nombre e ID** al tope del panel de conversaciones (estilo WhatsApp Web). Al escribir reemplaza las secciones por una lista "Resultados (N)". Incluye botón X para limpiar.
+- **Nueva sección "Resueltas por otros"** (solo admin): muestra conversaciones resueltas por otros asesores para consulta e historial. La sección "Resueltas" se renombró a "Mis resueltas".
+- **Chip de ID de contacto** (`#ID`) en el header del chat, copiable al portapapeles con un clic. Permite a los gestores guardar y buscar contactos por ID en sistemas externos. La búsqueda también filtra por ID.
+- **Chip de campaña de origen** en el header del chat: muestra el nombre de la campaña desde la que ingresó el contacto (cuando aplica), derivado del mensaje de sistema `ficha_contacto` sin cambios de backend.
+
+---
+
 ## [2026-03-21] — WhatsApp API: analítica, métricas y reportes
 
 ### Backend

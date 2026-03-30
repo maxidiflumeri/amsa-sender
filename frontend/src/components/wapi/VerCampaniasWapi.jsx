@@ -19,6 +19,8 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import InboxIcon from '@mui/icons-material/Inbox';
 import TerminalIcon from '@mui/icons-material/Terminal';
+import PauseIcon from '@mui/icons-material/Pause';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -167,6 +169,32 @@ export default function VerCampaniasWapi() {
         }
     };
 
+    const handlePausar = async (campania) => {
+        setAccionLoading(true);
+        try {
+            await api.post(`/wapi/campanias/${campania.id}/pausar`);
+            mostrarFeedback('Campaña pausada.');
+            cargar(true);
+        } catch {
+            mostrarFeedback('Error al pausar la campaña.', 'error');
+        } finally {
+            setAccionLoading(false);
+        }
+    };
+
+    const handleReanudar = async (campania) => {
+        setAccionLoading(true);
+        try {
+            await api.post(`/wapi/campanias/${campania.id}/reanudar`);
+            mostrarFeedback('Campaña reanudada.');
+            cargar(true);
+        } catch (err) {
+            mostrarFeedback(err.response?.data?.message || 'Error al reanudar la campaña.', 'error');
+        } finally {
+            setAccionLoading(false);
+        }
+    };
+
     const handleForzarCierre = async (estado) => {
         setAccionLoading(true);
         try {
@@ -307,12 +335,24 @@ export default function VerCampaniasWapi() {
                                                                 <TerminalIcon fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
+                                                        <Tooltip title="Pausar campaña">
+                                                            <IconButton color="warning" size="small" disabled={accionLoading} onClick={() => handlePausar(c)}>
+                                                                <PauseIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
                                                         <Tooltip title="Forzar cierre">
                                                             <IconButton color="error" size="small" onClick={() => setConfirmarCierre(c)}>
                                                                 <BlockIcon fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
                                                     </>)}
+                                                    {c.estado === 'pausada' && (
+                                                        <Tooltip title="Reanudar campaña">
+                                                            <IconButton color="success" size="small" disabled={accionLoading} onClick={() => handleReanudar(c)}>
+                                                                <PlayArrowIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    )}
                                                     {c.estado === 'error' && (
                                                         <Tooltip title="Marcar finalizada">
                                                             <IconButton color="success" size="small" onClick={() => setConfirmarCierre(c)}>

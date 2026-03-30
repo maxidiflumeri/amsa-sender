@@ -9,6 +9,8 @@ process.on('unhandledRejection', (reason) => {
 });
 
 async function bootstrap() {
-    await NestFactory.createApplicationContext(WapiWorkerModule);
+    await NestFactory.createApplicationContext(WapiWorkerModule, {
+        logger: ['log', 'warn', 'error', 'debug'],
+    });
 }
 bootstrap();

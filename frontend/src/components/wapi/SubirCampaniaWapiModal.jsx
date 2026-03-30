@@ -45,7 +45,7 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
     const [templateSeleccionado, setTemplateSeleccionado] = useState(null);
     const [variablesTemplate, setVariablesTemplate] = useState([]); // ['1','2',...]
     const [variableMapping, setVariableMapping] = useState({}); // { '1': 'nombre', '2': 'deuda' }
-    const [delayMs, setDelayMs] = useState(1200);
+    const [delayMs, setDelayMs] = useState(5000);
     const [loading, setLoading] = useState(false);
     const [loadingTemplates, setLoadingTemplates] = useState(true);
     const [error, setError] = useState('');

@@ -19,6 +19,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import SearchIcon from '@mui/icons-material/Search';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -141,6 +142,7 @@ export default function WapiInbox() {
     const [asignando, setAsignando] = useState(false);
 
     const [typingNums, setTypingNums] = useState(new Set());
+    const [busqueda, setBusqueda] = useState('');
 
     const mensajesEndRef = useRef(null);
     const socketRef = useRef(null);
@@ -152,10 +154,21 @@ export default function WapiInbox() {
     useEffect(() => { convActivaRef.current = convActiva; }, [convActiva]);
 
     // ── Secciones derivadas del array convs ───────────────────────────────
-    const misActivas  = convs.filter(c => c.asignadoAId === myUserId && c.estado !== 'resuelta');
-    const sinAsignar  = convs.filter(c => c.estado === 'sin_asignar');
-    const misResueltas = convs.filter(c => c.asignadoAId === myUserId && c.estado === 'resuelta');
-    const otrasActivas = esAdmin ? convs.filter(c => c.asignadoAId && c.asignadoAId !== myUserId && c.estado !== 'resuelta') : [];
+    const misActivas       = convs.filter(c => c.asignadoAId === myUserId && c.estado !== 'resuelta');
+    const sinAsignar       = convs.filter(c => c.estado === 'sin_asignar');
+    const misResueltas     = convs.filter(c => c.asignadoAId === myUserId && c.estado === 'resuelta');
+    const otrasActivas     = esAdmin ? convs.filter(c => c.asignadoAId && c.asignadoAId !== myUserId && c.estado !== 'resuelta') : [];
+    const resueltasPorOtros = esAdmin ? convs.filter(c => c.estado === 'resuelta' && c.asignadoAId !== myUserId) : [];
+
+    // ── Búsqueda por ANI / nombre ─────────────────────────────────────────
+    const terminoBusqueda = busqueda.trim().toLowerCase();
+    const resultadosBusqueda = terminoBusqueda
+        ? convs.filter(c =>
+            c.numero?.toLowerCase().includes(terminoBusqueda) ||
+            c.nombre?.toLowerCase().includes(terminoBusqueda) ||
+            String(c.id).includes(terminoBusqueda)
+          )
+        : [];
 
     // ── Cargar conversaciones ──────────────────────────────────────────────
     const cargarConvs = useCallback(async () => {
@@ -431,6 +444,8 @@ export default function WapiInbox() {
 
     const puedeEnviar = convActiva && convActiva.estado !== 'sin_asignar' && convActiva.estado !== 'resuelta';
 
+    const campañaNombre = mensajes.find(m => m.tipo === 'sistema' && m.contenido?.tipo === 'ficha_contacto')?.contenido?.campañaNombre ?? null;
+
     // ── Layout ─────────────────────────────────────────────────────────────
     return (
         <Box sx={{
@@ -456,12 +471,51 @@ export default function WapiInbox() {
                     <IconButton size="small" onClick={cargarConvs}><RefreshIcon /></IconButton>
                 </Box>
 
+                {/* Buscador por ANI / nombre */}
+                <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <TextField
+                        fullWidth
+                        size="small"
+                        placeholder="Buscar por número o nombre..."
+                        value={busqueda}
+                        onChange={e => setBusqueda(e.target.value)}
+                        InputProps={{
+                            startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.5 }} />,
+                            endAdornment: busqueda ? (
+                                <IconButton size="small" onClick={() => setBusqueda('')} edge="end">
+                                    <CloseIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                            ) : null,
+                        }}
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 4, fontSize: 13 } }}
+                    />
+                </Box>
+
                 {error && <Alert severity="error" onClose={() => setError('')} sx={{ m: 1, py: 0.25 }}>{error}</Alert>}
 
                 <Box sx={{ overflowY: 'auto', flex: 1 }}>
                     {loadingConvs ? (
                         <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>
+                    ) : terminoBusqueda ? (
+                        /* Modo búsqueda — reemplaza secciones */
+                        <>
+                            <SeccionLista
+                                titulo={`Resultados (${resultadosBusqueda.length})`}
+                                convs={resultadosBusqueda}
+                                convActivaId={convActiva?.id}
+                                onSelect={abrirConv}
+                                color="primary.main"
+                                defaultOpen={true}
+                                typingNums={typingNums}
+                            />
+                            {!resultadosBusqueda.length && (
+                                <Box sx={{ p: 4, textAlign: 'center' }}>
+                                    <Typography color="text.secondary" variant="body2">Sin resultados para "{busqueda}"</Typography>
+                                </Box>
+                            )}
+                        </>
                     ) : (
+                        /* Modo normal — secciones */
                         <>
                             <SeccionLista
                                 titulo="Mis conversaciones activas"
@@ -493,7 +547,7 @@ export default function WapiInbox() {
                                 />
                             )}
                             <SeccionLista
-                                titulo="Resueltas"
+                                titulo="Mis resueltas"
                                 convs={misResueltas}
                                 convActivaId={convActiva?.id}
                                 onSelect={abrirConv}
@@ -501,7 +555,18 @@ export default function WapiInbox() {
                                 defaultOpen={false}
                                 typingNums={typingNums}
                             />
-                            {!misActivas.length && !sinAsignar.length && !misResueltas.length && !otrasActivas.length && (
+                            {esAdmin && (
+                                <SeccionLista
+                                    titulo="Resueltas por otros"
+                                    convs={resueltasPorOtros}
+                                    convActivaId={convActiva?.id}
+                                    onSelect={abrirConv}
+                                    color="text.disabled"
+                                    defaultOpen={false}
+                                    typingNums={typingNums}
+                                />
+                            )}
+                            {!misActivas.length && !sinAsignar.length && !misResueltas.length && !otrasActivas.length && !resueltasPorOtros.length && (
                                 <Box sx={{ p: 4, textAlign: 'center' }}>
                                     <Typography color="text.secondary">Sin conversaciones</Typography>
                                 </Box>
@@ -551,6 +616,26 @@ export default function WapiInbox() {
                                 {!convActiva.ventanaAbierta && convActiva.estado !== 'sin_asignar' && (
                                     <Chip icon={<LockClockIcon sx={{ fontSize: '14px !important' }} />} label="Ventana cerrada" size="small" color="error" sx={{ height: 18, fontSize: 10 }} />
                                 )}
+                                {campañaNombre && (
+                                    <Tooltip title="Campaña de origen">
+                                        <Chip
+                                            label={campañaNombre}
+                                            size="small"
+                                            color="secondary"
+                                            variant="outlined"
+                                            sx={{ height: 18, fontSize: 10, maxWidth: 140 }}
+                                        />
+                                    </Tooltip>
+                                )}
+                                <Tooltip title="ID de contacto — clic para copiar">
+                                    <Chip
+                                        label={`#${convActiva.id}`}
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={() => navigator.clipboard.writeText(String(convActiva.id))}
+                                        sx={{ height: 18, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', letterSpacing: 0.5 }}
+                                    />
+                                </Tooltip>
                             </Box>
                         </Box>
                         {convActiva.estado === 'sin_asignar' && (
