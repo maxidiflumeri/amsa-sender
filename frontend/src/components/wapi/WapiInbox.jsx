@@ -4,6 +4,7 @@ import {
     ListItemAvatar, ListItemText, ListItemButton, Divider, CircularProgress,
     Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button,
     Select, MenuItem, FormControl, InputLabel, Alert, Collapse, Autocomplete,
+    Popper, Fade,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -20,6 +21,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SearchIcon from '@mui/icons-material/Search';
+import BoltIcon from '@mui/icons-material/Bolt';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -144,11 +146,19 @@ export default function WapiInbox() {
     const [typingNums, setTypingNums] = useState(new Set());
     const [busqueda, setBusqueda] = useState('');
 
+    const [respuestasRapidas, setRespuestasRapidas] = useState([]);
+    const [rrOpen, setRrOpen] = useState(false);
+    const [rrBusqueda, setRrBusqueda] = useState('');
+    const [rrTagFiltro, setRrTagFiltro] = useState('');
+    const [rrIndexActivo, setRrIndexActivo] = useState(0);
+
     const mensajesEndRef = useRef(null);
     const socketRef = useRef(null);
     const convActivaRef = useRef(null);
     const mostrarNotificacionRef = useRef(null);
     const typingTimers = useRef({});
+    const inputAreaRef = useRef(null);
+    const rrListRef = useRef(null);
 
     // Mantener refs actualizadas para handlers de socket
     useEffect(() => { convActivaRef.current = convActiva; }, [convActiva]);
@@ -184,6 +194,13 @@ export default function WapiInbox() {
     }, []);
 
     useEffect(() => { cargarConvs(); }, [cargarConvs]);
+
+    // Cargar respuestas rápidas
+    useEffect(() => {
+        api.get('/wapi/respuestas-rapidas')
+            .then(r => setRespuestasRapidas(r.data))
+            .catch(() => {});
+    }, []);
 
     // Pedir permiso de notificaciones al montar
     useEffect(() => {
@@ -445,6 +462,15 @@ export default function WapiInbox() {
     const puedeEnviar = convActiva && convActiva.estado !== 'sin_asignar' && convActiva.estado !== 'resuelta';
 
     const campañaNombre = mensajes.find(m => m.tipo === 'sistema' && m.contenido?.tipo === 'ficha_contacto')?.contenido?.campañaNombre ?? null;
+
+    // Derivar respuestas rápidas
+    const rrTags = [...new Set(respuestasRapidas.flatMap(r => r.tags ?? []))].sort();
+    const rrFiltradas = respuestasRapidas.filter(r => {
+        const matchTag = !rrTagFiltro || (r.tags ?? []).includes(rrTagFiltro);
+        const q = rrBusqueda.replace(/^\//, '').toLowerCase().trim();
+        const matchQ = !q || r.titulo.toLowerCase().includes(q) || r.contenido.toLowerCase().includes(q);
+        return matchTag && matchQ;
+    });
 
     // ── Layout ─────────────────────────────────────────────────────────────
     return (
@@ -760,25 +786,107 @@ export default function WapiInbox() {
                                         <IconButton size="small" onClick={quitarAdjunto}><CloseIcon fontSize="small" /></IconButton>
                                     </Box>
                                 )}
-                                <Box sx={{ p: 1.5, display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+                                <Box ref={inputAreaRef} sx={{ p: 1.5, display: 'flex', gap: 1, alignItems: 'flex-end' }}>
                                     <input type="file" ref={fileInputRef} hidden accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={handleAdjunto} />
                                     <Tooltip title="Adjuntar archivo">
                                         <IconButton size="small" onClick={() => fileInputRef.current?.click()} disabled={enviando}>
                                             <AttachFileIcon />
                                         </IconButton>
                                     </Tooltip>
+                                    <Tooltip title="Plantillas rápidas (/)">
+                                        <IconButton size="small" onClick={() => { setRrOpen(o => !o); setRrBusqueda(''); setRrTagFiltro(''); setRrIndexActivo(0); }} disabled={enviando}>
+                                            <BoltIcon />
+                                        </IconButton>
+                                    </Tooltip>
                                     <TextField
                                         multiline maxRows={4} fullWidth size="small"
                                         placeholder={adjunto ? 'Agregar descripción (opcional)...' : 'Escribir mensaje...'}
                                         value={texto}
-                                        onChange={(e) => setTexto(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensaje(); } }}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setTexto(val);
+                                            if (val.startsWith('/')) {
+                                                setRrBusqueda(val);
+                                                setRrIndexActivo(0);
+                                                setRrOpen(true);
+                                            } else {
+                                                setRrOpen(false);
+                                                setRrBusqueda('');
+                                            }
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (rrOpen) {
+                                                if (e.key === 'ArrowDown') { e.preventDefault(); setRrIndexActivo(i => Math.min(i + 1, rrFiltradas.length - 1)); return; }
+                                                if (e.key === 'ArrowUp') { e.preventDefault(); setRrIndexActivo(i => Math.max(i - 1, 0)); return; }
+                                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (rrFiltradas[rrIndexActivo]) { setTexto(rrFiltradas[rrIndexActivo].contenido); setRrOpen(false); setRrBusqueda(''); } return; }
+                                                if (e.key === 'Escape') { setRrOpen(false); setRrBusqueda(''); return; }
+                                            }
+                                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensaje(); }
+                                        }}
                                         disabled={enviando}
                                     />
                                     <IconButton color="primary" onClick={enviarMensaje} disabled={(!texto.trim() && !adjunto) || enviando}>
                                         {enviando ? <CircularProgress size={20} /> : <SendIcon />}
                                     </IconButton>
                                 </Box>
+                                <Popper open={rrOpen} anchorEl={inputAreaRef.current} placement="top-start" transition style={{ zIndex: 1300, width: inputAreaRef.current?.offsetWidth ?? 400 }}>
+                                    {({ TransitionProps }) => (
+                                        <Fade {...TransitionProps} timeout={150}>
+                                            <Paper elevation={8} sx={{ mb: 0.5, maxHeight: 380, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
+                                                <Box sx={{ px: 1.5, pt: 1.5, pb: 1 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                                                        <Typography variant="caption" fontWeight={700} color="text.secondary">PLANTILLAS RÁPIDAS</Typography>
+                                                        <IconButton size="small" onClick={() => setRrOpen(false)}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>
+                                                    </Box>
+                                                    {rrTags.length > 0 && (
+                                                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                                            <Chip label="Todas" size="small" color={!rrTagFiltro ? 'primary' : 'default'} onClick={() => { setRrTagFiltro(''); setRrIndexActivo(0); }} sx={{ cursor: 'pointer', height: 20, fontSize: 10 }} />
+                                                            {rrTags.map(tag => (
+                                                                <Chip key={tag} label={tag} size="small" color={rrTagFiltro === tag ? 'primary' : 'default'} onClick={() => { setRrTagFiltro(rrTagFiltro === tag ? '' : tag); setRrIndexActivo(0); }} sx={{ cursor: 'pointer', height: 20, fontSize: 10 }} />
+                                                            ))}
+                                                        </Box>
+                                                    )}
+                                                </Box>
+                                                <Divider />
+                                                <Box ref={rrListRef} sx={{ overflowY: 'auto', flex: 1 }}>
+                                                    {rrFiltradas.length === 0 ? (
+                                                        <Box sx={{ p: 2, textAlign: 'center' }}>
+                                                            <Typography variant="caption" color="text.secondary">Sin resultados</Typography>
+                                                        </Box>
+                                                    ) : rrFiltradas.map((rr, idx) => (
+                                                        <Box
+                                                            key={rr.id}
+                                                            onClick={() => { setTexto(rr.contenido); setRrOpen(false); setRrBusqueda(''); }}
+                                                            sx={{
+                                                                px: 2, py: 1.25, cursor: 'pointer',
+                                                                bgcolor: idx === rrIndexActivo ? 'action.selected' : 'transparent',
+                                                                '&:hover': { bgcolor: 'action.hover' },
+                                                                borderBottom: '1px solid',
+                                                                borderColor: 'divider',
+                                                            }}
+                                                        >
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
+                                                                <Typography variant="body2" fontWeight={600} sx={{ flex: 1 }}>{rr.titulo}</Typography>
+                                                                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                                                    {(rr.tags ?? []).map(tag => (
+                                                                        <Chip key={tag} label={tag} size="small" sx={{ height: 16, fontSize: 9 }} />
+                                                                    ))}
+                                                                </Box>
+                                                            </Box>
+                                                            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                                                                {rr.contenido.substring(0, 80)}{rr.contenido.length > 80 ? '...' : ''}
+                                                            </Typography>
+                                                        </Box>
+                                                    ))}
+                                                </Box>
+                                                <Divider />
+                                                <Box sx={{ px: 1.5, py: 0.75, bgcolor: 'action.hover' }}>
+                                                    <Typography variant="caption" color="text.secondary">↑↓ navegar · Enter insertar · Esc cerrar · / filtrar</Typography>
+                                                </Box>
+                                            </Paper>
+                                        </Fade>
+                                    )}
+                                </Popper>
                             </>
                         )}
                     </Paper>

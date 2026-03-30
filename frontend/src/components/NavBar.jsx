@@ -44,6 +44,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import PhonelinkIcon from '@mui/icons-material/Phonelink';
 import InboxIcon from '@mui/icons-material/Inbox';
 import BlockIcon from '@mui/icons-material/Block';
+import BoltIcon from '@mui/icons-material/Bolt';
 import { useAuth } from '../context/AuthContext';
 
 const drawerWidth = 220;
@@ -67,6 +68,7 @@ const emailItems = [
 ];
 
 const configItems = [
+    { label: 'Plantillas rápidas', path: '/config/respuestas-rapidas', icon: <BoltIcon />, permiso: 'wapi.inbox.admin' },
     { label: 'Tareas programadas', path: '/config/tareas-programadas', icon: <ScheduleIcon />, permiso: 'config.tareas_programadas' },
 ];
 

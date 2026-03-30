@@ -7,6 +7,7 @@ import { WapiInboxModule } from './inbox/wapi-inbox.module';
 import { WapiBajasModule } from './bajas/wapi-bajas.module';
 import { WapiAnaliticaModule } from './analitica/wapi-analitica.module';
 import { WapiReportesModule } from './reportes/wapi-reportes.module';
+import { WapiRespuestasRapidasModule } from './respuestas-rapidas/wapi-respuestas-rapidas.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { WapiReportesModule } from './reportes/wapi-reportes.module';
     WapiBajasModule,
     WapiAnaliticaModule,
     WapiReportesModule,
+    WapiRespuestasRapidasModule,
   ],
 })
 export class WapiModule {}

@@ -402,6 +402,19 @@ model WaApiBaja {
   @@map("WaApiBaja")
 }
 
+model WaApiRespuestaRapida {
+  id        Int      @id @default(autoincrement())
+  titulo    String
+  contenido String   @db.Text
+  tags      Json     @default("[]")
+  activo    Boolean  @default(true)
+  creadoAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo])
+  @@map("WaApiRespuestaRapida")
+}
+
 enum TipoTareaProgramada {
   REPORTE_EMAIL_DIARIO
 }
