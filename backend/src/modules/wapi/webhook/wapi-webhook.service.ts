@@ -202,6 +202,10 @@ export class WapiWebhookService {
             empresa: c.org?.company ?? null,
           })),
         };
+      case 'sticker':
+        return { mediaUrl: msg.sticker?.id, mimeType: msg.sticker?.mime_type ?? 'image/webp', animated: msg.sticker?.animated ?? false };
+      case 'reaction':
+        return { emoji: msg.reaction?.emoji, messageId: msg.reaction?.message_id };
       default:
         return { raw: msg };
     }

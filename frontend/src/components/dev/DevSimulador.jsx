@@ -10,6 +10,8 @@ import ImageIcon from '@mui/icons-material/Image';
 import AudioFileIcon from '@mui/icons-material/AudioFile';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import ContactsIcon from '@mui/icons-material/Contacts';
+import StickerIcon from '@mui/icons-material/EmojiEmotions';
+import ThumbUpIcon from '@mui/icons-material/ThumbUp';
 import api from '../../api/axios';
 
 const NUMERO_DEFAULT = '5491155550001';
@@ -76,6 +78,8 @@ export default function DevSimulador() {
     const [contactoNombre, setContactoNombre] = useState('Juan Pérez');
     const [contactoTelefono, setContactoTelefono] = useState('+5491155550099');
     const [contactoEmpresa, setContactoEmpresa] = useState('');
+    const [reaccionEmoji, setReaccionEmoji] = useState('👍');
+    const [reaccionMsgId, setReaccionMsgId] = useState('');
     const [loading, setLoading] = useState('');
     const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' });
 
@@ -304,6 +308,48 @@ export default function DevSimulador() {
                             onClick={() => ejecutar('/dev/simular/contacto', { numero, nombre, contactoNombre, contactoTelefono, contactoEmpresa })}
                         >
                             Simular contacto
+                        </Button>
+                    </Paper>
+
+                    {/* Sticker */}
+                    <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
+                        <Typography variant="caption" fontWeight={700} display="block" mb={1}>
+                            <StickerIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Sticker
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1, minHeight: 56 }}>
+                            Simula un sticker WebP. No visualizable en dev (media ID falso).
+                        </Typography>
+                        <Button
+                            fullWidth variant="outlined" startIcon={<StickerIcon />}
+                            disabled={!!loading || !numero.trim()}
+                            onClick={() => ejecutar('/dev/simular/sticker', { numero, nombre })}
+                        >
+                            Simular sticker
+                        </Button>
+                    </Paper>
+
+                    {/* Reacción */}
+                    <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
+                        <Typography variant="caption" fontWeight={700} display="block" mb={1}>
+                            <ThumbUpIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Reacción emoji
+                        </Typography>
+                        <TextField
+                            fullWidth size="small" label="Emoji"
+                            value={reaccionEmoji} onChange={e => setReaccionEmoji(e.target.value)}
+                            sx={{ mb: 1 }}
+                        />
+                        <TextField
+                            fullWidth size="small" label="waMessageId al que reacciona"
+                            value={reaccionMsgId} onChange={e => setReaccionMsgId(e.target.value)}
+                            helperText="ID de un mensaje enviado desde el inbox"
+                            sx={{ mb: 1 }}
+                        />
+                        <Button
+                            fullWidth variant="outlined" startIcon={<ThumbUpIcon />}
+                            disabled={!!loading || !numero.trim() || !reaccionEmoji.trim()}
+                            onClick={() => ejecutar('/dev/simular/reaccion', { numero, nombre, emoji: reaccionEmoji, waMessageId: reaccionMsgId || 'dev-msg-id' })}
+                        >
+                            Simular reacción
                         </Button>
                     </Paper>
                 </Stack>

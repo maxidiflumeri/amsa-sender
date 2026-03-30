@@ -27,6 +27,13 @@ interface SimularContactoDto {
   contactoEmpresa?: string;
 }
 
+interface SimularReaccionDto {
+  numero: string;
+  nombre?: string;
+  emoji: string;
+  waMessageId: string;
+}
+
 interface SimularBotonDto {
   numero: string;
   nombre?: string;
@@ -155,5 +162,33 @@ export class DevSimuladorController {
     });
     await this.webhookService.procesarEvento(payload);
     return { ok: true, simulado: 'contacto', numero: dto.numero };
+  }
+
+  /** Simula un sticker entrante (WebP — no visualizable en dev) */
+  @Post('sticker')
+  async sticker(@Body() dto: SimularAudioDto) {
+    const payload = buildPayload('dev-phone-id', {
+      contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
+      messages: [{
+        from: dto.numero, id: waId(), timestamp: nowTs(), type: 'sticker',
+        sticker: { id: 'dev-sticker-id', mime_type: 'image/webp', animated: false },
+      }],
+    });
+    await this.webhookService.procesarEvento(payload);
+    return { ok: true, simulado: 'sticker', numero: dto.numero };
+  }
+
+  /** Simula una reacción emoji a un mensaje */
+  @Post('reaccion')
+  async reaccion(@Body() dto: SimularReaccionDto) {
+    const payload = buildPayload('dev-phone-id', {
+      contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
+      messages: [{
+        from: dto.numero, id: waId(), timestamp: nowTs(), type: 'reaction',
+        reaction: { message_id: dto.waMessageId, emoji: dto.emoji },
+      }],
+    });
+    await this.webhookService.procesarEvento(payload);
+    return { ok: true, simulado: 'reaccion', emoji: dto.emoji, numero: dto.numero };
   }
 }

@@ -123,7 +123,7 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
     }
     if (conv.mensajes?.[0] && conv.mensajes[0].tipo !== 'sistema') {
         const m = conv.mensajes[0];
-        const previewTipo = { image: '📷 Imagen', audio: '🎵 Audio', document: '📄 Documento', contacts: '📇 Contacto', video: '🎬 Video' };
+        const previewTipo = { image: '📷 Imagen', audio: '🎵 Audio', document: '📄 Documento', contacts: '📇 Contacto', video: '🎬 Video', sticker: '🎭 Sticker', reaction: m.contenido?.emoji ?? '😀 Reacción' };
         return m.contenido?.text ?? previewTipo[m.tipo] ?? `[${m.tipo}]`;
     }
     return '';
@@ -522,8 +522,28 @@ export default function WapiInbox() {
                 </Box>
             );
         }
+        if (msg.tipo === 'sticker') {
+            const url = mediaUrl(c.mediaUrl ?? c.raw?.sticker?.id);
+            return url
+                ? <Box component="img" src={url} alt="sticker" sx={{ width: 140, height: 140, objectFit: 'contain', display: 'block' }} />
+                : <Typography variant="caption" color="text.secondary">🎭 Sticker</Typography>;
+        }
+        if (msg.tipo === 'reaction') {
+            const emoji = c.emoji ?? c.raw?.reaction?.emoji;
+            return (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography sx={{ fontSize: 28, lineHeight: 1 }}>{emoji}</Typography>
+                    <Typography variant="caption" color="text.secondary">reaccionó a un mensaje</Typography>
+                </Box>
+            );
+        }
         if (msg.tipo === 'contacts') {
-            const lista = c.contacts ?? [];
+            const lista = c.contacts ?? (c.raw?.contacts ?? []).map(ct => ({
+                nombre: ct.name?.formatted_name ?? ct.name?.first_name ?? 'Contacto',
+                telefonos: (ct.phones ?? []).map(p => p.phone),
+                emails: (ct.emails ?? []).map(e => e.email),
+                empresa: ct.org?.company ?? null,
+            }));
             return (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {lista.map((ct, i) => (
@@ -790,7 +810,17 @@ export default function WapiInbox() {
                     <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: (t) => t.palette.mode === 'dark' ? '#1a1a2e' : '#e5ddd5' }}>
                         {loadingMensajes ? (
                             <Box sx={{ display: 'flex', justifyContent: 'center', pt: 4 }}><CircularProgress /></Box>
-                        ) : mensajes.map((msg) => {
+                        ) : (() => {
+                            // Construir mapa de reacciones: { [waMessageId]: emoji }
+                            const reactionMap = {};
+                            mensajes.forEach(m => {
+                                if (m.tipo === 'reaction') {
+                                    const targetId = m.contenido?.messageId ?? m.contenido?.raw?.reaction?.message_id;
+                                    const emoji = m.contenido?.emoji ?? m.contenido?.raw?.reaction?.emoji;
+                                    if (targetId && emoji) reactionMap[targetId] = emoji;
+                                }
+                            });
+                            return mensajes.filter(m => m.tipo !== 'reaction').map((msg) => {
                             // ── Burbuja de sistema (ficha de contacto) ──
                             if (msg.tipo === 'sistema') {
                                 const c = msg.contenido ?? {};
@@ -836,33 +866,50 @@ export default function WapiInbox() {
                             }
 
                             // ── Burbuja normal ──
+                            const reaccion = reactionMap[msg.waMessageId];
                             return (
                                 <Box key={msg.id} sx={{ display: 'flex', justifyContent: msg.fromMe ? 'flex-end' : 'flex-start' }}>
-                                    <Paper elevation={1} sx={{
-                                        px: 1.5, py: 0.75, maxWidth: '70%',
-                                        borderRadius: msg.fromMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                                        bgcolor: (t) => msg.fromMe
-                                            ? (t.palette.mode === 'dark' ? '#005c4b' : '#dcf8c6')
-                                            : (t.palette.mode === 'dark' ? '#2a2a2a' : '#fff'),
-                                    }}>
-                                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                            {renderContenido(msg)}
-                                        </Typography>
-                                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
-                                                {formatHora(msg.timestamp)}
+                                    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                        <Paper elevation={1} sx={{
+                                            px: 1.5, py: 0.75, maxWidth: '70%',
+                                            borderRadius: msg.fromMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                                            bgcolor: (t) => msg.fromMe
+                                                ? (t.palette.mode === 'dark' ? '#005c4b' : '#dcf8c6')
+                                                : (t.palette.mode === 'dark' ? '#2a2a2a' : '#fff'),
+                                        }}>
+                                            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                                {renderContenido(msg)}
                                             </Typography>
-                                            {msg.fromMe && (() => {
-                                                const st = messageStatuses[msg.waMessageId] ?? msg.status ?? 'sent';
-                                                if (st === 'read') return <DoneAllIcon sx={{ fontSize: 14, color: '#34B7F1' }} />;
-                                                if (st === 'delivered') return <DoneAllIcon sx={{ fontSize: 14, color: 'text.secondary' }} />;
-                                                return <DoneIcon sx={{ fontSize: 14, color: 'text.secondary' }} />;
-                                            })()}
-                                        </Box>
-                                    </Paper>
+                                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+                                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
+                                                    {formatHora(msg.timestamp)}
+                                                </Typography>
+                                                {msg.fromMe && (() => {
+                                                    const st = messageStatuses[msg.waMessageId] ?? msg.status ?? 'sent';
+                                                    if (st === 'read') return <DoneAllIcon sx={{ fontSize: 14, color: '#34B7F1' }} />;
+                                                    if (st === 'delivered') return <DoneAllIcon sx={{ fontSize: 14, color: 'text.secondary' }} />;
+                                                    return <DoneIcon sx={{ fontSize: 14, color: 'text.secondary' }} />;
+                                                })()}
+                                            </Box>
+                                        </Paper>
+                                        {reaccion && (
+                                            <Box sx={{
+                                                position: 'absolute', bottom: -10,
+                                                right: msg.fromMe ? 'auto' : -10,
+                                                left: msg.fromMe ? -10 : 'auto',
+                                                bgcolor: (t) => t.palette.mode === 'dark' ? '#3a3a3a' : '#fff',
+                                                border: '1px solid', borderColor: 'divider',
+                                                borderRadius: '10px', px: 0.6, py: 0.1,
+                                                fontSize: 14, lineHeight: 1.6,
+                                                boxShadow: 1, zIndex: 1,
+                                            }}>
+                                                {reaccion}
+                                            </Box>
+                                        )}
+                                    </Box>
                                 </Box>
                             );
-                        })}
+                        })})()}
                         <div ref={mensajesEndRef} />
                     </Box>
 
