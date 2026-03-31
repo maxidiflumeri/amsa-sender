@@ -12,7 +12,7 @@ export default defineConfig({
       },
       manifest: {
         name: 'AMSA Sender',
-        short_name: 'AMSA',
+        short_name: 'AMSA Sender',
         theme_color: '#2e5a50',
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
