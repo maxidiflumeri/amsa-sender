@@ -37,7 +37,8 @@ const EMPTY_FORM = { titulo: '', contenido: '', tags: [], activo: true };
 
 export default function WapiRespuestasRapidas() {
     const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+    const isMobile = useMediaQuery(theme.breakpoints.down('md')); // tabla → cards
+    const isSmall = useMediaQuery(theme.breakpoints.down('sm'));  // dialogs fullscreen
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -276,6 +277,7 @@ export default function WapiRespuestasRapidas() {
                     </Stack>
                 ) : (
                     /* Vista desktop: tabla */
+                    <Box sx={{ overflowX: 'auto' }}>
                     <Table size="small">
                         <TableHead>
                             <TableRow>
@@ -334,11 +336,12 @@ export default function WapiRespuestasRapidas() {
                             ))}
                         </TableBody>
                     </Table>
+                    </Box>
                 )}
             </Paper>
 
             {/* Dialog crear/editar */}
-            <Dialog open={dialog} onClose={cerrarDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
+            <Dialog open={dialog} onClose={cerrarDialog} maxWidth="md" fullWidth fullScreen={isSmall}>
                 <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     {editando ? 'Editar plantilla' : 'Nueva plantilla'}
                     <IconButton size="small" onClick={cerrarDialog}><CloseIcon /></IconButton>
@@ -473,7 +476,7 @@ export default function WapiRespuestasRapidas() {
             </Dialog>
 
             {/* Confirmar eliminar */}
-            <Dialog open={!!confirmarEliminar} onClose={() => setConfirmarEliminar(null)} maxWidth="xs" fullWidth fullScreen={isMobile}>
+            <Dialog open={!!confirmarEliminar} onClose={() => setConfirmarEliminar(null)} maxWidth="xs" fullWidth fullScreen={isSmall}>
                 <DialogTitle>Eliminar plantilla</DialogTitle>
                 <DialogContent>
                     <Typography>¿Eliminás <strong>{confirmarEliminar?.titulo}</strong>? Esta acción no se puede deshacer.</Typography>
