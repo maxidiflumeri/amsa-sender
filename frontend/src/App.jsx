@@ -253,7 +253,7 @@ export default function App() {
                     <Route path="/reportes" element={<RutaProtegida permiso="whatsapp.reportes"><VerReportes /></RutaProtegida>} />
                     <Route path="/templates" element={<RutaProtegida permiso="whatsapp.templates"><VerTemplates /></RutaProtegida>} />
                     <Route path="/metricas" element={<RutaProtegida permiso="whatsapp.metricas"><VerMetricas /></RutaProtegida>} />
-                    <Route path="/config/respuestas-rapidas" element={<RutaProtegida permiso="wapi.inbox.admin"><WapiRespuestasRapidas /></RutaProtegida>} />
+                    <Route path="/config/respuestas-rapidas" element={<RutaProtegida permiso="wapi.respuestas_rapidas"><WapiRespuestasRapidas /></RutaProtegida>} />
                     <Route path="/config/tareas-programadas" element={<RutaProtegida permiso="config.tareas_programadas"><TareasProgramadas /></RutaProtegida>} />
                     <Route path="/email/cuentas" element={<RutaProtegida permiso="email.cuentas_smtp"><CuentasSMTP /></RutaProtegida>} />
                     <Route path="/email/crearTemplate" element={<RutaProtegida permiso="email.templates"><CrearTemplate /></RutaProtegida>} />

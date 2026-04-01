@@ -4,7 +4,7 @@ import {
     Table, TableHead, TableRow, TableCell, TableBody, Chip,
     Dialog, DialogTitle, DialogContent, DialogActions, TextField,
     CircularProgress, Alert, Snackbar, Stack, Divider, Switch,
-    FormControlLabel, ToggleButton, ToggleButtonGroup,
+    FormControlLabel, ToggleButton, ToggleButtonGroup, useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
@@ -37,6 +37,7 @@ const EMPTY_FORM = { titulo: '', contenido: '', tags: [], activo: true };
 
 export default function WapiRespuestasRapidas() {
     const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -214,7 +215,67 @@ export default function WapiRespuestasRapidas() {
                     <Box textAlign="center" py={6} color="text.secondary">
                         <Typography>No hay plantillas{filtroTag ? ` con tag "${filtroTag}"` : ''}.</Typography>
                     </Box>
+                ) : isMobile ? (
+                    /* Vista mobile: cards */
+                    <Stack spacing={1.5}>
+                        {itemsFiltrados.map(item => (
+                            <Paper
+                                key={item.id}
+                                variant="outlined"
+                                sx={{ p: 1.5, borderRadius: 2 }}
+                            >
+                                <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={1}>
+                                    <Box flex={1} minWidth={0}>
+                                        <Box display="flex" alignItems="center" gap={1} mb={0.5} flexWrap="wrap">
+                                            <Typography variant="body2" fontWeight={600} noWrap>
+                                                {item.titulo}
+                                            </Typography>
+                                            <Chip
+                                                label={item.activo ? 'Activa' : 'Inactiva'}
+                                                size="small"
+                                                color={item.activo ? 'success' : 'default'}
+                                                sx={{ height: 18, fontSize: 10 }}
+                                            />
+                                        </Box>
+                                        <Typography
+                                            variant="caption"
+                                            color="text.secondary"
+                                            sx={{
+                                                display: '-webkit-box',
+                                                WebkitLineClamp: 2,
+                                                WebkitBoxOrient: 'vertical',
+                                                overflow: 'hidden',
+                                                fontFamily: 'inherit',
+                                            }}
+                                        >
+                                            {item.contenido}
+                                        </Typography>
+                                        {(item.tags ?? []).length > 0 && (
+                                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.75 }}>
+                                                {(item.tags ?? []).map(tag => (
+                                                    <Chip key={tag} label={tag} size="small" sx={{ height: 18, fontSize: 10 }} />
+                                                ))}
+                                            </Box>
+                                        )}
+                                    </Box>
+                                    <Box display="flex" flexDirection="column" alignItems="flex-end" flexShrink={0}>
+                                        <Tooltip title="Editar">
+                                            <IconButton size="small" onClick={() => abrirEditar(item)}>
+                                                <EditIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                        <Tooltip title="Eliminar">
+                                            <IconButton size="small" color="error" onClick={() => setConfirmarEliminar(item)}>
+                                                <DeleteIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Box>
+                                </Box>
+                            </Paper>
+                        ))}
+                    </Stack>
                 ) : (
+                    /* Vista desktop: tabla */
                     <Table size="small">
                         <TableHead>
                             <TableRow>
@@ -277,7 +338,7 @@ export default function WapiRespuestasRapidas() {
             </Paper>
 
             {/* Dialog crear/editar */}
-            <Dialog open={dialog} onClose={cerrarDialog} maxWidth="md" fullWidth>
+            <Dialog open={dialog} onClose={cerrarDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
                 <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     {editando ? 'Editar plantilla' : 'Nueva plantilla'}
                     <IconButton size="small" onClick={cerrarDialog}><CloseIcon /></IconButton>
@@ -355,7 +416,7 @@ export default function WapiRespuestasRapidas() {
                                             <IconButton size="small" onClick={() => insertarFormato('mono')}><CodeIcon fontSize="small" /></IconButton>
                                         </Tooltip>
                                         <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-                                        <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', fontSize: 10 }}>
+                                        <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', fontSize: 10, display: { xs: 'none', sm: 'block' } }}>
                                             *negrita* · _cursiva_ · ~tachado~ · ```mono```
                                         </Typography>
                                     </Paper>
@@ -412,7 +473,7 @@ export default function WapiRespuestasRapidas() {
             </Dialog>
 
             {/* Confirmar eliminar */}
-            <Dialog open={!!confirmarEliminar} onClose={() => setConfirmarEliminar(null)} maxWidth="xs" fullWidth>
+            <Dialog open={!!confirmarEliminar} onClose={() => setConfirmarEliminar(null)} maxWidth="xs" fullWidth fullScreen={isMobile}>
                 <DialogTitle>Eliminar plantilla</DialogTitle>
                 <DialogContent>
                     <Typography>¿Eliminás <strong>{confirmarEliminar?.titulo}</strong>? Esta acción no se puede deshacer.</Typography>

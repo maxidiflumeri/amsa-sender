@@ -68,7 +68,7 @@ const emailItems = [
 ];
 
 const configItems = [
-    { label: 'Plantillas rápidas', path: '/config/respuestas-rapidas', icon: <BoltIcon />, permiso: 'wapi.inbox.admin' },
+    { label: 'Plantillas rápidas', path: '/config/respuestas-rapidas', icon: <BoltIcon />, permiso: 'wapi.respuestas_rapidas' },
     { label: 'Tareas programadas', path: '/config/tareas-programadas', icon: <ScheduleIcon />, permiso: 'config.tareas_programadas' },
 ];
 

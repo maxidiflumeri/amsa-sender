@@ -1,5 +1,31 @@
 # Changelog
 
+## [2026-04-01] — WAPI: responsive plantillas rápidas, sync de templates y permiso dedicado
+
+### Frontend — `WapiRespuestasRapidas.jsx`
+
+- **Responsive completo**: en mobile (< 600 px) la tabla de plantillas se reemplaza por cards apiladas mostrando título, chip de estado, preview de contenido y tags, con botones de acción verticales.
+- **Dialogs a pantalla completa en mobile**: tanto el dialog de crear/editar como el de confirmar eliminación usan `fullScreen` en pantallas pequeñas.
+- **Toolbar de formato**: el hint de marcado (`*negrita* · _cursiva_...`) se oculta en xs para no desbordar la barra de herramientas.
+- Se importa `useMediaQuery` para detectar el breakpoint `sm`.
+
+### Backend — `wapi-templates.service.ts`
+
+- **Sync elimina templates borrados en Meta**: después de hacer upsert de los templates recibidos desde Meta, se ejecuta un `deleteMany` que borra de la BD cualquier `WaApiTemplate` del mismo `wabaId` que ya no exista en la respuesta de la API.
+- **Salvaguarda anti-borrado masivo**: la eliminación solo corre si Meta devolvió al menos un template, evitando wipe total ante respuestas vacías inesperadas.
+- Gracias al `onDelete: SetNull` en `WaApiCampaña`, las campañas que usaban un template eliminado quedan con `templateId = null` sin errores de FK.
+- El método retorna `{ sincronizados, eliminados, errores }` (nuevo campo `eliminados`).
+
+### Permisos — permiso `wapi.respuestas_rapidas` (nuevo)
+
+- **`GestionRoles.jsx`**: agrega `wapi.respuestas_rapidas` ("Plantillas rápidas") como ítem independiente en la sección "Inbox WA" del editor de roles, y lo incluye en el badge de progreso de acceso.
+- **`NavBar.jsx`**: el ítem "Plantillas rápidas" en el sidebar Configuración ahora usa `wapi.respuestas_rapidas` en lugar de `wapi.inbox.admin`.
+- **`App.jsx`**: la ruta `/config/respuestas-rapidas` protegida con el nuevo permiso.
+- **`wapi-respuestas-rapidas.controller.ts`**: los endpoints de gestión (`GET /todas`, `POST`, `PUT /:id`, `DELETE /:id`) cambian de `wapi.inbox.admin` a `wapi.respuestas_rapidas`. El `GET /` (solo activas para agentes) mantiene `wapi.inbox`.
+- **`seed.ts`**: `wapi.respuestas_rapidas` añadido a `TODOS_LOS_PERMISOS`.
+
+---
+
 ## [2026-03-30] — WAPI: soporte de contactos compartidos y mejoras del simulador
 
 ### Inbox — `WapiInbox.jsx`

@@ -28,7 +28,7 @@ export class WapiTemplatesService {
     });
   }
 
-  async sincronizarDesideMeta(configId?: number): Promise<{ sincronizados: number; errores: string[] }> {
+  async sincronizarDesideMeta(configId?: number): Promise<{ sincronizados: number; eliminados: number; errores: string[] }> {
     this.logger.log('Sincronizando templates desde Meta API...');
     const config = await this.wapiConfigService.obtenerConfigCompleta(configId);
     const { wabaId, token } = config;
@@ -76,8 +76,26 @@ export class WapiTemplatesService {
       }
     }
 
-    this.logger.log(`Templates sincronizados: ${sincronizados}, errores: ${errores.length}`);
-    return { sincronizados, errores };
+    // Eliminar templates locales que ya no existen en Meta.
+    // Solo se ejecuta si Meta devolvió al menos un template, para evitar
+    // borrar todo ante una respuesta vacía inesperada.
+    let eliminados = 0;
+    if (templates.length > 0) {
+      const nombresEnMeta = templates.map((t) => t.name as string);
+      const resultado = await this.prisma.waApiTemplate.deleteMany({
+        where: {
+          wabaId,
+          metaNombre: { notIn: nombresEnMeta },
+        },
+      });
+      eliminados = resultado.count;
+      if (eliminados > 0) {
+        this.logger.log(`Templates eliminados por no existir en Meta: ${eliminados}`);
+      }
+    }
+
+    this.logger.log(`Templates sincronizados: ${sincronizados}, eliminados: ${eliminados}, errores: ${errores.length}`);
+    return { sincronizados, eliminados, errores };
   }
 
   async actualizarButtonActions(id: number, dto: ActualizarButtonActionsDto) {

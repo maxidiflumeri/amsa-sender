@@ -17,6 +17,7 @@ const TODOS_LOS_PERMISOS = [
     'email.desuscripciones',
     'config.tareas_programadas',
     'admin.usuarios',
+    'wapi.respuestas_rapidas',
 ];
 
 const PERMISOS_GESTOR = [

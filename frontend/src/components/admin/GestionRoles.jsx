@@ -68,6 +68,7 @@ const TODOS_LOS_PERMISOS = [
         items: [
             { key: 'wapi.inbox', label: 'Ver conversaciones propias' },
             { key: 'wapi.inbox.admin', label: 'Admin inbox (todas + reasignar)' },
+            { key: 'wapi.respuestas_rapidas', label: 'Plantillas rápidas' },
         ],
     },
 ];
@@ -181,7 +182,7 @@ const SECCION_META = [
         icon: <InboxIcon sx={{ fontSize: 14 }} />,
         color: '#E65100',
         bg: '#FFF3E0',
-        permisos: ['wapi.inbox', 'wapi.inbox.admin'],
+        permisos: ['wapi.inbox', 'wapi.inbox.admin', 'wapi.respuestas_rapidas'],
     },
 ];
 

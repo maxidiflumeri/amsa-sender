@@ -18,25 +18,25 @@ export class WapiRespuestasRapidasController {
 
   /** Lectura para admin — todas (incluyendo inactivas) */
   @Get('todas')
-  @RequiredPermiso('wapi.inbox.admin')
+  @RequiredPermiso('wapi.respuestas_rapidas')
   listarTodas() {
     return this.service.listarTodas();
   }
 
   @Post()
-  @RequiredPermiso('wapi.inbox.admin')
+  @RequiredPermiso('wapi.respuestas_rapidas')
   crear(@Body() dto: CrearRespuestaRapidaDto) {
     return this.service.crear(dto);
   }
 
   @Put(':id')
-  @RequiredPermiso('wapi.inbox.admin')
+  @RequiredPermiso('wapi.respuestas_rapidas')
   actualizar(@Param('id') id: string, @Body() dto: Partial<CrearRespuestaRapidaDto>) {
     return this.service.actualizar(+id, dto);
   }
 
   @Delete(':id')
-  @RequiredPermiso('wapi.inbox.admin')
+  @RequiredPermiso('wapi.respuestas_rapidas')
   eliminar(@Param('id') id: string) {
     return this.service.eliminar(+id);
   }
