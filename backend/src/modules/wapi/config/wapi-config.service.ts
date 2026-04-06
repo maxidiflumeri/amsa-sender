@@ -31,7 +31,9 @@ export class WapiConfigService {
 
   async crearConfig(dto: GuardarWapiConfigDto) {
     this.logger.log(`Creando nueva configuración: ${dto.nombre}`);
-    return this.prisma.waApiConfig.create({ data: dto as any });
+    const data: any = { ...dto };
+    if (data.dailyLimit !== undefined) data.dailyLimit = Number(data.dailyLimit);
+    return this.prisma.waApiConfig.create({ data });
   }
 
   async actualizarConfig(id: number, dto: GuardarWapiConfigDto) {
@@ -39,6 +41,7 @@ export class WapiConfigService {
     const data: any = { ...dto };
     if (!data.token) delete data.token;
     if (!data.appSecret) delete data.appSecret;
+    if (data.dailyLimit !== undefined) data.dailyLimit = Number(data.dailyLimit);
     return this.prisma.waApiConfig.update({ where: { id }, data });
   }
 
