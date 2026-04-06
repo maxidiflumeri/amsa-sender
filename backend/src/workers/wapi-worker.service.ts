@@ -16,7 +16,7 @@ function sleep(ms: number) {
 
 function randomDelay(min: number, max: number): Promise<void> {
   const ms = Math.floor(Math.random() * (max - min + 1)) + min;
-  return sleep(ms);
+  return sleep(ms) as Promise<void>;
 }
 
 @Injectable()

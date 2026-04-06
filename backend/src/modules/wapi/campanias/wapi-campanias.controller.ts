@@ -36,7 +36,8 @@ export class WapiCampaniasController {
       variableMapping: body.variableMapping
         ? (typeof body.variableMapping === 'string' ? JSON.parse(body.variableMapping) : body.variableMapping)
         : undefined,
-      delayMs: body.delayMs ? Number(body.delayMs) : undefined,
+      delayMinMs: body.delayMinMs ? Number(body.delayMinMs) : undefined,
+      delayMaxMs: body.delayMaxMs ? Number(body.delayMaxMs) : undefined,
       batchSize: body.batchSize ? Number(body.batchSize) : undefined,
       agendadoAt: body.agendadoAt,
       configId: body.configId ? Number(body.configId) : undefined,
