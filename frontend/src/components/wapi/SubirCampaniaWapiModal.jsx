@@ -45,7 +45,8 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
     const [templateSeleccionado, setTemplateSeleccionado] = useState(null);
     const [variablesTemplate, setVariablesTemplate] = useState([]); // ['1','2',...]
     const [variableMapping, setVariableMapping] = useState({}); // { '1': 'nombre', '2': 'deuda' }
-    const [delayMs, setDelayMs] = useState(5000);
+    const [delayMinMs, setDelayMinMs] = useState(30000);
+    const [delayMaxMs, setDelayMaxMs] = useState(60000);
     const [loading, setLoading] = useState(false);
     const [loadingTemplates, setLoadingTemplates] = useState(true);
     const [error, setError] = useState('');
@@ -93,6 +94,7 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
 
     const puedeAvanzarPaso0 = nombre.trim() && archivo && templateId && (configs.length === 0 || configId);
     const puedeAvanzarPaso1 = variablesTemplate.every(v => variableMapping[v]);
+    const delayValido = delayMinMs < delayMaxMs;
 
     const handleSiguiente = () => {
         setError('');
@@ -117,7 +119,8 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
             formData.append('nombre', nombre.trim());
             formData.append('templateId', String(templateId));
             formData.append('variableMapping', JSON.stringify(variableMapping));
-            formData.append('delayMs', String(delayMs));
+            formData.append('delayMinMs', String(delayMinMs));
+            formData.append('delayMaxMs', String(delayMaxMs));
             if (user?.id) formData.append('userId', String(user.id));
             if (configId) formData.append('configId', String(configId));
 
@@ -240,16 +243,34 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
             {/* ── PASO 2: Configurar envío ── */}
             {step === 2 && (
                 <Box display="flex" flexDirection="column" gap={2}>
-                    <TextField
-                        label="Delay entre mensajes (ms)"
-                        type="number"
-                        value={delayMs}
-                        onChange={e => setDelayMs(Number(e.target.value))}
-                        fullWidth
-                        inputProps={{ min: 500, max: 10000, step: 100 }}
-                        helperText="Tiempo de espera entre cada envío. Mínimo recomendado: 1000ms para evitar bloqueos de Meta."
-                    />
-
+                    <Typography variant="body2" color="text.secondary">
+                        El delay entre mensajes será aleatorio dentro del rango configurado, lo que reduce la detección de patrones automáticos por parte de Meta.
+                    </Typography>
+                    <Box display="flex" gap={2}>
+                        <TextField
+                            label="Delay mínimo (ms)"
+                            type="number"
+                            value={delayMinMs}
+                            onChange={e => setDelayMinMs(Number(e.target.value))}
+                            fullWidth
+                            inputProps={{ min: 5000, max: 120000, step: 1000 }}
+                            helperText="Ej: 30000 = 30 seg"
+                            error={delayMinMs >= delayMaxMs}
+                        />
+                        <TextField
+                            label="Delay máximo (ms)"
+                            type="number"
+                            value={delayMaxMs}
+                            onChange={e => setDelayMaxMs(Number(e.target.value))}
+                            fullWidth
+                            inputProps={{ min: 5000, max: 120000, step: 1000 }}
+                            helperText="Ej: 60000 = 60 seg"
+                            error={delayMaxMs <= delayMinMs}
+                        />
+                    </Box>
+                    {delayMinMs >= delayMaxMs && (
+                        <Alert severity="warning">El delay mínimo debe ser menor al máximo.</Alert>
+                    )}
                     <Divider />
 
                     <Box sx={{ backgroundColor: 'action.hover', borderRadius: 1, p: 2 }}>
@@ -260,7 +281,7 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
                         )}
                         <Typography variant="body2">Template: <strong>{templateSeleccionado?.metaNombre}</strong></Typography>
                         <Typography variant="body2">Archivo: <strong>{archivo?.name}</strong></Typography>
-                        <Typography variant="body2">Delay: <strong>{delayMs}ms</strong></Typography>
+                        <Typography variant="body2">Delay: <strong>{delayMinMs / 1000}s – {delayMaxMs / 1000}s (aleatorio)</strong></Typography>
                         {variablesTemplate.length > 0 && (
                             <Typography variant="body2">
                                 Variables: {variablesTemplate.map(v => `{{${v}}} → ${variableMapping[v]}`).join(', ')}
@@ -283,7 +304,7 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
                     <Button
                         variant="contained"
                         onClick={handleCrear}
-                        disabled={loading}
+                        disabled={loading || !delayValido}
                         startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
                     >
                         {loading ? 'Creando...' : 'Crear campaña'}

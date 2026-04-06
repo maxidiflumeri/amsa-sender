@@ -1,4 +1,5 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class GuardarWapiConfigDto {
   @IsString()
@@ -31,4 +32,10 @@ export class GuardarWapiConfigDto {
   @IsOptional()
   @IsString()
   msgConfirmacionBaja?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  dailyLimit?: number;
 }

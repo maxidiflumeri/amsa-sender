@@ -25,6 +25,7 @@ const CAMPO_VACIO = {
     appSecret: '',
     msgBienvenida: '',
     msgConfirmacionBaja: '',
+    dailyLimit: 200,
 };
 
 export default function WapiConfig() {
@@ -79,6 +80,7 @@ export default function WapiConfig() {
             appSecret: '',
             msgBienvenida: config.msgBienvenida ?? '',
             msgConfirmacionBaja: config.msgConfirmacionBaja ?? '',
+            dailyLimit: config.dailyLimit ?? 200,
         });
         setShowToken(false);
         setShowAppSecret(false);
@@ -400,6 +402,23 @@ export default function WapiConfig() {
                             minRows={3}
                             placeholder="Hemos procesado tu solicitud de baja..."
                             helperText="Se envía cuando un contacto presiona el botón de baja en un template."
+                        />
+
+                        <Divider />
+
+                        <Typography variant="subtitle2" fontWeight="bold">
+                            Límites de envío
+                        </Typography>
+
+                        <TextField
+                            label="Límite diario de mensajes"
+                            name="dailyLimit"
+                            type="number"
+                            value={form.dailyLimit}
+                            onChange={handleChange}
+                            fullWidth
+                            inputProps={{ min: 1, step: 50 }}
+                            helperText="Máximo de mensajes enviados por día para esta línea. La campaña se pausa automáticamente al alcanzarlo. Tier 250: usar 200. Tier 1000: usar 900."
                         />
                     </Box>
                 </DialogContent>

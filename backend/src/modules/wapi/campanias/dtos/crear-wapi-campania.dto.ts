@@ -25,7 +25,12 @@ export class CrearWapiCampaniaDto {
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
-  delayMs?: number;
+  delayMinMs?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  delayMaxMs?: number;
 
   @IsOptional()
   @IsNumber()

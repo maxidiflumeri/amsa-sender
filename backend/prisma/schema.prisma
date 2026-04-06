@@ -274,6 +274,7 @@ model WaApiConfig {
   appSecret           String?  @db.Text // App Secret de Meta para verificar firma del webhook
   msgBienvenida       String?  @db.Text // Mensaje automático al iniciar conversación
   msgConfirmacionBaja String?  @db.Text // Mensaje automático de confirmación de baja
+  dailyLimit          Int      @default(200) // Límite de mensajes por día según tier de Meta
   activo              Boolean  @default(true)
   creadoAt            DateTime @default(now())
   updatedAt           DateTime @updatedAt

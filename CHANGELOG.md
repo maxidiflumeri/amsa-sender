@@ -1,5 +1,35 @@
 # Changelog
 
+## [2026-04-06] — WAPI: delay aleatorio y límite diario por línea
+
+### Worker — `wapi-worker.service.ts`
+
+- **Delay aleatorio entre mensajes**: reemplazado el delay fijo por un rango configurable `delayMinMs`/`delayMaxMs`. El worker calcula un valor aleatorio dentro del rango antes de cada envío, eliminando el patrón uniforme que los sistemas de Meta detectan como automatización.
+- **Límite diario de mensajes**: antes de cada envío, el worker cuenta los mensajes enviados hoy para esa línea. Si se alcanza `dailyLimit` (leído de `WaApiConfig`), la campaña se pausa automáticamente con log descriptivo. Al día siguiente se puede reanudar desde donde quedó.
+- Compatibilidad con campañas viejas que tengan `delayMs` guardado en BD.
+
+### Schema — `prisma/schema.prisma`
+
+- **`WaApiConfig`**: nuevo campo `dailyLimit Int @default(200)`. Representa el máximo de mensajes por día según el tier de Meta (250 → usar 200; 1000 → usar 900). Al subir de tier solo se actualiza en la config de la línea.
+
+### Backend — DTOs
+
+- **`guardar-wapi-config.dto.ts`**: campo `dailyLimit` opcional.
+- **`crear-wapi-campania.dto.ts`**: reemplazado `delayMs` por `delayMinMs` y `delayMaxMs`.
+- **`wapi-campanias.service.ts`**: guarda `delayMinMs` (default 30000) y `delayMaxMs` (default 60000) en el config de campaña.
+
+### Frontend — `SubirCampaniaWapiModal.jsx`
+
+- Reemplazado el input único de delay por dos inputs: "Delay mínimo" y "Delay máximo" (rango 5s–120s).
+- Validación: botón "Crear campaña" deshabilitado si mínimo >= máximo.
+- Resumen muestra el rango en segundos: "30s – 60s (aleatorio)".
+
+### Frontend — `WapiConfig.jsx`
+
+- Nuevo input "Límite diario de mensajes" en el dialog de crear/editar línea, con helper text indicando valores recomendados por tier.
+
+---
+
 ## [2026-04-01] — WAPI: responsive plantillas rápidas, sync de templates y permiso dedicado
 
 ### Frontend — `WapiRespuestasRapidas.jsx`

@@ -14,6 +14,11 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function randomDelay(min: number, max: number): Promise<void> {
+  const ms = Math.floor(Math.random() * (max - min + 1)) + min;
+  return sleep(ms);
+}
+
 @Injectable()
 export class WapiWorkerService implements OnModuleInit {
   private readonly logger = new Logger(WapiWorkerService.name);
@@ -63,7 +68,11 @@ export class WapiWorkerService implements OnModuleInit {
     if (!wapiConfig) throw new Error('No hay configuración de WhatsApp API guardada');
 
     const campConfig = (campaña.config as any) ?? {};
-    const delayMs: number = campConfig.delayMs ?? 5000;
+    // Delay aleatorio entre min y max — compatibilidad con campaña viejas que usen delayMs
+    const delayMinMs: number = campConfig.delayMinMs ?? campConfig.delayMs ?? 30_000;
+    const delayMaxMs: number = campConfig.delayMaxMs ?? campConfig.delayMs ?? 60_000;
+    // Límite diario viene de la config de la línea, no de la campaña
+    const dailyLimit: number = wapiConfig.dailyLimit ?? 200;
     const backoffMs: number = campConfig.backoffMs ?? 60_000;
     const maxErroresConsecutivos: number = campConfig.maxErroresConsecutivos ?? 5;
     const variableMapping: Record<string, string> = campConfig.variableMapping ?? {};
@@ -102,6 +111,31 @@ export class WapiWorkerService implements OnModuleInit {
         this.logger.warn(`Campaña ${campañaId} detenida externamente (estado: ${estadoActual.estado}). Abortando worker.`);
         await this.publicarLog(campañaId, 'warn', `🛑 Campaña detenida externamente — procesados hasta el corte: ${enviados}/${total}`);
         return;
+      }
+
+      // Verificar límite diario de envíos (ventana calendario, 00:00 del día actual)
+      if (dailyLimit > 0) {
+        const inicioDia = new Date();
+        inicioDia.setHours(0, 0, 0, 0);
+        const enviadosHoy = await this.prisma.waApiReporte.count({
+          where: {
+            estado: 'sent',
+            enviadoAt: { gte: inicioDia },
+            campaña: { configId: wapiConfig.id },
+          },
+        });
+        if (enviadosHoy >= dailyLimit) {
+          await this.prisma.waApiCampaña.update({
+            where: { id: campañaId },
+            data: { estado: 'pausada', pausada: true },
+          });
+          await this.publicarLog(
+            campañaId, 'warn',
+            `⏸️ Límite diario de ${dailyLimit} mensajes alcanzado (${enviadosHoy} enviados hoy). Reanudá la campaña mañana.`,
+          );
+          this.logger.warn(`Campaña ${campañaId} pausada: límite diario ${dailyLimit} alcanzado (${enviadosHoy} enviados hoy)`);
+          return;
+        }
       }
 
       // Verificar supresión en tiempo real
@@ -247,7 +281,7 @@ export class WapiWorkerService implements OnModuleInit {
       }
       await this.safePublish('progreso-envio', JSON.stringify({ campañaId, enviados, total }));
 
-      await sleep(delayMs);
+      await randomDelay(delayMinMs, delayMaxMs);
     }
 
     // Finalizar campaña

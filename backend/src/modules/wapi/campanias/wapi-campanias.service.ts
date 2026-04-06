@@ -38,7 +38,8 @@ export class WapiCampaniasService {
         createdAt: new Date(),
         config: {
           variableMapping: dto.variableMapping ?? {},
-          delayMs: dto.delayMs ?? 1200,
+          delayMinMs: dto.delayMinMs ?? 30_000,
+          delayMaxMs: dto.delayMaxMs ?? 60_000,
           batchSize: dto.batchSize ?? 50,
         },
       },
