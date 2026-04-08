@@ -4,6 +4,7 @@ import {
     Box, Button, Chip, CircularProgress, IconButton,
     Stack, Tooltip, Typography,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import PauseIcon from '@mui/icons-material/Pause';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -31,6 +32,7 @@ const NIVEL_COLOR = {
 // ─── Anillo de progreso ────────────────────────────────────────────────────────
 
 function RingProgress({ value, total, enviados, esProcesando }) {
+    const theme = useTheme();
     const color = esProcesando ? '#25D366' : '#e3b341';
     const safe = Math.min(Math.max(value, 0), 100);
     return (
@@ -41,7 +43,7 @@ function RingProgress({ value, total, enviados, esProcesando }) {
                 value={100}
                 size={130}
                 thickness={4}
-                sx={{ color: 'rgba(255,255,255,0.07)', position: 'absolute', top: 0, left: 0 }}
+                sx={{ color: theme.palette.divider, position: 'absolute', top: 0, left: 0 }}
             />
             {/* Value */}
             <CircularProgress
@@ -63,10 +65,10 @@ function RingProgress({ value, total, enviados, esProcesando }) {
                 alignItems: 'center', justifyContent: 'center',
                 gap: 0,
             }}>
-                <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: 26, lineHeight: 1.1 }}>
+                <Typography sx={{ color: 'text.primary', fontWeight: 800, fontSize: 26, lineHeight: 1.1 }}>
                     {total > 0 ? `${Math.round(safe)}%` : '—'}
                 </Typography>
-                <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontFamily: 'monospace' }}>
+                <Typography sx={{ color: 'text.secondary', fontSize: 11, fontFamily: 'monospace' }}>
                     {enviados}/{total}
                 </Typography>
             </Box>
@@ -80,14 +82,14 @@ function MetricRow({ icon, label, value, pctVal, color }) {
     return (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, py: '3px' }}>
             <Box sx={{ color, display: 'flex', flexShrink: 0 }}>{icon}</Box>
-            <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, flex: 1 }}>
+            <Typography sx={{ color: 'text.secondary', fontSize: 13, flex: 1 }}>
                 {label}
             </Typography>
-            <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 15, fontVariantNumeric: 'tabular-nums' }}>
+            <Typography sx={{ color: 'text.primary', fontWeight: 700, fontSize: 15, fontVariantNumeric: 'tabular-nums' }}>
                 {value}
             </Typography>
             {pctVal && (
-                <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, minWidth: 42, textAlign: 'right' }}>
+                <Typography sx={{ color: 'text.disabled', fontSize: 11, minWidth: 42, textAlign: 'right' }}>
                     {pctVal}
                 </Typography>
             )}
@@ -199,25 +201,26 @@ function CampaignCard({ campania: campInicial, onFinished }) {
         catch { } finally { setAccionLoading(false); }
     };
 
+    const theme = useTheme();
     const estado = campania.estado;
     const esProcesando = estado === 'procesando';
     const progresoPorc = total > 0 ? Math.round((enviados / total) * 100) : 0;
 
     const borderColor = esProcesando
-        ? 'rgba(37,211,102,0.35)'
+        ? 'rgba(37,211,102,0.4)'
         : estado === 'pausada'
-            ? 'rgba(227,179,65,0.3)'
-            : 'rgba(255,255,255,0.08)';
+            ? 'rgba(227,179,65,0.35)'
+            : theme.palette.divider;
 
     const glowColor = esProcesando
-        ? 'rgba(37,211,102,0.08)'
+        ? 'rgba(37,211,102,0.07)'
         : estado === 'pausada'
-            ? 'rgba(227,179,65,0.06)'
+            ? 'rgba(227,179,65,0.05)'
             : 'transparent';
 
     return (
         <Box sx={{
-            bgcolor: '#111827',
+            bgcolor: 'background.paper',
             border: `1px solid ${borderColor}`,
             borderRadius: 3,
             p: 2.5,
@@ -259,16 +262,16 @@ function CampaignCard({ campania: campInicial, onFinished }) {
                                 fontSize: 10,
                                 fontWeight: 800,
                                 letterSpacing: 0.5,
-                                bgcolor: esProcesando ? 'rgba(37,211,102,0.15)' : estado === 'pausada' ? 'rgba(227,179,65,0.15)' : 'rgba(255,255,255,0.1)',
-                                color: esProcesando ? '#25D366' : estado === 'pausada' ? '#e3b341' : 'rgba(255,255,255,0.5)',
-                                border: `1px solid ${esProcesando ? 'rgba(37,211,102,0.3)' : estado === 'pausada' ? 'rgba(227,179,65,0.3)' : 'rgba(255,255,255,0.15)'}`,
+                                bgcolor: esProcesando ? 'rgba(37,211,102,0.12)' : estado === 'pausada' ? 'rgba(227,179,65,0.12)' : 'action.hover',
+                                color: esProcesando ? '#25D366' : estado === 'pausada' ? '#e3b341' : 'text.disabled',
+                                border: `1px solid ${esProcesando ? 'rgba(37,211,102,0.3)' : estado === 'pausada' ? 'rgba(227,179,65,0.3)' : 'transparent'}`,
                                 '& .MuiChip-label': { px: 0.8, color: 'inherit' },
                             }}
                         />
                     </Stack>
 
                     <Typography sx={{
-                        color: '#e6edf3', fontWeight: 700, fontSize: 15,
+                        color: 'text.primary', fontWeight: 700, fontSize: 15,
                         lineHeight: 1.3, mb: 1.5, wordBreak: 'break-word',
                     }}>
                         {campania.nombre}
@@ -309,7 +312,7 @@ function CampaignCard({ campania: campInicial, onFinished }) {
                             label="Fallidos"
                             value={stats.fallidos}
                             pctVal={pct(stats.fallidos, total)}
-                            color={stats.fallidos > 0 ? '#f85149' : 'rgba(255,255,255,0.25)'}
+                            color={stats.fallidos > 0 ? '#f85149' : 'text.disabled'}
                         />
                     </Box>
                 </Box>
@@ -317,8 +320,8 @@ function CampaignCard({ campania: campInicial, onFinished }) {
 
             {/* ── Última actividad ── */}
             <Box sx={{
-                bgcolor: '#0d1117',
-                border: '1px solid rgba(255,255,255,0.07)',
+                bgcolor: 'action.hover',
+                border: `1px solid ${theme.palette.divider}`,
                 borderRadius: 1.5,
                 px: 1.5,
                 py: 0.8,
@@ -330,15 +333,15 @@ function CampaignCard({ campania: campInicial, onFinished }) {
             }}>
                 {ultimaActividad ? (
                     <>
-                        <Typography component="span" sx={{ color: '#484f58', fontFamily: 'monospace', fontSize: 11, flexShrink: 0 }}>
+                        <Typography component="span" sx={{ color: 'text.disabled', fontFamily: 'monospace', fontSize: 11, flexShrink: 0 }}>
                             {new Date(ultimaActividad.timestamp).toLocaleTimeString()}
                         </Typography>
-                        <Typography component="span" sx={{ color: NIVEL_COLOR[ultimaActividad.nivel] || '#8b949e', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <Typography component="span" sx={{ color: NIVEL_COLOR[ultimaActividad.nivel] || 'text.secondary', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {NIVEL_ICON[ultimaActividad.nivel]} {ultimaActividad.mensaje}
                         </Typography>
                     </>
                 ) : (
-                    <Typography sx={{ color: '#484f58', fontFamily: 'monospace', fontSize: 12 }}>
+                    <Typography sx={{ color: 'text.disabled', fontFamily: 'monospace', fontSize: 12 }}>
                         {esProcesando ? 'Esperando actividad...' : estado === 'finalizada' ? '🏁 Campaña finalizada' : '⏸️ Campaña pausada'}
                     </Typography>
                 )}
@@ -389,6 +392,7 @@ function CampaignCard({ campania: campInicial, onFinished }) {
 
 export default function WapiLiveDashboard() {
     const navigate = useNavigate();
+    const theme = useTheme();
     const [campanias, setCampanias] = useState([]);
     const [loading, setLoading] = useState(true);
     const [finalizadas, setFinalizadas] = useState(new Set());
@@ -412,7 +416,6 @@ export default function WapiLiveDashboard() {
     return (
         <Box sx={{
             minHeight: '100%',
-            bgcolor: '#080d14',
             pt: { xs: 3, md: 4 },
             px: { xs: 2, md: 3 },
             pb: { xs: 2, md: 3 },
@@ -423,7 +426,7 @@ export default function WapiLiveDashboard() {
             {/* ── Header ── */}
             <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
                 <Tooltip title="Volver a campañas">
-                    <IconButton onClick={() => navigate('/wapi/campanias')} size="small" sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#fff' } }}>
+                    <IconButton onClick={() => navigate('/wapi/campanias')} size="small">
                         <ArrowBackIcon />
                     </IconButton>
                 </Tooltip>
@@ -440,18 +443,18 @@ export default function WapiLiveDashboard() {
                             },
                         }} />
                     )}
-                    <Typography sx={{ color: '#e6edf3', fontWeight: 800, fontSize: { xs: 18, md: 22 }, letterSpacing: -0.5 }}>
+                    <Typography sx={{ color: 'text.primary', fontWeight: 800, fontSize: { xs: 18, md: 22 }, letterSpacing: -0.5 }}>
                         Monitor en vivo
                     </Typography>
                     <Chip
                         size="small"
                         label={`${campanias.length} campaña${campanias.length !== 1 ? 's' : ''}`}
-                        sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', fontSize: 11, '& .MuiChip-label': { color: 'inherit' } }}
+                        sx={{ fontSize: 11, '& .MuiChip-label': { color: 'inherit' } }}
                     />
                 </Stack>
 
                 <Tooltip title="Actualizar lista">
-                    <IconButton onClick={cargar} size="small" sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#fff' } }}>
+                    <IconButton onClick={cargar} size="small">
                         <RefreshIcon fontSize="small" />
                     </IconButton>
                 </Tooltip>
@@ -464,15 +467,15 @@ export default function WapiLiveDashboard() {
                 </Box>
             ) : campanias.length === 0 ? (
                 <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" flex={1} minHeight={300} gap={2}>
-                    <GroupIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.1)' }} />
-                    <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: 15 }}>
+                    <GroupIcon sx={{ fontSize: 64, color: 'text.disabled' }} />
+                    <Typography sx={{ color: 'text.secondary', fontSize: 15 }}>
                         No hay campañas activas en este momento
                     </Typography>
                     <Button
                         variant="outlined"
                         size="small"
                         onClick={() => navigate('/wapi/campanias')}
-                        sx={{ color: 'rgba(255,255,255,0.4)', borderColor: 'rgba(255,255,255,0.15)', textTransform: 'none' }}
+                        sx={{ textTransform: 'none' }}
                     >
                         Ver campañas
                     </Button>
