@@ -231,9 +231,47 @@ function CampaignCard({ campania: campInicial, onFinished }) {
             transition: 'box-shadow 0.5s ease, border-color 0.5s ease',
             minWidth: 0,
         }}>
-            {/* ── Header ── */}
-            <Box display="flex" alignItems="flex-start" gap={1.5}>
-                {/* Anillo */}
+            {/* ── Header: badge + nombre ── */}
+            <Stack direction="row" alignItems="center" spacing={0.8} flexWrap="wrap" useFlexGap>
+                {esProcesando && (
+                    <Box sx={{
+                        width: 7, height: 7, borderRadius: '50%', bgcolor: '#25D366', flexShrink: 0,
+                        animation: 'liveDot 1.4s ease-in-out infinite',
+                        '@keyframes liveDot': {
+                            '0%, 100%': { opacity: 1, boxShadow: '0 0 4px #25D366' },
+                            '50%': { opacity: 0.2, boxShadow: 'none' },
+                        },
+                    }} />
+                )}
+                <Chip
+                    size="small"
+                    label={esProcesando ? 'EN VIVO' : estado === 'pausada' ? 'PAUSADA' : estado.toUpperCase()}
+                    sx={{
+                        height: 18,
+                        fontSize: 10,
+                        fontWeight: 800,
+                        letterSpacing: 0.5,
+                        bgcolor: esProcesando ? 'rgba(37,211,102,0.12)' : estado === 'pausada' ? 'rgba(227,179,65,0.12)' : 'action.hover',
+                        color: esProcesando ? '#25D366' : estado === 'pausada' ? '#e3b341' : 'text.disabled',
+                        border: `1px solid ${esProcesando ? 'rgba(37,211,102,0.3)' : estado === 'pausada' ? 'rgba(227,179,65,0.3)' : 'transparent'}`,
+                        '& .MuiChip-label': { px: 0.8, color: 'inherit' },
+                    }}
+                />
+                <Typography sx={{
+                    color: 'text.primary', fontWeight: 700, fontSize: 15,
+                    lineHeight: 1.3, wordBreak: 'break-word', flex: 1, minWidth: 0,
+                }}>
+                    {campania.nombre}
+                </Typography>
+            </Stack>
+
+            {/* ── Anillo + métricas (row en desktop, column en mobile) ── */}
+            <Box sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                alignItems: { xs: 'center', sm: 'flex-start' },
+                gap: 2,
+            }}>
                 <RingProgress
                     value={progresoPorc}
                     total={total}
@@ -241,80 +279,42 @@ function CampaignCard({ campania: campInicial, onFinished }) {
                     esProcesando={esProcesando}
                 />
 
-                {/* Info */}
-                <Box flex={1} minWidth={0}>
-                    <Stack direction="row" alignItems="center" spacing={0.8} flexWrap="wrap" useFlexGap mb={0.5}>
-                        {esProcesando && (
-                            <Box sx={{
-                                width: 7, height: 7, borderRadius: '50%', bgcolor: '#25D366', flexShrink: 0,
-                                animation: 'liveDot 1.4s ease-in-out infinite',
-                                '@keyframes liveDot': {
-                                    '0%, 100%': { opacity: 1, boxShadow: '0 0 4px #25D366' },
-                                    '50%': { opacity: 0.2, boxShadow: 'none' },
-                                },
-                            }} />
-                        )}
-                        <Chip
-                            size="small"
-                            label={esProcesando ? 'EN VIVO' : estado === 'pausada' ? 'PAUSADA' : estado.toUpperCase()}
-                            sx={{
-                                height: 18,
-                                fontSize: 10,
-                                fontWeight: 800,
-                                letterSpacing: 0.5,
-                                bgcolor: esProcesando ? 'rgba(37,211,102,0.12)' : estado === 'pausada' ? 'rgba(227,179,65,0.12)' : 'action.hover',
-                                color: esProcesando ? '#25D366' : estado === 'pausada' ? '#e3b341' : 'text.disabled',
-                                border: `1px solid ${esProcesando ? 'rgba(37,211,102,0.3)' : estado === 'pausada' ? 'rgba(227,179,65,0.3)' : 'transparent'}`,
-                                '& .MuiChip-label': { px: 0.8, color: 'inherit' },
-                            }}
-                        />
-                    </Stack>
-
-                    <Typography sx={{
-                        color: 'text.primary', fontWeight: 700, fontSize: 15,
-                        lineHeight: 1.3, mb: 1.5, wordBreak: 'break-word',
-                    }}>
-                        {campania.nombre}
-                    </Typography>
-
-                    {/* Métricas */}
-                    <Box>
-                        <MetricRow
-                            icon={<SendIcon sx={{ fontSize: 15 }} />}
-                            label="Enviados"
-                            value={enviados}
-                            pctVal={pct(enviados, total)}
-                            color="#79c0ff"
-                        />
-                        <MetricRow
-                            icon={<CheckCircleIcon sx={{ fontSize: 15 }} />}
-                            label="Entregados"
-                            value={stats.entregados}
-                            pctVal={pct(stats.entregados, enviados)}
-                            color="#58a6ff"
-                        />
-                        <MetricRow
-                            icon={<DoneAllIcon sx={{ fontSize: 15 }} />}
-                            label="Leídos"
-                            value={stats.leidos}
-                            pctVal={pct(stats.leidos, enviados)}
-                            color="#3fb950"
-                        />
-                        <MetricRow
-                            icon={<ChatBubbleIcon sx={{ fontSize: 15 }} />}
-                            label="Respondieron"
-                            value={respondieron !== null ? respondieron : '—'}
-                            pctVal={respondieron !== null ? pct(respondieron, enviados) : null}
-                            color="#bc8cff"
-                        />
-                        <MetricRow
-                            icon={<ErrorOutlineIcon sx={{ fontSize: 15 }} />}
-                            label="Fallidos"
-                            value={stats.fallidos}
-                            pctVal={pct(stats.fallidos, total)}
-                            color={stats.fallidos > 0 ? '#f85149' : 'text.disabled'}
-                        />
-                    </Box>
+                <Box flex={1} width="100%">
+                    <MetricRow
+                        icon={<SendIcon sx={{ fontSize: 15 }} />}
+                        label="Enviados"
+                        value={enviados}
+                        pctVal={pct(enviados, total)}
+                        color="#79c0ff"
+                    />
+                    <MetricRow
+                        icon={<CheckCircleIcon sx={{ fontSize: 15 }} />}
+                        label="Entregados"
+                        value={stats.entregados}
+                        pctVal={pct(stats.entregados, enviados)}
+                        color="#58a6ff"
+                    />
+                    <MetricRow
+                        icon={<DoneAllIcon sx={{ fontSize: 15 }} />}
+                        label="Leídos"
+                        value={stats.leidos}
+                        pctVal={pct(stats.leidos, enviados)}
+                        color="#3fb950"
+                    />
+                    <MetricRow
+                        icon={<ChatBubbleIcon sx={{ fontSize: 15 }} />}
+                        label="Respondieron"
+                        value={respondieron !== null ? respondieron : '—'}
+                        pctVal={respondieron !== null ? pct(respondieron, enviados) : null}
+                        color="#bc8cff"
+                    />
+                    <MetricRow
+                        icon={<ErrorOutlineIcon sx={{ fontSize: 15 }} />}
+                        label="Fallidos"
+                        value={stats.fallidos}
+                        pctVal={pct(stats.fallidos, total)}
+                        color={stats.fallidos > 0 ? '#f85149' : 'text.disabled'}
+                    />
                 </Box>
             </Box>
 
