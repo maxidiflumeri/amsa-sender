@@ -33,12 +33,15 @@ export class WapiAnaliticaService {
     });
     const numerosContactos = contactos.map(c => c.numero);
 
+    // Corte temporal: solo cuentan respuestas posteriores al envío de la campaña
+    const corteRespuestas = campania.enviadoAt ?? campania.createdAt;
+
     // 5. Conversaciones de los contactos de esta campaña
     const conversaciones = await this.prisma.waApiConversacion.findMany({
       where: { numero: { in: numerosContactos } },
       include: {
         mensajes: {
-          where: { fromMe: false },
+          where: { fromMe: false, timestamp: { gte: corteRespuestas } },
           take: 1,
         },
         asignadoA: { select: { id: true, nombre: true } },
@@ -53,6 +56,7 @@ export class WapiAnaliticaService {
             conversacionId: { in: convIds },
             tipo: 'button',
             fromMe: false,
+            timestamp: { gte: corteRespuestas },
           },
           select: { contenido: true, conversacionId: true },
         })
@@ -198,7 +202,7 @@ export class WapiAnaliticaService {
     const conversaciones = await this.prisma.waApiConversacion.findMany({
       where: { numero: { in: numeros } },
       include: {
-        mensajes: { where: { fromMe: false }, take: 1 },
+        mensajes: { where: { fromMe: false }, select: { timestamp: true } },
       },
     });
     const convMap = new Map(conversaciones.map(c => [c.numero, c]));
@@ -210,20 +214,35 @@ export class WapiAnaliticaService {
     });
     const bajasSet = new Set(bajas.map(b => b.numero));
 
-    // Mensajes de botón por conversación
+    // Mensajes de botón por conversación (con timestamp para filtrar por corte)
     const convIds = conversaciones.map(c => c.id);
     const mensajesBoton = convIds.length > 0
       ? await this.prisma.waApiMensaje.findMany({
           where: { conversacionId: { in: convIds }, tipo: 'button', fromMe: false },
-          select: { conversacionId: true, contenido: true },
+          select: { conversacionId: true, contenido: true, timestamp: true },
         })
       : [];
-    const botonConvIds = new Set(mensajesBoton.map(m => m.conversacionId));
+
+    // Agrupar timestamps de botones por conversación
+    const botonTimestampsMap = new Map<number, Date[]>();
+    mensajesBoton.forEach(m => {
+      const lista = botonTimestampsMap.get(m.conversacionId) ?? [];
+      lista.push(new Date(m.timestamp));
+      botonTimestampsMap.set(m.conversacionId, lista);
+    });
 
     // Armar lista completa
     let lista = contactos.map(c => {
       const conv = convMap.get(c.numero);
       const reporte = c.reporte;
+      // Corte: solo respuestas posteriores al momento exacto en que se envió a este contacto
+      const corte = reporte?.enviadoAt ? new Date(reporte.enviadoAt) : null;
+      const respondio = conv
+        ? conv.mensajes.some(m => !corte || new Date(m.timestamp) >= corte)
+        : false;
+      const presionoBoton = conv
+        ? (botonTimestampsMap.get(conv.id) ?? []).some(t => !corte || t >= corte)
+        : false;
       return {
         numero: c.numero,
         nombre: c.nombre,
@@ -233,8 +252,8 @@ export class WapiAnaliticaService {
         leidoAt: reporte?.leidoAt ?? null,
         fallidoAt: reporte?.fallidoAt ?? null,
         error: reporte?.error ?? null,
-        respondio: conv ? conv.mensajes.length > 0 : false,
-        presionoBoton: conv ? botonConvIds.has(conv.id) : false,
+        respondio,
+        presionoBoton,
         dioDebaja: bajasSet.has(c.numero),
         conversacionId: conv?.id ?? null,
       };

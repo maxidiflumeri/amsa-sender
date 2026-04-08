@@ -105,7 +105,7 @@ export class WapiWorkerService implements OnModuleInit {
       if (estadoActual?.pausada || estadoActual?.estado === 'pausada') {
         this.logger.log(`Campaña ${campañaId} pausada. Deteniendo worker.`);
         await this.publicarLog(campañaId, 'warn', `⏸️ Campaña pausada. Procesados hasta ahora: ${enviados}/${total}`);
-        break;
+        return;
       }
       if (estadoActual?.estado === 'finalizada' || estadoActual?.estado === 'error') {
         this.logger.warn(`Campaña ${campañaId} detenida externamente (estado: ${estadoActual.estado}). Abortando worker.`);
