@@ -1,134 +1,139 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
-    Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-    IconButton, LinearProgress, Paper, Stack, Tooltip, Typography,
+    Box, Button, Chip, CircularProgress, IconButton,
+    Stack, Tooltip, Typography,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import BlockIcon from '@mui/icons-material/Block';
 import PauseIcon from '@mui/icons-material/Pause';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import DoneAllIcon from '@mui/icons-material/DoneAll';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import SendIcon from '@mui/icons-material/Send';
+import GroupIcon from '@mui/icons-material/Group';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 
-const ESTADO_CHIP = {
-    pendiente:  { label: 'Pendiente',  color: 'default' },
-    agendada:   { label: 'Agendada',   color: 'info' },
-    procesando: { label: 'En vivo',    color: 'success' },
-    pausada:    { label: 'Pausada',    color: 'warning' },
-    finalizada: { label: 'Finalizada', color: 'default' },
-    error:      { label: 'Error',      color: 'error' },
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const pct = (num, den) =>
+    den > 0 ? `${Math.round((num / den) * 1000) / 10}%` : '0%';
+
+const NIVEL_ICON = { ok: '✅', warn: '⚠️', error: '❌', info: '•', skip: '⛔' };
+const NIVEL_COLOR = {
+    ok: '#3fb950', warn: '#e3b341', error: '#f85149', info: '#8b949e', skip: '#79c0ff',
 };
 
-const NIVEL_COLORS = {
-    ok:    '#3fb950',
-    warn:  '#d29922',
-    error: '#f85149',
-    info:  '#8b949e',
-    skip:  '#58a6ff',
-};
+// ─── Anillo de progreso ────────────────────────────────────────────────────────
 
-const NIVEL_BG = {
-    ok:    'rgba(63,185,80,0.08)',
-    warn:  'rgba(210,153,34,0.08)',
-    error: 'rgba(248,81,73,0.08)',
-    info:  'transparent',
-    skip:  'rgba(88,166,255,0.06)',
-};
-
-const MAX_LOGS = 500;
-
-function MetricCard({ label, value, pct, sublabel, color }) {
+function RingProgress({ value, total, enviados, esProcesando }) {
+    const color = esProcesando ? '#25D366' : '#e3b341';
+    const safe = Math.min(Math.max(value, 0), 100);
     return (
-        <Card variant="outlined" sx={{ flex: 1, minWidth: 110 }}>
-            <CardContent sx={{ p: '12px 16px !important' }}>
-                <Typography variant="caption" color="text.secondary" display="block">
-                    {label}
+        <Box sx={{ position: 'relative', width: 130, height: 130, flexShrink: 0 }}>
+            {/* Track */}
+            <CircularProgress
+                variant="determinate"
+                value={100}
+                size={130}
+                thickness={4}
+                sx={{ color: 'rgba(255,255,255,0.07)', position: 'absolute', top: 0, left: 0 }}
+            />
+            {/* Value */}
+            <CircularProgress
+                variant={total > 0 ? 'determinate' : 'indeterminate'}
+                value={safe}
+                size={130}
+                thickness={4}
+                sx={{
+                    color,
+                    position: 'absolute', top: 0, left: 0,
+                    filter: esProcesando ? `drop-shadow(0 0 6px ${color}88)` : 'none',
+                    transition: 'all 0.6s ease',
+                }}
+            />
+            {/* Label */}
+            <Box sx={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 0,
+            }}>
+                <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: 26, lineHeight: 1.1 }}>
+                    {total > 0 ? `${Math.round(safe)}%` : '—'}
                 </Typography>
-                <Typography variant="h4" fontWeight="bold" color={color ?? 'text.primary'}>
-                    {value ?? 0}
+                <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontFamily: 'monospace' }}>
+                    {enviados}/{total}
                 </Typography>
-                {pct !== undefined && (
-                    <Typography variant="caption" color="text.secondary">
-                        {pct}%{sublabel ? ` ${sublabel}` : ''}
-                    </Typography>
-                )}
-            </CardContent>
-        </Card>
+            </Box>
+        </Box>
     );
 }
 
-const pct = (num, den) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
+// ─── Fila de métrica ──────────────────────────────────────────────────────────
 
-export default function WapiLiveDashboard() {
-    const { id } = useParams();
-    const campañaId = Number(id);
-    const navigate = useNavigate();
+function MetricRow({ icon, label, value, pctVal, color }) {
+    return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, py: '3px' }}>
+            <Box sx={{ color, display: 'flex', flexShrink: 0 }}>{icon}</Box>
+            <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, flex: 1 }}>
+                {label}
+            </Typography>
+            <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 15, fontVariantNumeric: 'tabular-nums' }}>
+                {value}
+            </Typography>
+            {pctVal && (
+                <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, minWidth: 42, textAlign: 'right' }}>
+                    {pctVal}
+                </Typography>
+            )}
+        </Box>
+    );
+}
 
-    const [campania, setCampania] = useState(null);
+// ─── Tarjeta de campaña ───────────────────────────────────────────────────────
+
+function CampaignCard({ campania: campInicial, onFinished }) {
+    const [campania, setCampania] = useState(campInicial);
     const [enviados, setEnviados] = useState(0);
     const [total, setTotal] = useState(0);
     const [stats, setStats] = useState({ entregados: 0, leidos: 0, fallidos: 0 });
-    const [logs, setLogs] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [respondieron, setRespondieron] = useState(null);
+    const [ultimaActividad, setUltimaActividad] = useState(null);
     const [accionLoading, setAccionLoading] = useState(false);
-    const [autoScroll, setAutoScroll] = useState(true);
-    const [cargandoHistorial, setCargandoHistorial] = useState(false);
-    const [error, setError] = useState(null);
 
-    const bottomRef = useRef(null);
-    const scrollRef = useRef(null);
+    const campañaId = campInicial.id;
     const pollingRef = useRef(null);
-    const ultimoHistorialTsRef = useRef(null);
-
-    const agregarLog = useCallback((entry) => {
-        setLogs(prev => {
-            const next = [...prev, entry];
-            return next.length > MAX_LOGS ? next.slice(next.length - MAX_LOGS) : next;
-        });
-    }, []);
 
     const fetchReportes = useCallback(async () => {
         try {
             const res = await api.get(`/wapi/campanias/${campañaId}/reportes`);
             const { enviados: env, entregados, leidos, fallidos, total: tot } = res.data;
-            setStats({ entregados, leidos, fallidos });
             setEnviados(env);
             setTotal(tot);
-        } catch { /* silencioso — el socket mantiene enviados/total */ }
+            setStats({ entregados, leidos, fallidos });
+        } catch { /* silencioso */ }
+    }, [campañaId]);
+
+    const fetchRespondieron = useCallback(async () => {
+        try {
+            const res = await api.get(`/wapi/analitica/campania/${campañaId}`);
+            setRespondieron(res.data?.engagement?.respondieron ?? 0);
+        } catch { /* puede fallar si no tiene permiso */ }
     }, [campañaId]);
 
     // Carga inicial
     useEffect(() => {
-        const init = async () => {
-            setLoading(true);
-            try {
-                const [campRes] = await Promise.all([
-                    api.get(`/wapi/campanias/${campañaId}`),
-                    fetchReportes(),
-                ]);
-                setCampania(campRes.data);
-            } catch {
-                setError('No se pudo cargar la campaña.');
-            } finally {
-                setLoading(false);
-            }
-        };
-        init();
-    }, [campañaId, fetchReportes]);
+        fetchReportes();
+        fetchRespondieron();
+    }, [fetchReportes, fetchRespondieron]);
 
-    // Socket + historial de logs
+    // Socket
     useEffect(() => {
-        if (!campañaId) return;
-
-        setLogs([]);
-        ultimoHistorialTsRef.current = null;
-
-        let socketReady = false;
-        const pendientes = [];
-
         const socket = io(import.meta.env.VITE_HOST_SOCKET);
         socket.emit('join_campaña', campañaId);
 
@@ -140,75 +145,47 @@ export default function WapiLiveDashboard() {
 
         socket.on('campania_log', (entry) => {
             if (entry.campañaId !== campañaId) return;
-            if (!socketReady) {
-                pendientes.push(entry);
-            } else {
-                if (ultimoHistorialTsRef.current && entry.timestamp <= ultimoHistorialTsRef.current) return;
-                agregarLog(entry);
-            }
+            setUltimaActividad(entry);
         });
 
         socket.on('campania_estado', ({ campañaId: cid, estado }) => {
             if (cid !== campañaId) return;
-            setCampania(prev => prev ? { ...prev, estado } : prev);
-            if (estado === 'finalizada') fetchReportes();
+            setCampania(prev => ({ ...prev, estado }));
+            if (estado === 'finalizada') {
+                fetchReportes();
+                onFinished?.(campañaId);
+            }
         });
 
         socket.on('campania_finalizada', ({ campañaId: cid }) => {
             if (cid !== campañaId) return;
-            setCampania(prev => prev ? { ...prev, estado: 'finalizada' } : prev);
+            setCampania(prev => ({ ...prev, estado: 'finalizada' }));
             fetchReportes();
+            onFinished?.(campañaId);
         });
 
         socket.on('campania_pausada', ({ campañaId: cid }) => {
             if (cid !== campañaId) return;
-            setCampania(prev => prev ? { ...prev, estado: 'pausada' } : prev);
+            setCampania(prev => ({ ...prev, estado: 'pausada' }));
         });
 
-        // Historial de logs desde Redis
-        setCargandoHistorial(true);
-        api.get(`/campania-logs/${campañaId}?tipo=wapi`)
-            .then(res => {
-                const historico = res.data ?? [];
-                if (historico.length > 0) {
-                    ultimoHistorialTsRef.current = historico[historico.length - 1].timestamp;
-                }
-                const nuevos = pendientes.filter(
-                    e => !ultimoHistorialTsRef.current || e.timestamp > ultimoHistorialTsRef.current,
-                );
-                setLogs([...historico, ...nuevos].slice(-MAX_LOGS));
-            })
-            .catch(() => setLogs([...pendientes]))
-            .finally(() => {
-                socketReady = true;
-                setCargandoHistorial(false);
-            });
-
         return () => socket.disconnect();
-    }, [campañaId, agregarLog, fetchReportes]);
+    }, [campañaId, fetchReportes, onFinished]);
 
-    // Polling para entregados/leídos/fallidos (solo mientras procesa)
+    // Polling reportes (20s) y respondieron (40s), solo mientras procesa
     useEffect(() => {
-        if (campania?.estado !== 'procesando') {
+        if (campania.estado !== 'procesando') {
             clearInterval(pollingRef.current);
             return;
         }
-        pollingRef.current = setInterval(fetchReportes, 20_000);
+        let tick = 0;
+        pollingRef.current = setInterval(() => {
+            tick++;
+            fetchReportes();
+            if (tick % 2 === 0) fetchRespondieron();
+        }, 20_000);
         return () => clearInterval(pollingRef.current);
-    }, [campania?.estado, fetchReportes]);
-
-    // Auto-scroll al último log
-    useEffect(() => {
-        if (autoScroll && bottomRef.current) {
-            bottomRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
-    }, [logs, autoScroll]);
-
-    const handleScroll = () => {
-        const el = scrollRef.current;
-        if (!el) return;
-        setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 60);
-    };
+    }, [campania.estado, fetchReportes, fetchRespondieron]);
 
     const handlePausar = async () => {
         setAccionLoading(true);
@@ -222,250 +199,302 @@ export default function WapiLiveDashboard() {
         catch { } finally { setAccionLoading(false); }
     };
 
-    if (loading) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
-                <CircularProgress />
-            </Box>
-        );
-    }
-
-    if (error) {
-        return (
-            <Box p={4}>
-                <Alert severity="error">{error}</Alert>
-                <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/wapi/campanias')} sx={{ mt: 2 }}>
-                    Volver
-                </Button>
-            </Box>
-        );
-    }
-
-    const estadoActual = campania?.estado ?? 'pendiente';
-    const esProcesando = estadoActual === 'procesando';
+    const estado = campania.estado;
+    const esProcesando = estado === 'procesando';
     const progresoPorc = total > 0 ? Math.round((enviados / total) * 100) : 0;
-    const chip = ESTADO_CHIP[estadoActual] ?? { label: estadoActual, color: 'default' };
+
+    const borderColor = esProcesando
+        ? 'rgba(37,211,102,0.35)'
+        : estado === 'pausada'
+            ? 'rgba(227,179,65,0.3)'
+            : 'rgba(255,255,255,0.08)';
+
+    const glowColor = esProcesando
+        ? 'rgba(37,211,102,0.08)'
+        : estado === 'pausada'
+            ? 'rgba(227,179,65,0.06)'
+            : 'transparent';
 
     return (
-        <Box sx={{ p: { xs: 2, md: 3 }, height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
-
+        <Box sx={{
+            bgcolor: '#111827',
+            border: `1px solid ${borderColor}`,
+            borderRadius: 3,
+            p: 2.5,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            boxShadow: `0 0 24px ${glowColor}`,
+            transition: 'box-shadow 0.5s ease, border-color 0.5s ease',
+            minWidth: 0,
+        }}>
             {/* ── Header ── */}
-            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
-                <Tooltip title="Volver a campañas">
-                    <IconButton onClick={() => navigate('/wapi/campanias')} size="small">
-                        <ArrowBackIcon />
-                    </IconButton>
-                </Tooltip>
+            <Box display="flex" alignItems="flex-start" gap={1.5}>
+                {/* Anillo */}
+                <RingProgress
+                    value={progresoPorc}
+                    total={total}
+                    enviados={enviados}
+                    esProcesando={esProcesando}
+                />
+
+                {/* Info */}
                 <Box flex={1} minWidth={0}>
-                    <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
-                        <Typography variant="h6" fontWeight="bold" noWrap>
-                            {campania?.nombre}
-                        </Typography>
-                        <Chip label={chip.label} color={chip.color} size="small" />
+                    <Stack direction="row" alignItems="center" spacing={0.8} flexWrap="wrap" useFlexGap mb={0.5}>
                         {esProcesando && (
                             <Box sx={{
-                                width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main', flexShrink: 0,
-                                animation: 'livePulse 1.5s ease-in-out infinite',
-                                '@keyframes livePulse': {
-                                    '0%, 100%': { opacity: 1 },
-                                    '50%': { opacity: 0.25 },
+                                width: 7, height: 7, borderRadius: '50%', bgcolor: '#25D366', flexShrink: 0,
+                                animation: 'liveDot 1.4s ease-in-out infinite',
+                                '@keyframes liveDot': {
+                                    '0%, 100%': { opacity: 1, boxShadow: '0 0 4px #25D366' },
+                                    '50%': { opacity: 0.2, boxShadow: 'none' },
                                 },
                             }} />
                         )}
+                        <Chip
+                            size="small"
+                            label={esProcesando ? 'EN VIVO' : estado === 'pausada' ? 'PAUSADA' : estado.toUpperCase()}
+                            sx={{
+                                height: 18,
+                                fontSize: 10,
+                                fontWeight: 800,
+                                letterSpacing: 0.5,
+                                bgcolor: esProcesando ? 'rgba(37,211,102,0.15)' : estado === 'pausada' ? 'rgba(227,179,65,0.15)' : 'rgba(255,255,255,0.1)',
+                                color: esProcesando ? '#25D366' : estado === 'pausada' ? '#e3b341' : 'rgba(255,255,255,0.5)',
+                                border: `1px solid ${esProcesando ? 'rgba(37,211,102,0.3)' : estado === 'pausada' ? 'rgba(227,179,65,0.3)' : 'rgba(255,255,255,0.15)'}`,
+                                '& .MuiChip-label': { px: 0.8, color: 'inherit' },
+                            }}
+                        />
                     </Stack>
+
+                    <Typography sx={{
+                        color: '#e6edf3', fontWeight: 700, fontSize: 15,
+                        lineHeight: 1.3, mb: 1.5, wordBreak: 'break-word',
+                    }}>
+                        {campania.nombre}
+                    </Typography>
+
+                    {/* Métricas */}
+                    <Box>
+                        <MetricRow
+                            icon={<SendIcon sx={{ fontSize: 15 }} />}
+                            label="Enviados"
+                            value={enviados}
+                            pctVal={pct(enviados, total)}
+                            color="#79c0ff"
+                        />
+                        <MetricRow
+                            icon={<CheckCircleIcon sx={{ fontSize: 15 }} />}
+                            label="Entregados"
+                            value={stats.entregados}
+                            pctVal={pct(stats.entregados, enviados)}
+                            color="#58a6ff"
+                        />
+                        <MetricRow
+                            icon={<DoneAllIcon sx={{ fontSize: 15 }} />}
+                            label="Leídos"
+                            value={stats.leidos}
+                            pctVal={pct(stats.leidos, enviados)}
+                            color="#3fb950"
+                        />
+                        <MetricRow
+                            icon={<ChatBubbleIcon sx={{ fontSize: 15 }} />}
+                            label="Respondieron"
+                            value={respondieron !== null ? respondieron : '—'}
+                            pctVal={respondieron !== null ? pct(respondieron, enviados) : null}
+                            color="#bc8cff"
+                        />
+                        <MetricRow
+                            icon={<ErrorOutlineIcon sx={{ fontSize: 15 }} />}
+                            label="Fallidos"
+                            value={stats.fallidos}
+                            pctVal={pct(stats.fallidos, total)}
+                            color={stats.fallidos > 0 ? '#f85149' : 'rgba(255,255,255,0.25)'}
+                        />
+                    </Box>
                 </Box>
-                <Stack direction="row" spacing={1} alignItems="center">
+            </Box>
+
+            {/* ── Última actividad ── */}
+            <Box sx={{
+                bgcolor: '#0d1117',
+                border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: 1.5,
+                px: 1.5,
+                py: 0.8,
+                minHeight: 32,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                overflow: 'hidden',
+            }}>
+                {ultimaActividad ? (
+                    <>
+                        <Typography component="span" sx={{ color: '#484f58', fontFamily: 'monospace', fontSize: 11, flexShrink: 0 }}>
+                            {new Date(ultimaActividad.timestamp).toLocaleTimeString()}
+                        </Typography>
+                        <Typography component="span" sx={{ color: NIVEL_COLOR[ultimaActividad.nivel] || '#8b949e', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {NIVEL_ICON[ultimaActividad.nivel]} {ultimaActividad.mensaje}
+                        </Typography>
+                    </>
+                ) : (
+                    <Typography sx={{ color: '#484f58', fontFamily: 'monospace', fontSize: 12 }}>
+                        {esProcesando ? 'Esperando actividad...' : estado === 'finalizada' ? '🏁 Campaña finalizada' : '⏸️ Campaña pausada'}
+                    </Typography>
+                )}
+            </Box>
+
+            {/* ── Acciones ── */}
+            {(esProcesando || estado === 'pausada') && (
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
                     {esProcesando && (
                         <Button
-                            variant="outlined"
-                            color="warning"
                             size="small"
+                            variant="outlined"
                             startIcon={<PauseIcon />}
                             onClick={handlePausar}
                             disabled={accionLoading}
+                            sx={{
+                                borderColor: 'rgba(227,179,65,0.5)', color: '#e3b341',
+                                '&:hover': { borderColor: '#e3b341', bgcolor: 'rgba(227,179,65,0.08)' },
+                                textTransform: 'none', fontSize: 13,
+                            }}
                         >
                             Pausar
                         </Button>
                     )}
-                    {estadoActual === 'pausada' && (
+                    {estado === 'pausada' && (
                         <Button
-                            variant="outlined"
-                            color="success"
                             size="small"
+                            variant="outlined"
                             startIcon={<PlayArrowIcon />}
                             onClick={handleReanudar}
                             disabled={accionLoading}
+                            sx={{
+                                borderColor: 'rgba(37,211,102,0.5)', color: '#25D366',
+                                '&:hover': { borderColor: '#25D366', bgcolor: 'rgba(37,211,102,0.08)' },
+                                textTransform: 'none', fontSize: 13,
+                            }}
                         >
                             Reanudar
                         </Button>
                     )}
-                    <Tooltip title="Actualizar stats">
-                        <IconButton size="small" onClick={fetchReportes}>
-                            <RefreshIcon fontSize="small" />
-                        </IconButton>
-                    </Tooltip>
                 </Stack>
+            )}
+        </Box>
+    );
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
+
+export default function WapiLiveDashboard() {
+    const navigate = useNavigate();
+    const [campanias, setCampanias] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [finalizadas, setFinalizadas] = useState(new Set());
+
+    const cargar = useCallback(async () => {
+        try {
+            const res = await api.get('/wapi/campanias');
+            const activas = res.data.filter(c => ['procesando', 'pausada'].includes(c.estado));
+            setCampanias(activas);
+        } catch { /* silencioso */ } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { cargar(); }, [cargar]);
+
+    const handleFinished = useCallback((id) => {
+        setFinalizadas(prev => new Set([...prev, id]));
+    }, []);
+
+    return (
+        <Box sx={{
+            minHeight: '100%',
+            bgcolor: '#080d14',
+            p: { xs: 2, md: 3 },
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2.5,
+        }}>
+            {/* ── Header ── */}
+            <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+                <Tooltip title="Volver a campañas">
+                    <IconButton onClick={() => navigate('/wapi/campanias')} size="small" sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#fff' } }}>
+                        <ArrowBackIcon />
+                    </IconButton>
+                </Tooltip>
+
+                <Stack direction="row" alignItems="center" spacing={1} flex={1}>
+                    {/* Indicador global live */}
+                    {campanias.some(c => c.estado === 'procesando') && (
+                        <Box sx={{
+                            width: 10, height: 10, borderRadius: '50%', bgcolor: '#25D366', flexShrink: 0,
+                            animation: 'globalLive 1.4s ease-in-out infinite',
+                            '@keyframes globalLive': {
+                                '0%, 100%': { boxShadow: '0 0 0 0 rgba(37,211,102,0.5)' },
+                                '50%': { boxShadow: '0 0 0 6px rgba(37,211,102,0)' },
+                            },
+                        }} />
+                    )}
+                    <Typography sx={{ color: '#e6edf3', fontWeight: 800, fontSize: { xs: 18, md: 22 }, letterSpacing: -0.5 }}>
+                        Monitor en vivo
+                    </Typography>
+                    <Chip
+                        size="small"
+                        label={`${campanias.length} campaña${campanias.length !== 1 ? 's' : ''}`}
+                        sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', fontSize: 11, '& .MuiChip-label': { color: 'inherit' } }}
+                    />
+                </Stack>
+
+                <Tooltip title="Actualizar lista">
+                    <IconButton onClick={cargar} size="small" sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#fff' } }}>
+                        <RefreshIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
             </Box>
 
-            {/* ── Barra de progreso ── */}
-            <Paper variant="outlined" sx={{ p: 2 }}>
-                <Stack direction="row" justifyContent="space-between" mb={0.5}>
-                    <Typography variant="body2" color="text.secondary">Progreso de envíos</Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                        {enviados} / {total} &nbsp;({progresoPorc}%)
+            {/* ── Contenido ── */}
+            {loading ? (
+                <Box display="flex" justifyContent="center" alignItems="center" flex={1} minHeight={300}>
+                    <CircularProgress sx={{ color: '#25D366' }} />
+                </Box>
+            ) : campanias.length === 0 ? (
+                <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" flex={1} minHeight={300} gap={2}>
+                    <GroupIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.1)' }} />
+                    <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: 15 }}>
+                        No hay campañas activas en este momento
                     </Typography>
-                </Stack>
-                <LinearProgress
-                    variant={total > 0 ? 'determinate' : 'indeterminate'}
-                    value={progresoPorc}
-                    sx={{ height: 8, borderRadius: 4 }}
-                    color={esProcesando ? 'success' : 'inherit'}
-                />
-            </Paper>
-
-            {/* ── Cards de métricas ── */}
-            <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
-                <MetricCard label="Total contactos" value={total} />
-                <MetricCard
-                    label="Enviados"
-                    value={enviados}
-                    pct={pct(enviados, total)}
-                    sublabel="del total"
-                    color="info.main"
-                />
-                <MetricCard
-                    label="Entregados"
-                    value={stats.entregados}
-                    pct={pct(stats.entregados, enviados)}
-                    sublabel="de enviados"
-                    color="primary.main"
-                />
-                <MetricCard
-                    label="Leídos"
-                    value={stats.leidos}
-                    pct={pct(stats.leidos, enviados)}
-                    sublabel="de enviados"
-                    color="success.main"
-                />
-                <MetricCard
-                    label="Fallidos"
-                    value={stats.fallidos}
-                    pct={pct(stats.fallidos, total)}
-                    sublabel="del total"
-                    color={stats.fallidos > 0 ? 'error.main' : 'text.secondary'}
-                />
-            </Stack>
-
-            {/* ── Feed de logs ── */}
-            <Paper
-                variant="outlined"
-                sx={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    overflow: 'hidden',
-                    minHeight: 280,
-                    bgcolor: '#0d1117',
-                    border: '1px solid #30363d',
-                    borderRadius: 2,
-                }}
-            >
-                {/* Log header */}
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => navigate('/wapi/campanias')}
+                        sx={{ color: 'rgba(255,255,255,0.4)', borderColor: 'rgba(255,255,255,0.15)', textTransform: 'none' }}
+                    >
+                        Ver campañas
+                    </Button>
+                </Box>
+            ) : (
                 <Box sx={{
-                    px: 2, py: 1,
-                    bgcolor: '#161b22',
-                    borderBottom: '1px solid #30363d',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
+                    display: 'grid',
+                    gridTemplateColumns: {
+                        xs: '1fr',
+                        sm: 'repeat(2, 1fr)',
+                        xl: 'repeat(3, 1fr)',
+                    },
+                    gap: 2,
+                    alignItems: 'start',
                 }}>
-                    <Typography sx={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#8b949e', flex: 1 }}>
-                        📋 Log en tiempo real
-                        {cargandoHistorial && (
-                            <CircularProgress size={10} sx={{ ml: 1, color: '#8b949e', verticalAlign: 'middle' }} />
-                        )}
-                    </Typography>
-                    <Typography sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#484f58' }}>
-                        {logs.length} líneas
-                    </Typography>
+                    {campanias.map(c => (
+                        <CampaignCard
+                            key={c.id}
+                            campania={c}
+                            onFinished={handleFinished}
+                        />
+                    ))}
                 </Box>
-
-                {/* Log body */}
-                <Box
-                    ref={scrollRef}
-                    onScroll={handleScroll}
-                    sx={{
-                        flex: 1,
-                        overflowY: 'auto',
-                        p: '10px 14px',
-                        position: 'relative',
-                        '&::-webkit-scrollbar': { width: 6 },
-                        '&::-webkit-scrollbar-track': { bgcolor: '#161b22' },
-                        '&::-webkit-scrollbar-thumb': { bgcolor: '#30363d', borderRadius: 3 },
-                    }}
-                >
-                    {cargandoHistorial && logs.length === 0 ? (
-                        <Box display="flex" justifyContent="center" py={4}>
-                            <CircularProgress size={20} sx={{ color: '#30363d' }} />
-                        </Box>
-                    ) : logs.length === 0 ? (
-                        <Typography sx={{ color: '#484f58', fontFamily: 'monospace', fontSize: '0.82rem', textAlign: 'center', mt: 3 }}>
-                            {esProcesando ? '⏳ Esperando logs...' : '— sin logs disponibles —'}
-                        </Typography>
-                    ) : (
-                        logs.map((log, i) => (
-                            <Box
-                                key={i}
-                                sx={{
-                                    display: 'flex',
-                                    gap: 1.5,
-                                    px: 0.5,
-                                    py: '1px',
-                                    borderRadius: '3px',
-                                    bgcolor: NIVEL_BG[log.nivel] || 'transparent',
-                                    '&:hover': { bgcolor: '#161b22' },
-                                }}
-                            >
-                                <Typography component="span" sx={{
-                                    color: '#484f58', fontFamily: 'monospace', fontSize: '0.72rem',
-                                    flexShrink: 0, userSelect: 'none', pt: '1px',
-                                }}>
-                                    {new Date(log.timestamp).toLocaleTimeString()}
-                                </Typography>
-                                <Typography component="span" sx={{
-                                    color: NIVEL_COLORS[log.nivel] || '#c9d1d9',
-                                    fontFamily: 'monospace', fontSize: '0.78rem', wordBreak: 'break-all',
-                                }}>
-                                    {log.mensaje}
-                                </Typography>
-                            </Box>
-                        ))
-                    )}
-                    <div ref={bottomRef} />
-                </Box>
-
-                {/* Botón ir al final */}
-                {!autoScroll && logs.length > 0 && (
-                    <Box sx={{ position: 'relative', height: 0 }}>
-                        <Tooltip title="Ir al último log">
-                            <IconButton
-                                onClick={() => {
-                                    setAutoScroll(true);
-                                    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-                                }}
-                                size="small"
-                                sx={{
-                                    position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
-                                    bgcolor: '#21262d', color: '#c9d1d9', border: '1px solid #30363d',
-                                    '&:hover': { bgcolor: '#30363d' }, zIndex: 10,
-                                }}
-                            >
-                                <ArrowDownwardIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
-                )}
-            </Paper>
+            )}
         </Box>
     );
 }

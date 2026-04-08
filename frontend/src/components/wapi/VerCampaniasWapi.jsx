@@ -333,8 +333,8 @@ export default function VerCampaniasWapi() {
                                                         </Tooltip>
                                                     </>}
                                                     {c.estado === 'procesando' && (<>
-                                                        <Tooltip title="Tablero en vivo">
-                                                            <IconButton color="success" size="small" onClick={() => navigate(`/wapi/campanias/${c.id}/live`)}>
+                                                        <Tooltip title="Monitor en vivo">
+                                                            <IconButton color="success" size="small" onClick={() => navigate('/wapi/live')}>
                                                                 <LiveTvIcon fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
@@ -355,8 +355,8 @@ export default function VerCampaniasWapi() {
                                                         </Tooltip>
                                                     </>)}
                                                     {c.estado === 'pausada' && (<>
-                                                        <Tooltip title="Tablero en vivo">
-                                                            <IconButton color="success" size="small" onClick={() => navigate(`/wapi/campanias/${c.id}/live`)}>
+                                                        <Tooltip title="Monitor en vivo">
+                                                            <IconButton color="success" size="small" onClick={() => navigate('/wapi/live')}>
                                                                 <LiveTvIcon fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>

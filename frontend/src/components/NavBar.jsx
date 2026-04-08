@@ -45,6 +45,7 @@ import PhonelinkIcon from '@mui/icons-material/Phonelink';
 import InboxIcon from '@mui/icons-material/Inbox';
 import BlockIcon from '@mui/icons-material/Block';
 import BoltIcon from '@mui/icons-material/Bolt';
+import LiveTvIcon from '@mui/icons-material/LiveTv';
 import { useAuth } from '../context/AuthContext';
 
 const drawerWidth = 220;
@@ -81,6 +82,7 @@ const wapiItems = [
     { label: 'Configuración', path: '/wapi/config', icon: <SettingsIcon />, permiso: 'wapi.config' },
     { label: 'Templates', path: '/wapi/templates', icon: <ArticleIcon />, permiso: 'wapi.templates' },
     { label: 'Campañas', path: '/wapi/campanias', icon: <CampaignIcon />, permiso: 'wapi.campanias' },
+    { label: 'Monitor en vivo', path: '/wapi/live', icon: <LiveTvIcon />, permiso: 'wapi.campanias' },
     { label: 'Bajas', path: '/wapi/bajas', icon: <BlockIcon />, permiso: 'wapi.bajas' },
     { label: 'Analítica', path: '/wapi/analitica', icon: <InsightsIcon />, permiso: 'wapi.analitica' },
 ];
