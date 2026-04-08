@@ -413,7 +413,9 @@ export default function WapiLiveDashboard() {
         <Box sx={{
             minHeight: '100%',
             bgcolor: '#080d14',
-            p: { xs: 2, md: 3 },
+            pt: { xs: 3, md: 4 },
+            px: { xs: 2, md: 3 },
+            pb: { xs: 2, md: 3 },
             display: 'flex',
             flexDirection: 'column',
             gap: 2.5,
