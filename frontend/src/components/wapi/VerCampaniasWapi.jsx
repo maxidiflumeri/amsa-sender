@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Box, Button, Paper, Typography, Table, TableHead, TableRow,
     TableCell, TableBody, Chip, IconButton, Tooltip, LinearProgress,
@@ -21,6 +22,7 @@ import InboxIcon from '@mui/icons-material/Inbox';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import PauseIcon from '@mui/icons-material/Pause';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import LiveTvIcon from '@mui/icons-material/LiveTv';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -50,6 +52,7 @@ const SkeletonRow = () => (
 export default function VerCampaniasWapi() {
     const theme = useTheme();
     const isMobile = useMediaQuery('(max-width:768px)');
+    const navigate = useNavigate();
 
     const [campanias, setCampanias] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -330,6 +333,11 @@ export default function VerCampaniasWapi() {
                                                         </Tooltip>
                                                     </>}
                                                     {c.estado === 'procesando' && (<>
+                                                        <Tooltip title="Tablero en vivo">
+                                                            <IconButton color="success" size="small" onClick={() => navigate(`/wapi/campanias/${c.id}/live`)}>
+                                                                <LiveTvIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
                                                         <Tooltip title="Ver logs en tiempo real">
                                                             <IconButton color="info" size="small" onClick={() => setModalLog({ id: c.id, nombre: c.nombre })}>
                                                                 <TerminalIcon fontSize="small" />
@@ -346,13 +354,18 @@ export default function VerCampaniasWapi() {
                                                             </IconButton>
                                                         </Tooltip>
                                                     </>)}
-                                                    {c.estado === 'pausada' && (
+                                                    {c.estado === 'pausada' && (<>
+                                                        <Tooltip title="Tablero en vivo">
+                                                            <IconButton color="success" size="small" onClick={() => navigate(`/wapi/campanias/${c.id}/live`)}>
+                                                                <LiveTvIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
                                                         <Tooltip title="Reanudar campaña">
                                                             <IconButton color="success" size="small" disabled={accionLoading} onClick={() => handleReanudar(c)}>
                                                                 <PlayArrowIcon fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
-                                                    )}
+                                                    </>)}
                                                     {c.estado === 'error' && (
                                                         <Tooltip title="Marcar finalizada">
                                                             <IconButton color="success" size="small" onClick={() => setConfirmarCierre(c)}>

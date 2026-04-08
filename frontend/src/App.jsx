@@ -34,6 +34,7 @@ import VerCampaniasWapi from './components/wapi/VerCampaniasWapi';
 import WapiInbox from './components/wapi/WapiInbox';
 import WapiBajas from './components/wapi/WapiBajas';
 import WapiAnalitica from './components/wapi/analitica/WapiAnalitica';
+import WapiLiveDashboard from './components/wapi/WapiLiveDashboard';
 import WapiRespuestasRapidas from './components/wapi/WapiRespuestasRapidas';
 import DevSimulador from './components/dev/DevSimulador';
 
@@ -269,6 +270,7 @@ export default function App() {
                     <Route path="/wapi/config" element={<RutaProtegida permiso="wapi.config"><WapiConfig /></RutaProtegida>} />
                     <Route path="/wapi/templates" element={<RutaProtegida permiso="wapi.templates"><WapiTemplates /></RutaProtegida>} />
                     <Route path="/wapi/campanias" element={<RutaProtegida permiso="wapi.campanias"><VerCampaniasWapi /></RutaProtegida>} />
+                    <Route path="/wapi/campanias/:id/live" element={<RutaProtegida permiso="wapi.campanias"><WapiLiveDashboard /></RutaProtegida>} />
                     <Route path="/wapi/bajas" element={<RutaProtegida permiso="wapi.bajas"><WapiBajas /></RutaProtegida>} />
                     {/* Inbox WA */}
                     <Route path="/wapi/inbox" element={<RutaProtegida permiso="wapi.inbox"><WapiInbox /></RutaProtegida>} />
