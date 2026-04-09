@@ -101,9 +101,11 @@ function MetricRow({ icon, label, value, pctVal, color }) {
 
 function CampaignCard({ campania: campInicial, onFinished }) {
     const [campania, setCampania] = useState(campInicial);
-    const [enviados, setEnviados] = useState(0);
-    const [total, setTotal] = useState(0);
-    const [stats, setStats] = useState({ entregados: 0, leidos: 0, fallidos: 0 });
+    // procesados y totalContactos vienen del socket (fuente de verdad para el anillo)
+    const [procesados, setProcesados] = useState(0);
+    const [totalContactos, setTotalContactos] = useState(campInicial._count?.contactos ?? 0);
+    // stats viene del polling (entregados/leídos/fallidos son async de Meta)
+    const [stats, setStats] = useState({ enviados: 0, entregados: 0, leidos: 0, fallidos: 0 });
     const [respondieron, setRespondieron] = useState(null);
     const [ultimaActividad, setUltimaActividad] = useState(null);
     const [accionLoading, setAccionLoading] = useState(false);
@@ -111,13 +113,12 @@ function CampaignCard({ campania: campInicial, onFinished }) {
     const campañaId = campInicial.id;
     const pollingRef = useRef(null);
 
+    // fetchReportes solo actualiza stats de delivery — nunca toca procesados ni totalContactos
     const fetchReportes = useCallback(async () => {
         try {
             const res = await api.get(`/wapi/campanias/${campañaId}/reportes`);
-            const { enviados: env, entregados, leidos, fallidos, total: tot } = res.data;
-            setEnviados(env);
-            setTotal(tot);
-            setStats({ entregados, leidos, fallidos });
+            const { enviados: env, entregados, leidos, fallidos } = res.data;
+            setStats({ enviados: env, entregados, leidos, fallidos });
         } catch { /* silencioso */ }
     }, [campañaId]);
 
@@ -141,8 +142,8 @@ function CampaignCard({ campania: campInicial, onFinished }) {
 
         socket.on('progreso', ({ campañaId: cid, enviados: env, total: tot }) => {
             if (cid !== campañaId) return;
-            setEnviados(env);
-            setTotal(tot);
+            setProcesados(env);
+            setTotalContactos(tot); // tot = contactos.length, siempre estable
         });
 
         socket.on('campania_log', (entry) => {
@@ -204,7 +205,7 @@ function CampaignCard({ campania: campInicial, onFinished }) {
     const theme = useTheme();
     const estado = campania.estado;
     const esProcesando = estado === 'procesando';
-    const progresoPorc = total > 0 ? Math.round((enviados / total) * 100) : 0;
+    const progresoPorc = totalContactos > 0 ? Math.round((procesados / totalContactos) * 100) : 0;
 
     const borderColor = esProcesando
         ? 'rgba(37,211,102,0.4)'
@@ -274,8 +275,8 @@ function CampaignCard({ campania: campInicial, onFinished }) {
             }}>
                 <RingProgress
                     value={progresoPorc}
-                    total={total}
-                    enviados={enviados}
+                    total={totalContactos}
+                    enviados={procesados}
                     esProcesando={esProcesando}
                 />
 
@@ -283,36 +284,36 @@ function CampaignCard({ campania: campInicial, onFinished }) {
                     <MetricRow
                         icon={<SendIcon sx={{ fontSize: 15 }} />}
                         label="Enviados"
-                        value={enviados}
-                        pctVal={pct(enviados, total)}
+                        value={stats.enviados}
+                        pctVal={pct(stats.enviados, totalContactos)}
                         color="#79c0ff"
                     />
                     <MetricRow
                         icon={<CheckCircleIcon sx={{ fontSize: 15 }} />}
                         label="Entregados"
                         value={stats.entregados}
-                        pctVal={pct(stats.entregados, enviados)}
+                        pctVal={pct(stats.entregados, stats.enviados)}
                         color="#58a6ff"
                     />
                     <MetricRow
                         icon={<DoneAllIcon sx={{ fontSize: 15 }} />}
                         label="Leídos"
                         value={stats.leidos}
-                        pctVal={pct(stats.leidos, enviados)}
+                        pctVal={pct(stats.leidos, stats.enviados)}
                         color="#3fb950"
                     />
                     <MetricRow
                         icon={<ChatBubbleIcon sx={{ fontSize: 15 }} />}
                         label="Respondieron"
                         value={respondieron !== null ? respondieron : '—'}
-                        pctVal={respondieron !== null ? pct(respondieron, enviados) : null}
+                        pctVal={respondieron !== null ? pct(respondieron, stats.enviados) : null}
                         color="#bc8cff"
                     />
                     <MetricRow
                         icon={<ErrorOutlineIcon sx={{ fontSize: 15 }} />}
                         label="Fallidos"
                         value={stats.fallidos}
-                        pctVal={pct(stats.fallidos, total)}
+                        pctVal={pct(stats.fallidos, totalContactos)}
                         color={stats.fallidos > 0 ? '#f85149' : 'text.disabled'}
                     />
                 </Box>
