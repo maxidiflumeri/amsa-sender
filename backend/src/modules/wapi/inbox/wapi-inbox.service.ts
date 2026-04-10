@@ -164,10 +164,16 @@ export class WapiInboxService {
 
     // Denormalizar campañaNombre en la conversación para el listado
     if (contenido.campañaNombre) {
-      await this.prisma.waApiConversacion.update({
+      const convActualizada = await this.prisma.waApiConversacion.update({
         where: { id: conv.id },
         data: { campañaNombre: contenido.campañaNombre },
+        include: { asignadoA: { select: this.INCLUDE_USUARIO } },
       });
+      this.socketGateway.emitirEvento(
+        'wapi:conversacion_actualizada',
+        this.conVentana(convActualizada),
+        'inbox_wapi',
+      );
     }
 
     this.socketGateway.emitirEvento(
