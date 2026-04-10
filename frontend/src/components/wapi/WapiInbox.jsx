@@ -100,11 +100,24 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                                 }
                                 secondary={
                                     <Box component="span" sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                                        {conv.asignadoA && (
-                                            <Typography component="span" variant="caption" noWrap sx={{ fontSize: 10, color: 'info.main', fontWeight: 500 }}>
-                                                👤 {conv.asignadoA.nombre}
-                                            </Typography>
-                                        )}
+                                        <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                                            {conv.asignadoA && (
+                                                <Typography component="span" variant="caption" noWrap sx={{ fontSize: 10, color: 'info.main', fontWeight: 500 }}>
+                                                    👤 {conv.asignadoA.nombre}
+                                                </Typography>
+                                            )}
+                                            {conv.campañaNombre && (
+                                                <Chip
+                                                    label={conv.campañaNombre.length > 14 ? conv.campañaNombre.slice(0, 13) + '…' : conv.campañaNombre}
+                                                    size="small"
+                                                    color="secondary"
+                                                    variant="outlined"
+                                                    component="span"
+                                                    title={conv.campañaNombre}
+                                                    sx={{ height: 14, fontSize: 9, fontWeight: 600, px: 0.25, '& .MuiChip-label': { px: 0.5 } }}
+                                                />
+                                            )}
+                                        </Box>
                                         {isTyping ? (
                                             <Typography component="span" variant="caption" noWrap sx={{ fontSize: 11, color: 'success.main', fontStyle: 'italic' }}>
                                                 Escribiendo...

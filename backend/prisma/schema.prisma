@@ -368,6 +368,7 @@ model WaApiConversacion {
   resolvedAt          DateTime?          // cuándo se marcó como resuelta
   unreadCount         Int                @default(0) // mensajes no leídos por el agente
   lastReadAt          DateTime?          // cuándo el agente vio la conversación por última vez
+  campañaNombre       String?            // nombre de la campaña de origen (denormalizado para el listado)
   creadoAt            DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   mensajes            WaApiMensaje[]

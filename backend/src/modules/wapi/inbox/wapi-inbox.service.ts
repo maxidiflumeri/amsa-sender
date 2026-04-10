@@ -162,6 +162,14 @@ export class WapiInboxService {
       },
     });
 
+    // Denormalizar campañaNombre en la conversación para el listado
+    if (contenido.campañaNombre) {
+      await this.prisma.waApiConversacion.update({
+        where: { id: conv.id },
+        data: { campañaNombre: contenido.campañaNombre },
+      });
+    }
+
     this.socketGateway.emitirEvento(
       'wapi:nuevo_mensaje',
       { conversacion: { id: conv.id, numero: conv.numero }, mensaje: msgSistema },
