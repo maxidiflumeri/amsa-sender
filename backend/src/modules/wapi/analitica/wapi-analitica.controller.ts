@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { PermisosGuard, RequiredPermiso } from 'src/auth/permisos.guard';
 import { WapiAnaliticaService } from './wapi-analitica.service';
@@ -47,6 +47,20 @@ export class WapiAnaliticaController {
   ) {
     const { desdeDate, hastaDate } = this.parseFechas(desde, hasta);
     return this.analiticaService.metricasAgentes(desdeDate, hastaDate);
+  }
+
+  @Post('campania/:id/ai')
+  analizarCampaniaConIA(@Param('id') id: string) {
+    return this.analiticaService.analizarCampaniaConIA(+id);
+  }
+
+  @Post('agentes/ai')
+  analizarAgentesConIA(
+    @Query('desde') desde: string,
+    @Query('hasta') hasta: string,
+  ) {
+    const { desdeDate, hastaDate } = this.parseFechas(desde, hasta);
+    return this.analiticaService.analizarAgentesConIA(desdeDate, hastaDate);
   }
 
   @Get('agentes/:userId')

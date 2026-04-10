@@ -1,5 +1,136 @@
 # Changelog
 
+## [2026-04-10] — Migración IA: Gemini → Amazon Bedrock (Llama 3.3)
+
+### Contexto
+
+Gemini API presentó problemas de quota `limit: 0` en todos los modelos disponibles tanto con cuentas de Google Workspace como personales, independientemente del proyecto de Google Cloud. Se migró a Amazon Bedrock aprovechando la infraestructura AWS ya existente.
+
+### Backend — `src/modules/ai/bedrock.service.ts` (nuevo)
+
+- **Reemplaza `GeminiService`** — misma interfaz pública, mismos 4 métodos.
+- Usa `@aws-sdk/client-bedrock-runtime` con `InvokeModelCommand`.
+- Modelo: **Llama 3.3 70B Instruct** (`us.meta.llama3-3-70b-instruct-v1:0`) vía inferencia entre regiones en `us-east-1`.
+- Formato de prompt Llama 3: tokens especiales `<|begin_of_text|>`, `<|start_header_id|>system<|end_header_id|>`, etc.
+- `max_gen_len: 4096` para respuestas completas y detalladas.
+- Temperatura `0.7` para inbox (respuestas naturales) y `0` para analítica (determinístico).
+- Prompts de analítica actualizados para instruir respuestas detalladas basadas en datos concretos.
+- Credenciales y región configurables vía `.env`.
+
+### Backend — `src/modules/ai/ai.module.ts`
+
+- Reemplazado `GeminiService` por `BedrockService` en providers y exports.
+
+### Backend — servicios consumidores
+
+- `wapi-inbox.service.ts`: import actualizado a `BedrockService`.
+- `wapi-analitica.service.ts`: import actualizado a `BedrockService`.
+
+### Backend — `.env`
+
+- Nuevas variables: `AWS_BEDROCK_ACCESS_KEY_ID`, `AWS_BEDROCK_SECRET_ACCESS_KEY`, `AWS_BEDROCK_REGION`, `AWS_BEDROCK_MODEL_ID`.
+- Variables de Gemini conservadas por compatibilidad pero sin uso activo.
+
+### Frontend — `src/components/PaginaInicio.jsx`
+
+- Referencia a "Gemini" en el banner IA reemplazada por "IA" genérico.
+
+---
+
+## [2026-04-10] — IA Generativa + Rediseño visual UI
+
+### Backend — `src/modules/ai/gemini.service.ts` (nuevo)
+
+- **Servicio Gemini**: integración con Google Gemini AI (`gemini-flash-latest`) via `@google/generative-ai`.
+- Dos instancias del modelo: temperatura default para respuestas conversacionales (inbox) y `temperature: 0` para analítica (resultados determinísticos).
+- `generarResumen(mensajes)`: resumen de conversación en hasta 5 viñetas en español argentino.
+- `generarSugerencia(mensajes, contexto)`: sugerencia de respuesta para el agente usando respuestas rápidas como base de conocimiento, con filtrado por campaña activa.
+- `generarAnalisisCampania(metrics, historial)`: informe completo de campaña con secciones 📊💡⚠️🎯. Incluye comparación histórica contra campañas anteriores del mismo template.
+- `generarAnalisisAgentes(metrics)`: informe de desempeño del equipo con secciones 👥🏆🔴📈🎯.
+- `buildBaseConocimiento()`: construye contexto separando respuestas rápidas de la campaña activa vs generales.
+
+### Backend — `src/modules/ai/ai.module.ts` (nuevo)
+
+- Módulo NestJS que provee y exporta `GeminiService`, importable desde otros módulos.
+
+### Backend — `src/modules/wapi/inbox/wapi-inbox.service.ts`
+
+- Inyección de `GeminiService`.
+- `generarResumen(id)`: endpoint que resume la conversación con IA.
+- `generarSugerencia(id)`: endpoint que sugiere respuesta contextual al agente.
+- `obtenerRespuestasRapidasParaIA()`: carga respuestas rápidas activas con tags parseados para usarlas como base de conocimiento.
+- Al crear ficha de contacto: actualiza `campañaNombre` en la conversación antes de emitir socket `wapi:conversacion_actualizada`, garantizando que el campo llegue al frontend.
+
+### Backend — `src/modules/wapi/inbox/wapi-inbox.controller.ts`
+
+- `POST :id/ai/resumen`: genera resumen de conversación con IA.
+- `POST :id/ai/sugerencia`: genera sugerencia de respuesta con IA.
+
+### Backend — `src/modules/wapi/analitica/wapi-analitica.service.ts`
+
+- `analizarCampaniaConIA(id)`: obtiene métricas + historial del mismo template en paralelo, llama a Gemini.
+- `analizarAgentesConIA(desde, hasta)`: obtiene métricas del período y genera análisis del equipo.
+- `historialCampaniasMismoTemplate(id)`: busca las últimas 5 campañas finalizadas con el mismo `templateId` para comparación histórica.
+
+### Backend — `src/modules/wapi/analitica/wapi-analitica.controller.ts`
+
+- `POST campania/:id/ai`: análisis IA de campaña.
+- `POST agentes/ai`: análisis IA del equipo de agentes.
+
+### Backend — `prisma/schema.prisma`
+
+- Campo `campañaNombre String?` en `WaApiConversacion`: nombre de campaña denormalizado para el listado del inbox sin joins.
+
+### Frontend — `src/components/wapi/WapiInbox.jsx`
+
+- **Tag de campaña** en la lista de conversaciones: chip con el nombre de la campaña truncado a 14 caracteres.
+- **Botón Resumen IA**: abre modal con resumen generado por Gemini. Loading con ícono giratorio + texto shimmer animado. Distingue error 429 (saturación) de error genérico.
+- **Botón Sugerencia IA**: llama a la API y pre-carga el texto en el input de respuesta.
+- Todos los botones de acción (Tomar, Asignar, Resuelta, Clip, Rayo, Enviar, IA) con degradado azul→violeta y efecto glow en hover adaptado a dark/light mode.
+- Input area: `alignItems: flex-start` + offset en botones para alinear correctamente con el textarea.
+
+### Frontend — `src/components/wapi/analitica/PanelAnalisisIA.jsx` (nuevo)
+
+- Componente reutilizable que recibe `endpoint`, `label` y `disabled`.
+- Botón con degradado azul→violeta + animación `aiGlow` durante la carga.
+- Panel colapsable con borde y fondo azul tintado.
+- `renderAnalisis()`: parsea el texto por secciones emoji y renderiza con colores por tipo.
+- Estado de error con `Alert` + botón Reintentar. Botón "Regenerar" cuando el análisis ya está cargado.
+
+### Frontend — `src/components/wapi/analitica/MetricasCampania.jsx`
+
+- `PanelAnalisisIA` integrado arriba de las KPI cards.
+
+### Frontend — `src/components/wapi/analitica/MetricasAgentes.jsx`
+
+- `PanelAnalisisIA` integrado arriba de las KPI cards.
+
+### Frontend — `src/components/Login.jsx`
+
+- **Card "Inteligencia Artificial"** como primera feature del panel derecho: fondo sutil, borde violeta, título con degradado azul→violeta.
+- Borde del color característico (`${color}55`) aplicado a todos los feature cards.
+- Chip "Impulsado por IA" con animación `aiPulse` (borde que pulsa) junto al chip de plataforma.
+- Círculo decorativo azul/violeta agregado al fondo.
+- Subtítulo actualizado: "potenciado con IA generativa".
+- Título "AMSA **Sender**" con degradado verde `#075E54 → #25D366` en "Sender", `fontWeight: 800`, `letterSpacing: -0.5px`.
+
+### Frontend — `src/components/PaginaInicio.jsx`
+
+- **Fondo degradado** estilo Login en tonos verde/negro/gris: dark `#0d1117 → #0d2016`, light `#f0f4f0 → #f5faf5 → #eaf2ea`. Márgenes negativos para cubrir el padding del NavBar.
+- Dos círculos decorativos verdes en el fondo.
+- **Banner "Ahora impulsado por IA generativa"**: panel destacado con ícono AI degradado, descripción y chip "NUEVO".
+- **Card "Inteligencia Artificial"** como primera feature: borde violeta, glow en hover.
+- Chip "IA Generativa" con animación `aiPulse` en la fila de chips.
+- Borde del color característico aplicado a todos los feature cards.
+- Título "AMSA **Sender**": degradado verde, `fontWeight: 800`, `letterSpacing: -0.5px`.
+
+### Frontend — `src/components/NavBar.jsx`
+
+- Título "AMSA **Sender**": "Sender" con degradado `#b0ffc8 → #25D366` (más claro que Login para contrastar con el fondo oscuro del navbar), `fontWeight: 800`, `letterSpacing: -0.5px`.
+- Avatar del usuario: ring verde uniforme `0 0 0 2px #25D366` + glow `rgba(37,211,102,0.4)` para foto y para iniciales.
+
+---
+
 ## [2026-04-06] — WAPI: delay aleatorio y límite diario por línea
 
 ### Worker — `wapi-worker.service.ts`

@@ -21,8 +21,16 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import SecurityIcon from '@mui/icons-material/Security';
 import InboxIcon from '@mui/icons-material/Inbox';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
 const features = [
+    {
+        icon: <AutoAwesomeIcon sx={{ fontSize: 26 }} />,
+        title: 'Inteligencia Artificial',
+        desc: 'Resúmenes de conversaciones, sugerencias de respuesta y análisis de campañas con IA generativa.',
+        color: '#a259f7',
+        isAI: true,
+    },
     {
         icon: <WhatsAppIcon sx={{ fontSize: 26 }} />,
         title: 'Campañas de WhatsApp',
@@ -251,6 +259,21 @@ const Login = () => {
                         pointerEvents: 'none',
                     }}
                 />
+                {/* Círculo decorativo IA */}
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        top: '35%',
+                        left: -100,
+                        width: 340,
+                        height: 340,
+                        borderRadius: '50%',
+                        background: isDark
+                            ? 'radial-gradient(circle, rgba(162,89,247,0.09) 0%, transparent 70%)'
+                            : 'radial-gradient(circle, rgba(79,142,247,0.08) 0%, transparent 70%)',
+                        pointerEvents: 'none',
+                    }}
+                />
 
                 {/* Encabezado */}
                 <motion.div
@@ -258,18 +281,39 @@ const Login = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.7, ease: 'easeOut' }}
                 >
-                    <Chip
-                        label="Plataforma de comunicación multicanal"
-                        size="small"
-                        sx={{
-                            mb: 2,
-                            bgcolor: isDark ? 'rgba(37,211,102,0.12)' : 'rgba(7,94,84,0.08)',
-                            color: isDark ? '#25D366' : '#075E54',
-                            fontWeight: 600,
-                            fontSize: 11,
-                            border: `1px solid ${isDark ? 'rgba(37,211,102,0.2)' : 'rgba(7,94,84,0.15)'}`,
-                        }}
-                    />
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                        <Chip
+                            label="Plataforma de comunicación multicanal"
+                            size="small"
+                            sx={{
+                                bgcolor: isDark ? 'rgba(37,211,102,0.12)' : 'rgba(7,94,84,0.08)',
+                                color: isDark ? '#25D366' : '#075E54',
+                                fontWeight: 600,
+                                fontSize: 11,
+                                border: `1px solid ${isDark ? 'rgba(37,211,102,0.2)' : 'rgba(7,94,84,0.15)'}`,
+                            }}
+                        />
+                        <Chip
+                            icon={<AutoAwesomeIcon sx={{ fontSize: '13px !important', color: '#a259f7 !important' }} />}
+                            label="Impulsado por IA"
+                            size="small"
+                            sx={{
+                                background: isDark
+                                    ? 'linear-gradient(135deg, rgba(79,142,247,0.18) 0%, rgba(162,89,247,0.18) 100%)'
+                                    : 'linear-gradient(135deg, rgba(79,142,247,0.1) 0%, rgba(162,89,247,0.1) 100%)',
+                                color: isDark ? '#c4b5fd' : '#7c3aed',
+                                fontWeight: 700,
+                                fontSize: 11,
+                                border: '1px solid rgba(162,89,247,0.3)',
+                                '@keyframes aiPulse': {
+                                    '0%': { borderColor: 'rgba(162,89,247,0.3)' },
+                                    '50%': { borderColor: 'rgba(162,89,247,0.7)' },
+                                    '100%': { borderColor: 'rgba(162,89,247,0.3)' },
+                                },
+                                animation: 'aiPulse 2.5s ease-in-out infinite',
+                            }}
+                        />
+                    </Box>
 
                     <Typography
                         variant="h3"
@@ -306,7 +350,7 @@ const Login = () => {
                             fontSize: { md: '1rem', lg: '1.1rem' },
                         }}
                     >
-                        Enviá campañas, gestioná conversaciones entrantes y analizá resultados de WhatsApp y Email — todo desde un solo lugar.
+                        Enviá campañas, gestioná conversaciones y analizá resultados de WhatsApp y Email — potenciado con IA generativa.
                     </Typography>
                 </motion.div>
 
@@ -333,16 +377,12 @@ const Login = () => {
                                         gap: 2,
                                         p: 2,
                                         borderRadius: 3,
-                                        bgcolor: isDark
-                                            ? 'rgba(255,255,255,0.03)'
-                                            : 'rgba(255,255,255,0.7)',
-                                        border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
                                         backdropFilter: 'blur(4px)',
                                         transition: 'all 0.2s ease',
+                                        bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)',
+                                        border: `1px solid ${f.color}55`,
                                         '&:hover': {
-                                            bgcolor: isDark
-                                                ? 'rgba(255,255,255,0.06)'
-                                                : 'rgba(255,255,255,0.95)',
+                                            bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.95)',
                                             transform: 'translateY(-2px)',
                                             boxShadow: isDark
                                                 ? '0 4px 20px rgba(0,0,0,0.3)'
@@ -357,9 +397,9 @@ const Login = () => {
                                             flexShrink: 0,
                                             p: 0.8,
                                             borderRadius: 2,
-                                            bgcolor: isDark
-                                                ? `${f.color}18`
-                                                : `${f.color}22`,
+                                            bgcolor: f.isAI
+                                                ? isDark ? 'rgba(162,89,247,0.2)' : 'rgba(162,89,247,0.12)'
+                                                : isDark ? `${f.color}18` : `${f.color}22`,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
@@ -372,9 +412,15 @@ const Login = () => {
                                             variant="body2"
                                             sx={{
                                                 fontWeight: 700,
-                                                color: isDark ? '#e6edf3' : '#1a202c',
                                                 mb: 0.3,
                                                 fontSize: 13,
+                                                ...(f.isAI ? {
+                                                    background: 'linear-gradient(135deg, #4f8ef7 0%, #a259f7 100%)',
+                                                    WebkitBackgroundClip: 'text',
+                                                    WebkitTextFillColor: 'transparent',
+                                                } : {
+                                                    color: isDark ? '#e6edf3' : '#1a202c',
+                                                }),
                                             }}
                                         >
                                             {f.title}

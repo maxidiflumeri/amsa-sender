@@ -13,6 +13,7 @@ import {
     Legend, PieChart, Pie, Cell, ResponsiveContainer, LabelList,
 } from 'recharts';
 import api from '../../../api/axios';
+import PanelAnalisisIA from './PanelAnalisisIA';
 
 const ESTADO_MSG_CHIP = {
     sent:      { label: 'Enviado',   color: 'info' },
@@ -237,6 +238,11 @@ export default function MetricasCampania() {
                             })()}
                         </Stack>
                     </Paper>
+
+                    <PanelAnalisisIA
+                        endpoint={`/wapi/analitica/campania/${campaniaId}/ai`}
+                        label="Analizar campaña con IA"
+                    />
 
                     {/* KPI Cards */}
                     <Grid container spacing={1.5} mb={3}>

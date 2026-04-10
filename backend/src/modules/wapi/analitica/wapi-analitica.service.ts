@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { BedrockService } from 'src/modules/ai/bedrock.service';
 
 @Injectable()
 export class WapiAnaliticaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gemini: BedrockService,
+  ) {}
 
   async metricasCampania(id: number) {
     // 1. Obtener campaña con template y config
@@ -443,6 +447,85 @@ export class WapiAnaliticaService {
       agentes: agentesData,
       evolucionDiaria,
     };
+  }
+
+  async analizarCampaniaConIA(id: number): Promise<{ analisis: string }> {
+    const [metrics, historial] = await Promise.all([
+      this.metricasCampania(id),
+      this.historialCampaniasMismoTemplate(id),
+    ]);
+    const analisis = await this.gemini.generarAnalisisCampania(metrics, historial);
+    return { analisis };
+  }
+
+  private async historialCampaniasMismoTemplate(id: number) {
+    // Obtener el templateId de la campaña actual
+    const campania = await this.prisma.waApiCampaña.findUnique({
+      where: { id },
+      select: { templateId: true },
+    });
+    if (!campania?.templateId) return [];
+
+    // Últimas 5 campañas finalizadas con el mismo template (excluyendo la actual)
+    const anteriores = await this.prisma.waApiCampaña.findMany({
+      where: {
+        id: { not: id },
+        templateId: campania.templateId,
+        estado: 'finalizada',
+      },
+      orderBy: { enviadoAt: 'desc' },
+      take: 5,
+      select: { id: true, nombre: true, enviadoAt: true },
+    });
+
+    if (!anteriores.length) return [];
+
+    // Calcular métricas básicas de cada una
+    const historial = await Promise.all(
+      anteriores.map(async (c) => {
+        const reportes = await this.prisma.waApiReporte.findMany({
+          where: { campañaId: c.id },
+          select: { estado: true, enviadoAt: true, leidoAt: true },
+        });
+        const total = reportes.length;
+        const enviados = reportes.filter(r => ['sent', 'delivered', 'read'].includes(r.estado)).length;
+        const leidos = reportes.filter(r => r.estado === 'read').length;
+        const fallidos = reportes.filter(r => r.estado === 'failed').length;
+
+        const contactos = await this.prisma.waApiContacto.findMany({
+          where: { campañaId: c.id },
+          select: { numero: true },
+        });
+        const numeros = contactos.map(ct => ct.numero);
+        const respondieron = numeros.length > 0
+          ? await this.prisma.waApiConversacion.count({
+              where: {
+                numero: { in: numeros },
+                mensajes: {
+                  some: { fromMe: false, timestamp: { gte: c.enviadoAt ?? new Date(0) } },
+                },
+              },
+            })
+          : 0;
+
+        return {
+          nombre: c.nombre,
+          enviadoAt: c.enviadoAt,
+          total,
+          tasaLectura: enviados > 0 ? Math.round((leidos / enviados) * 1000) / 10 : 0,
+          tasaFallo: total > 0 ? Math.round((fallidos / total) * 1000) / 10 : 0,
+          tasaEngagement: total > 0 ? Math.round((respondieron / total) * 1000) / 10 : 0,
+        };
+      }),
+    );
+
+    return historial;
+  }
+
+  async analizarAgentesConIA(desde: Date, hasta: Date): Promise<{ analisis: string }> {
+    const metrics = await this.metricasAgentes(desde, hasta);
+    const analisis = await this.gemini.generarAnalisisAgentes(metrics);
+    return { analisis };
   }
 
   async detalleAgente(userId: number, desde: Date, hasta: Date) {

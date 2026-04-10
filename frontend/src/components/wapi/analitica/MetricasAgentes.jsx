@@ -11,6 +11,7 @@ import {
     Legend, LineChart, Line, ResponsiveContainer,
 } from 'recharts';
 import api from '../../../api/axios';
+import PanelAnalisisIA from './PanelAnalisisIA';
 
 function formatMs(ms) {
     if (!ms) return '—';
@@ -258,6 +259,11 @@ export default function MetricasAgentes() {
 
             {datos && !loading && (
                 <Box>
+                    <PanelAnalisisIA
+                        endpoint={`/wapi/analitica/agentes/ai?desde=${getDesdeHasta().desde}&hasta=${getDesdeHasta().hasta}`}
+                        label="Analizar equipo con IA"
+                    />
+
                     {/* KPIs globales */}
                     <Grid container spacing={2} mb={3}>
                         <Grid item xs={6} sm={3}>

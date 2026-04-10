@@ -5,6 +5,7 @@ import * as fsSync from 'fs';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { WapiConfigService } from '../config/wapi-config.service';
 import { SocketGateway } from 'src/websocket/socket.gateway';
+import { BedrockService } from 'src/modules/ai/bedrock.service';
 
 export interface MensajeEntranteDto {
   numero: string;
@@ -28,6 +29,7 @@ export class WapiInboxService {
     private readonly prisma: PrismaService,
     private readonly configService: WapiConfigService,
     private readonly socketGateway: SocketGateway,
+    private readonly gemini: BedrockService,
   ) {}
 
   private readonly MENSAJE_BIENVENIDA_DEFAULT =
@@ -529,4 +531,44 @@ export class WapiInboxService {
 
     return mensaje;
   }
+
+  // ── IA: Resumen y Sugerencia ───────────────────────────────────────────────
+
+  private async obtenerConvParaIA(id: number) {
+    return this.prisma.waApiConversacion.findUniqueOrThrow({
+      where: { id },
+      include: { mensajes: { orderBy: { timestamp: 'asc' } } },
+    });
+  }
+
+  private async obtenerRespuestasRapidasParaIA() {
+    const rrs = await this.prisma.waApiRespuestaRapida.findMany({
+      where: { activo: true },
+      select: { titulo: true, contenido: true, tags: true },
+    });
+    return rrs.map(r => ({
+      titulo: r.titulo,
+      contenido: r.contenido,
+      tags: (r.tags as string[]) ?? [],
+    }));
+  }
+
+  async generarResumen(id: number): Promise<{ resumen: string }> {
+    const conv = await this.obtenerConvParaIA(id);
+    const resumen = await this.gemini.generarResumen(conv.mensajes);
+    return { resumen };
+  }
+
+  async generarSugerencia(id: number): Promise<{ sugerencia: string }> {
+    const [conv, respuestasRapidas] = await Promise.all([
+      this.obtenerConvParaIA(id),
+      this.obtenerRespuestasRapidasParaIA(),
+    ]);
+    const sugerencia = await this.gemini.generarSugerencia(conv.mensajes, {
+      campañaNombre: conv.campañaNombre,
+      respuestasRapidas,
+    });
+    return { sugerencia };
+  }
 }
+

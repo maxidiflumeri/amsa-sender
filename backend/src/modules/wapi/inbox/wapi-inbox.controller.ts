@@ -83,4 +83,14 @@ export class WapiInboxController {
   async proxyMedia(@Param('mediaId') mediaId: string, @Res() res: Response) {
     await this.inboxService.proxyMedia(mediaId, res);
   }
+
+  @Post(':id/ai/resumen')
+  generarResumen(@Param('id') id: string) {
+    return this.inboxService.generarResumen(+id);
+  }
+
+  @Post(':id/ai/sugerencia')
+  generarSugerencia(@Param('id') id: string) {
+    return this.inboxService.generarSugerencia(+id);
+  }
 }

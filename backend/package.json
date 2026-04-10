@@ -28,6 +28,8 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1029.0",
+    "@google/generative-ai": "^0.24.1",
     "@nestjs/bullmq": "^11.0.2",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",

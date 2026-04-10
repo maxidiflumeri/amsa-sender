@@ -179,21 +179,23 @@ export default function Layout({ children, mode, toggleTheme }) {
             src={user.foto}
             alt={user?.nombre}
             sx={{
-                width: 40,
-                height: 40,
-                bgcolor: 'transparent',
+                width: 38,
+                height: 38,
+                boxShadow: '0 0 0 2px #25D366, 0 0 10px rgba(37,211,102,0.4)',
             }}
         />
     ) : (
         <Avatar
             alt={user?.nombre}
             sx={{
-                bgcolor: '#4caf50',
+                bgcolor: '#1a6b3c',
                 color: '#fff',
-                fontWeight: 'bold',
-                width: 40,
-                height: 40,
+                fontWeight: 700,
+                width: 38,
+                height: 38,
+                fontSize: 15,
                 textTransform: 'uppercase',
+                boxShadow: '0 0 0 2px #25D366, 0 0 10px rgba(37,211,102,0.4)',
             }}
         >
             {user?.nombre?.[0] || '?'}
@@ -746,12 +748,22 @@ export default function Layout({ children, mode, toggleTheme }) {
                             />
                             <Typography
                                 variant="h6"
-                                fontWeight="bold"
-                                color="#fff"
                                 noWrap
-                                sx={{ maxWidth: { xs: '55vw', sm: 'unset' } }}
+                                sx={{
+                                    maxWidth: { xs: '55vw', sm: 'unset' },
+                                    fontWeight: 800,
+                                    letterSpacing: '-0.5px',
+                                    color: '#fff',
+                                }}
                             >
-                                AMSA Sender
+                                AMSA{' '}
+                                <Box component="span" sx={{
+                                    background: 'linear-gradient(90deg, #b0ffc8, #25D366)',
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                }}>
+                                    Sender
+                                </Box>
                             </Typography>
                         </Box>
                     </Box>

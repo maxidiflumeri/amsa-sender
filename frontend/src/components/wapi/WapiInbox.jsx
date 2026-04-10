@@ -23,6 +23,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import BoltIcon from '@mui/icons-material/Bolt';
 import MarkChatUnreadIcon from '@mui/icons-material/MarkChatUnread';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -190,6 +191,11 @@ export default function WapiInbox() {
 
     const [contextMenu, setContextMenu] = useState(null); // { mouseX, mouseY, conv }
     const [drafts, setDrafts] = useState({}); // { [convId]: texto }
+
+    const [resumenModal, setResumenModal] = useState(false);
+    const [resumenTexto, setResumenTexto] = useState('');
+    const [loadingResumen, setLoadingResumen] = useState(false);
+    const [loadingSugerencia, setLoadingSugerencia] = useState(false);
 
     const mensajesEndRef = useRef(null);
     const socketRef = useRef(null);
@@ -458,6 +464,44 @@ export default function WapiInbox() {
             setAdjunto(adjuntoEnviar);
         } finally {
             setEnviando(false);
+        }
+    };
+
+    // ── IA: Resumen ────────────────────────────────────────────────────────
+    const abrirResumen = async () => {
+        if (!convActiva) return;
+        setResumenModal(true);
+        setResumenTexto('');
+        setLoadingResumen(true);
+        try {
+            const { data } = await api.post(`/wapi/inbox/${convActiva.id}/ai/resumen`);
+            setResumenTexto(data.resumen);
+        } catch (err) {
+            const status = err?.response?.status;
+            setResumenTexto(status === 429
+                ? '⚠️ El servicio de IA está temporalmente saturado. Cerrá y volvé a intentar en unos segundos.'
+                : '⚠️ No se pudo generar el resumen. Verificá la conexión e intentá de nuevo.'
+            );
+        } finally {
+            setLoadingResumen(false);
+        }
+    };
+
+    // ── IA: Sugerencia ─────────────────────────────────────────────────────
+    const pedirSugerencia = async () => {
+        if (!convActiva) return;
+        setLoadingSugerencia(true);
+        try {
+            const { data } = await api.post(`/wapi/inbox/${convActiva.id}/ai/sugerencia`);
+            if (data.sugerencia) setTexto(data.sugerencia);
+        } catch (err) {
+            const status = err?.response?.status;
+            setError(status === 429
+                ? 'IA temporalmente saturada. Intentá en unos segundos.'
+                : 'No se pudo generar la sugerencia. Intentá de nuevo.'
+            );
+        } finally {
+            setLoadingSugerencia(false);
         }
     };
 
@@ -802,21 +846,99 @@ export default function WapiInbox() {
                         </Box>
                         {convActiva.estado === 'sin_asignar' && (
                             <Tooltip title="Tomar conversación">
-                                <Button variant="contained" size="small" startIcon={<AccountCircleIcon />} onClick={() => tomarConv(convActiva.id)}>
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    startIcon={<AccountCircleIcon />}
+                                    onClick={() => tomarConv(convActiva.id)}
+                                    sx={{
+                                        background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                                        boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 10px 3px rgba(25,118,210,0.7)' : '0 2px 8px rgba(25,118,210,0.4)',
+                                        '&:hover': {
+                                            background: 'linear-gradient(135deg, #1565c0 0%, #1e88e5 100%)',
+                                            boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 16px 5px rgba(25,118,210,0.9)' : '0 2px 14px rgba(25,118,210,0.6)',
+                                        },
+                                    }}
+                                >
                                     Tomar
                                 </Button>
                             </Tooltip>
                         )}
                         {esAdmin && (
                             <Tooltip title="Asignar a asesor">
-                                <IconButton size="small" onClick={abrirDialogAsignar}><PersonAddIcon /></IconButton>
+                                <IconButton
+                                    size="small"
+                                    onClick={abrirDialogAsignar}
+                                    sx={{
+                                        background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                                        color: 'white',
+                                        width: 30, height: 30,
+                                        boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 10px 3px rgba(25,118,210,0.7)' : '0 2px 8px rgba(25,118,210,0.4)',
+                                        '&:hover': {
+                                            background: 'linear-gradient(135deg, #1565c0 0%, #1e88e5 100%)',
+                                            boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 16px 5px rgba(25,118,210,0.9)' : '0 2px 14px rgba(25,118,210,0.6)',
+                                        },
+                                    }}
+                                >
+                                    <PersonAddIcon sx={{ fontSize: 17 }} />
+                                </IconButton>
                             </Tooltip>
                         )}
                         {convActiva.estado === 'asignada' && (
                             <Tooltip title="Marcar como resuelta">
-                                <IconButton size="small" color="success" onClick={resolverConv}><CheckCircleIcon /></IconButton>
+                                <IconButton
+                                    size="small"
+                                    onClick={resolverConv}
+                                    sx={{
+                                        background: 'linear-gradient(135deg, #2e7d32 0%, #66bb6a 100%)',
+                                        color: 'white',
+                                        width: 30, height: 30,
+                                        boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 10px 3px rgba(46,125,50,0.7)' : '0 2px 8px rgba(46,125,50,0.4)',
+                                        '&:hover': {
+                                            background: 'linear-gradient(135deg, #1b5e20 0%, #43a047 100%)',
+                                            boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 16px 5px rgba(46,125,50,0.9)' : '0 2px 14px rgba(46,125,50,0.6)',
+                                        },
+                                    }}
+                                >
+                                    <CheckCircleIcon sx={{ fontSize: 17 }} />
+                                </IconButton>
                             </Tooltip>
                         )}
+                        <Tooltip title="Resumen IA con Gemini">
+                            <span>
+                                <IconButton
+                                    size="small"
+                                    onClick={abrirResumen}
+                                    disabled={loadingResumen}
+                                    sx={{
+                                        background: 'linear-gradient(135deg, #4f8ef7 0%, #a259f7 100%)',
+                                        color: 'white',
+                                        width: 30, height: 30,
+                                        boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 10px 3px rgba(79,142,247,0.7)' : '0 2px 8px rgba(79,142,247,0.45)',
+                                        '@keyframes aiGlow': {
+                                            '0%':   { boxShadow: '0 0 6px 1px rgba(79,142,247,0.5)' },
+                                            '50%':  { boxShadow: '0 0 18px 4px rgba(162,89,247,0.75)' },
+                                            '100%': { boxShadow: '0 0 6px 1px rgba(79,142,247,0.5)' },
+                                        },
+                                        '@keyframes aiSpin': {
+                                            from: { transform: 'rotate(0deg)' },
+                                            to:   { transform: 'rotate(360deg)' },
+                                        },
+                                        animation: loadingResumen ? 'aiGlow 1.4s ease-in-out infinite' : 'none',
+                                        '&:hover': {
+                                            background: 'linear-gradient(135deg, #3a7be0 0%, #8b3fe0 100%)',
+                                            boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 18px 5px rgba(162,89,247,0.85)' : '0 2px 14px rgba(162,89,247,0.6)',
+                                        },
+                                        '&.Mui-disabled': { opacity: 0.7 },
+                                    }}
+                                >
+                                    <AutoAwesomeIcon sx={{
+                                        fontSize: 17,
+                                        animation: loadingResumen ? 'aiSpin 1.4s linear infinite' : 'none',
+                                    }} />
+                                </IconButton>
+                            </span>
+                        </Tooltip>
                     </Paper>
 
                     {/* Mensajes */}
@@ -949,17 +1071,85 @@ export default function WapiInbox() {
                                         <IconButton size="small" onClick={quitarAdjunto}><CloseIcon fontSize="small" /></IconButton>
                                     </Box>
                                 )}
-                                <Box ref={inputAreaRef} sx={{ p: 1.5, display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+                                <Box ref={inputAreaRef} sx={{ p: 1.5, display: 'flex', gap: 1, alignItems: 'flex-start' }}>
                                     <input type="file" ref={fileInputRef} hidden accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={handleAdjunto} />
                                     <Tooltip title="Adjuntar archivo">
-                                        <IconButton size="small" onClick={() => fileInputRef.current?.click()} disabled={enviando}>
-                                            <AttachFileIcon />
-                                        </IconButton>
+                                        <span style={{ marginTop: '5px' }}>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                disabled={enviando}
+                                                sx={{
+                                                    background: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                                                    color: 'text.secondary',
+                                                    width: 30, height: 30,
+                                                    '&:hover': {
+                                                        background: (t) => t.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
+                                                        boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 10px 2px rgba(255,255,255,0.15)' : '0 2px 8px rgba(0,0,0,0.15)',
+                                                    },
+                                                    '&.Mui-disabled': { opacity: 0.4 },
+                                                }}
+                                            >
+                                                <AttachFileIcon sx={{ fontSize: 17 }} />
+                                            </IconButton>
+                                        </span>
                                     </Tooltip>
                                     <Tooltip title="Plantillas rápidas (/)">
-                                        <IconButton size="small" onClick={() => { setRrOpen(o => !o); setRrBusqueda(''); setRrTagFiltro(''); setRrIndexActivo(0); }} disabled={enviando}>
-                                            <BoltIcon />
-                                        </IconButton>
+                                        <span style={{ marginTop: '5px' }}>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => { setRrOpen(o => !o); setRrBusqueda(''); setRrTagFiltro(''); setRrIndexActivo(0); }}
+                                                disabled={enviando}
+                                                sx={{
+                                                    background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
+                                                    color: 'white',
+                                                    width: 30, height: 30,
+                                                    boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 10px 3px rgba(245,158,11,0.65)' : '0 2px 8px rgba(245,158,11,0.4)',
+                                                    '&:hover': {
+                                                        background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
+                                                        boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 16px 5px rgba(245,158,11,0.85)' : '0 2px 14px rgba(245,158,11,0.6)',
+                                                    },
+                                                    '&.Mui-disabled': { opacity: 0.4 },
+                                                }}
+                                            >
+                                                <BoltIcon sx={{ fontSize: 17 }} />
+                                            </IconButton>
+                                        </span>
+                                    </Tooltip>
+                                    <Tooltip title="Sugerir respuesta con IA">
+                                        <span style={{ marginTop: '5px' }}>
+                                            <IconButton
+                                                size="small"
+                                                onClick={pedirSugerencia}
+                                                disabled={enviando || loadingSugerencia}
+                                                sx={{
+                                                    background: 'linear-gradient(135deg, #4f8ef7 0%, #a259f7 100%)',
+                                                    color: 'white',
+                                                    width: 30, height: 30,
+                                                    boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 10px 3px rgba(79,142,247,0.7)' : '0 2px 8px rgba(79,142,247,0.45)',
+                                                    '@keyframes aiGlow': {
+                                                        '0%':   { boxShadow: '0 0 6px 1px rgba(79,142,247,0.5)' },
+                                                        '50%':  { boxShadow: '0 0 18px 4px rgba(162,89,247,0.75)' },
+                                                        '100%': { boxShadow: '0 0 6px 1px rgba(79,142,247,0.5)' },
+                                                    },
+                                                    '@keyframes aiSpin': {
+                                                        from: { transform: 'rotate(0deg)' },
+                                                        to:   { transform: 'rotate(360deg)' },
+                                                    },
+                                                    animation: loadingSugerencia ? 'aiGlow 1.4s ease-in-out infinite' : 'none',
+                                                    '&:hover': {
+                                                        background: 'linear-gradient(135deg, #3a7be0 0%, #8b3fe0 100%)',
+                                                        boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 18px 5px rgba(162,89,247,0.85)' : '0 2px 14px rgba(162,89,247,0.6)',
+                                                    },
+                                                    '&.Mui-disabled': { opacity: 0.5 },
+                                                }}
+                                            >
+                                                <AutoAwesomeIcon sx={{
+                                                    fontSize: 17,
+                                                    animation: loadingSugerencia ? 'aiSpin 1.4s linear infinite' : 'none',
+                                                }} />
+                                            </IconButton>
+                                        </span>
                                     </Tooltip>
                                     <TextField
                                         multiline maxRows={4} fullWidth size="small"
@@ -990,8 +1180,24 @@ export default function WapiInbox() {
                                         inputProps={{ spellCheck: true, lang: 'es' }}
                                         inputRef={(el) => { if (el) { el.spellcheck = true; el.lang = 'es'; } }}
                                     />
-                                    <IconButton color="primary" onClick={enviarMensaje} disabled={(!texto.trim() && !adjunto) || enviando}>
-                                        {enviando ? <CircularProgress size={20} /> : <SendIcon />}
+                                    <IconButton
+                                        onClick={enviarMensaje}
+                                        disabled={(!texto.trim() && !adjunto) || enviando}
+                                        sx={{
+                                            mt: '5px',
+                                            background: (!texto.trim() && !adjunto) || enviando ? 'transparent' : 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+                                            color: ((!texto.trim() && !adjunto) || enviando) ? 'text.disabled' : 'white',
+                                            width: 30, height: 30,
+                                            boxShadow: (t) => ((!texto.trim() && !adjunto) || enviando) ? 'none' : t.palette.mode === 'dark' ? '0 0 10px 3px rgba(25,118,210,0.7)' : '0 2px 8px rgba(25,118,210,0.4)',
+                                            transition: 'all 0.2s ease',
+                                            '&:hover': {
+                                                background: 'linear-gradient(135deg, #1565c0 0%, #1e88e5 100%)',
+                                                boxShadow: (t) => t.palette.mode === 'dark' ? '0 0 16px 5px rgba(25,118,210,0.9)' : '0 2px 14px rgba(25,118,210,0.6)',
+                                            },
+                                            '&.Mui-disabled': { background: 'transparent' },
+                                        }}
+                                    >
+                                        {enviando ? <CircularProgress size={16} /> : <SendIcon sx={{ fontSize: 17 }} />}
                                     </IconButton>
                                 </Box>
                                 <Popper open={rrOpen} anchorEl={inputAreaRef.current} placement="top-start" transition style={{ zIndex: 1300, width: inputAreaRef.current?.offsetWidth ?? 400 }}>
@@ -1084,6 +1290,51 @@ export default function WapiInbox() {
                     <Button variant="contained" onClick={confirmarAsignar} disabled={!asignarUserId || asignando}>
                         {asignando ? <CircularProgress size={20} /> : 'Asignar'}
                     </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Modal resumen IA */}
+            <Dialog open={resumenModal} onClose={() => setResumenModal(false)} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <AutoAwesomeIcon sx={{ fontSize: 20, background: 'linear-gradient(135deg, #4f8ef7, #a259f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }} />
+                    <Box component="span" sx={{ background: 'linear-gradient(135deg, #4f8ef7 0%, #a259f7 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: 700 }}>
+                        Resumen IA
+                    </Box>
+                </DialogTitle>
+                <DialogContent>
+                    {loadingResumen ? (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 4 }}>
+                            <AutoAwesomeIcon sx={{
+                                fontSize: 36,
+                                background: 'linear-gradient(135deg, #4f8ef7, #a259f7)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                '@keyframes aiSpin': { from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } },
+                                animation: 'aiSpin 1.4s linear infinite',
+                            }} />
+                            <Typography variant="body2" sx={{
+                                '@keyframes shimmer': {
+                                    '0%':   { backgroundPosition: '-200% center' },
+                                    '100%': { backgroundPosition: '200% center' },
+                                },
+                                background: 'linear-gradient(90deg, #4f8ef7 25%, #a259f7 50%, #4f8ef7 75%)',
+                                backgroundSize: '200% auto',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                animation: 'shimmer 1.8s linear infinite',
+                                fontWeight: 600,
+                            }}>
+                                Analizando conversación...
+                            </Typography>
+                        </Box>
+                    ) : (
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-line', lineHeight: 1.8, mt: 1 }}>
+                            {resumenTexto}
+                        </Typography>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setResumenModal(false)}>Cerrar</Button>
                 </DialogActions>
             </Dialog>
 
