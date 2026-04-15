@@ -6,17 +6,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { WapiConfigService } from '../config/wapi-config.service';
 import { SocketGateway } from 'src/websocket/socket.gateway';
 import { BedrockService } from 'src/modules/ai/bedrock.service';
-
-export interface MensajeEntranteDto {
-  numero: string;
-  nombre: string | null;
-  waMessageId: string;
-  tipo: string;
-  contenido: Record<string, any>;
-  timestamp: Date;
-  /** Si es true, envía bienvenida siempre (ej: botón INBOX desde template) */
-  enviarBienvenidaForzada?: boolean;
-}
+import { MensajeEntranteDto } from './dtos/mensaje-entrante.dto';
 
 const META_API_VERSION = 'v20.0';
 const META_API_BASE = 'https://graph.facebook.com';
@@ -39,7 +29,7 @@ export class WapiInboxService {
   async procesarMensajeEntrante(dto: MensajeEntranteDto): Promise<void> {
     // Buscar conversación existente para decidir el estado
     const existing = await this.prisma.waApiConversacion.findUnique({
-      where: { numero: dto.numero },
+      where: { numero_configId: { numero: dto.numero, configId: dto.configId } },
     });
 
     const esNueva = !existing;
@@ -48,30 +38,27 @@ export class WapiInboxService {
       : true;
     const esReabierta = !!existing && (ventanaVencida || existing.estado === 'resuelta');
 
-    let conv: any;
-    if (existing) {
-      // Si estaba resuelta o la ventana venció → reabrirla como sin_asignar
-      const nuevoEstado = esReabierta ? 'sin_asignar' : existing.estado;
-      conv = await this.prisma.waApiConversacion.update({
-        where: { numero: dto.numero },
-        data: {
-          nombre: dto.nombre ?? undefined,
-          ultimoMensajeAt: dto.timestamp,
-          ventana24hAt: dto.timestamp,
-          estado: nuevoEstado,
-        },
-      });
-    } else {
-      conv = await this.prisma.waApiConversacion.create({
-        data: {
-          numero: dto.numero,
-          nombre: dto.nombre,
-          estado: 'sin_asignar',
-          ultimoMensajeAt: dto.timestamp,
-          ventana24hAt: dto.timestamp,
-        },
-      });
-    }
+    // Determinar el nuevo estado
+    const nuevoEstado = esNueva ? 'sin_asignar' : (esReabierta ? 'sin_asignar' : existing.estado);
+
+    // Usar upsert para evitar race conditions
+    const conv = await this.prisma.waApiConversacion.upsert({
+      where: { numero_configId: { numero: dto.numero, configId: dto.configId } },
+      create: {
+        numero: dto.numero,
+        configId: dto.configId,
+        nombre: dto.nombre,
+        estado: 'sin_asignar',
+        ultimoMensajeAt: dto.timestamp,
+        ventana24hAt: dto.timestamp,
+      },
+      update: {
+        nombre: dto.nombre ?? undefined,
+        ultimoMensajeAt: dto.timestamp,
+        ventana24hAt: dto.timestamp,
+        estado: nuevoEstado,
+      },
+    });
 
     const mensaje = await this.prisma.waApiMensaje.create({
       data: {
@@ -96,6 +83,7 @@ export class WapiInboxService {
       {
         conversacion: this.conVentana(conv),
         mensaje: { ...mensaje },
+        configId: dto.configId,
       },
       'inbox_wapi',
     );
@@ -173,14 +161,14 @@ export class WapiInboxService {
       });
       this.socketGateway.emitirEvento(
         'wapi:conversacion_actualizada',
-        this.conVentana(convActualizada),
+        { ...this.conVentana(convActualizada), configId: conv.configId },
         'inbox_wapi',
       );
     }
 
     this.socketGateway.emitirEvento(
       'wapi:nuevo_mensaje',
-      { conversacion: { id: conv.id, numero: conv.numero }, mensaje: msgSistema },
+      { conversacion: { id: conv.id, numero: conv.numero }, mensaje: msgSistema, configId: conv.configId },
       'inbox_wapi',
     );
 
@@ -188,7 +176,7 @@ export class WapiInboxService {
   }
 
   private async enviarBienvenida(conv: any): Promise<void> {
-    const config = await this.configService.obtenerConfigCompleta();
+    const config = await this.configService.obtenerConfigCompleta(conv.configId);
     const texto = config.msgBienvenida?.trim() || this.MENSAJE_BIENVENIDA_DEFAULT;
     const url = `${META_API_BASE}/${META_API_VERSION}/${config.phoneNumberId}/messages`;
 
@@ -232,7 +220,7 @@ export class WapiInboxService {
 
     this.socketGateway.emitirEvento(
       'wapi:nuevo_mensaje',
-      { conversacion: { id: conv.id, numero: conv.numero }, mensaje },
+      { conversacion: { id: conv.id, numero: conv.numero }, mensaje, configId: conv.configId },
       'inbox_wapi',
     );
 
@@ -241,28 +229,30 @@ export class WapiInboxService {
 
   private readonly INCLUDE_USUARIO = { id: true, nombre: true } as const;
 
-  async listarConversaciones(userId: number, esAdmin: boolean) {
+  async listarConversaciones(userId: number, esAdmin: boolean, configId?: number) {
     const where = esAdmin
-      ? {}
-      : { OR: [{ asignadoAId: userId }, { estado: 'sin_asignar' as const }] };
+      ? (configId ? { configId } : {})
+      : { OR: [{ asignadoAId: userId }, { estado: 'sin_asignar' as const }], ...(configId ? { configId } : {}) };
     const convs = await this.prisma.waApiConversacion.findMany({
       where,
       orderBy: { ultimoMensajeAt: 'desc' },
       include: {
         mensajes: { orderBy: { timestamp: 'desc' }, take: 1 },
         asignadoA: { select: this.INCLUDE_USUARIO },
+        config: { select: { id: true, nombre: true } },
       },
     });
     return convs.map(c => this.conVentana(c));
   }
 
-  async listarSinAsignar() {
+  async listarSinAsignar(configId?: number) {
     const convs = await this.prisma.waApiConversacion.findMany({
-      where: { estado: 'sin_asignar' },
+      where: { estado: 'sin_asignar', ...(configId ? { configId } : {}) },
       orderBy: { ultimoMensajeAt: 'desc' },
       include: {
         mensajes: { orderBy: { timestamp: 'desc' }, take: 1 },
         asignadoA: { select: this.INCLUDE_USUARIO },
+        config: { select: { id: true, nombre: true } },
       },
     });
     return convs.map(c => this.conVentana(c));
@@ -274,6 +264,7 @@ export class WapiInboxService {
       include: {
         mensajes: { orderBy: { timestamp: 'asc' } },
         asignadoA: { select: this.INCLUDE_USUARIO },
+        config: { select: { id: true, nombre: true } },
       },
     });
     return this.conVentana(conv);
@@ -292,10 +283,13 @@ export class WapiInboxService {
     const conv = await this.prisma.waApiConversacion.update({
       where: { id },
       data: { asignadoAId, estado: 'asignada' },
-      include: { asignadoA: { select: this.INCLUDE_USUARIO } },
+      include: {
+        asignadoA: { select: this.INCLUDE_USUARIO },
+        config: { select: { id: true, nombre: true } },
+      },
     });
     const result = this.conVentana(conv);
-    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
+    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', { ...result, configId: conv.configId }, 'inbox_wapi');
     return result;
   }
 
@@ -307,10 +301,13 @@ export class WapiInboxService {
     const conv = await this.prisma.waApiConversacion.update({
       where: { id },
       data: { estado: 'resuelta', resolvedAt: new Date() },
-      include: { asignadoA: { select: this.INCLUDE_USUARIO } },
+      include: {
+        asignadoA: { select: this.INCLUDE_USUARIO },
+        config: { select: { id: true, nombre: true } },
+      },
     });
     const result = this.conVentana(conv);
-    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
+    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', { ...result, configId: conv.configId }, 'inbox_wapi');
     return result;
   }
 
@@ -318,10 +315,13 @@ export class WapiInboxService {
     const conv = await this.prisma.waApiConversacion.update({
       where: { id },
       data: { unreadCount: 0, lastReadAt: new Date() },
-      include: { asignadoA: { select: this.INCLUDE_USUARIO } },
+      include: {
+        asignadoA: { select: this.INCLUDE_USUARIO },
+        config: { select: { id: true, nombre: true } },
+      },
     });
     const result = this.conVentana(conv);
-    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
+    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', { ...result, configId: conv.configId }, 'inbox_wapi');
     return result;
   }
 
@@ -329,10 +329,13 @@ export class WapiInboxService {
     const conv = await this.prisma.waApiConversacion.update({
       where: { id },
       data: { unreadCount: 1 },
-      include: { asignadoA: { select: this.INCLUDE_USUARIO } },
+      include: {
+        asignadoA: { select: this.INCLUDE_USUARIO },
+        config: { select: { id: true, nombre: true } },
+      },
     });
     const result = this.conVentana(conv);
-    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', result, 'inbox_wapi');
+    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', { ...result, configId: conv.configId }, 'inbox_wapi');
     return result;
   }
 
@@ -429,7 +432,7 @@ export class WapiInboxService {
     // Emitir en tiempo real al inbox
     this.socketGateway.emitirEvento(
       'wapi:nuevo_mensaje',
-      { conversacion: { id: conversacionId, numero: conv.numero }, mensaje },
+      { conversacion: { id: conversacionId, numero: conv.numero }, mensaje, configId: conv.configId },
       'inbox_wapi',
     );
 
@@ -525,7 +528,7 @@ export class WapiInboxService {
 
     this.socketGateway.emitirEvento(
       'wapi:nuevo_mensaje',
-      { conversacion: { id: conversacionId, numero: conv.numero }, mensaje },
+      { conversacion: { id: conversacionId, numero: conv.numero }, mensaje, configId: conv.configId },
       'inbox_wapi',
     );
 

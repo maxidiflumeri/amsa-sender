@@ -1,5 +1,38 @@
 # Changelog
 
+## [2026-04-15] — WapiInbox: soporte multi-línea (multi-WABA)
+
+### Contexto
+
+Se dio de alta una segunda línea WhatsApp (segundo WABA) en la cuenta Business. Se implementó soporte para múltiples líneas en el inbox, de forma dinámica y extensible para futuros WABAs adicionales.
+
+### Backend
+
+- **Schema Prisma**: agregado campo `configId` en `WaApiConversacion` con relación a `WaApiConfig`. Constraint único cambiado de `numero` a `(numero, configId)` — el mismo contacto puede tener conversaciones separadas por línea.
+- **WapiConfigService**: nuevo método `obtenerConfigPorPhoneNumberId()` para identificar la línea a partir del `phone_number_id` de Meta.
+- **WapiWebhookService**: extrae `metadata.phone_number_id` de cada evento de Meta para identificar la línea receptora. Si el `phone_number_id` no corresponde a ninguna config registrada, el evento se descarta silenciosamente sin romper el 200 OK a Meta.
+- **MensajeEntranteDto**: nuevo DTO en `inbox/dtos/mensaje-entrante.dto.ts` con campo `configId` obligatorio.
+- **WapiInboxService**: lookup y creación de conversaciones por `{ numero, configId }`. Queries incluyen nombre de la config en la respuesta. Usa `upsert` para evitar race conditions.
+- **WapiInboxController**: endpoints de listado aceptan query param `?configId=` opcional para filtrar por línea.
+- **Sockets**: todos los eventos del inbox (`wapi:nuevo_mensaje`, `wapi:mensaje_status`, `wapi:conversacion_actualizada`, `wapi:typing`) incluyen `configId` en el payload.
+
+### Frontend
+
+- **Selector de línea**: `ToggleButtonGroup` sobre el listado con opciones "Todas" + una por cada config activa. Cargado dinámicamente desde la API.
+- **Filtrado local**: conversaciones filtradas por línea seleccionada sin llamadas adicionales al servidor.
+- **Persistencia**: línea seleccionada guardada en `localStorage`.
+- **Badge de línea**: chip en el header de la conversación activa indicando a qué línea pertenece (visible solo con más de 1 config).
+- **Indicador en lista**: nombre de la línea como texto secundario en cada item del listado, visible solo en la vista "Todas".
+
+### Migración de datos
+
+Las conversaciones existentes deben asignarse a `configId = 1` ejecutando en MySQL Workbench:
+```sql
+UPDATE WaApiConversacion SET configId = 1 WHERE configId IS NULL OR configId = 0;
+```
+
+---
+
 ## [2026-04-10] — Migración IA: Gemini → Amazon Bedrock (Llama 3.3)
 
 ### Contexto

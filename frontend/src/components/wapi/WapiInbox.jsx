@@ -4,7 +4,7 @@ import {
     ListItemAvatar, ListItemText, ListItemButton, Divider, CircularProgress,
     Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button,
     Select, MenuItem, FormControl, InputLabel, Alert, Collapse, Autocomplete,
-    Popper, Fade, Menu,
+    Popper, Fade, Menu, ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -42,9 +42,10 @@ const formatFecha = (ts) => {
     return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 };
 
-function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums, onContextMenuConv, drafts = {} }) {
+function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums, onContextMenuConv, drafts = {}, configs = [], selectedConfigId = null }) {
     const [open, setOpen] = useState(defaultOpen);
     if (!convs.length) return null;
+    const mostrarLinea = selectedConfigId === null && configs.length > 1;
     return (
         <>
             <Box
@@ -62,6 +63,7 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                     {convs.map(conv => {
                         const isTyping = typingNums?.has(conv.numero);
                         const hasUnread = conv.unreadCount > 0;
+                        const nombreLinea = conv.config?.nombre ?? `Línea ${conv.configId}`;
                         return (
                         <ListItemButton
                             key={conv.id}
@@ -117,6 +119,11 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                                                     title={conv.campañaNombre}
                                                     sx={{ height: 14, fontSize: 9, fontWeight: 600, px: 0.25, '& .MuiChip-label': { px: 0.5 } }}
                                                 />
+                                            )}
+                                            {mostrarLinea && (
+                                                <Typography component="span" variant="caption" noWrap sx={{ fontSize: 9, color: 'text.disabled', fontStyle: 'italic' }}>
+                                                    📱 {nombreLinea}
+                                                </Typography>
                                             )}
                                         </Box>
                                         {isTyping ? (
@@ -175,6 +182,12 @@ export default function WapiInbox() {
     const [adjunto, setAdjunto] = useState(null);
     const fileInputRef = useRef(null);
 
+    const [configs, setConfigs] = useState([]);
+    const [selectedConfigId, setSelectedConfigId] = useState(() => {
+        const saved = localStorage.getItem('wapi_inbox_selected_config');
+        return saved ? parseInt(saved, 10) : null;
+    });
+
     const [dialogAsignar, setDialogAsignar] = useState(false);
     const [usuarios, setUsuarios] = useState([]);
     const [asignarUserId, setAsignarUserId] = useState('');
@@ -209,16 +222,21 @@ export default function WapiInbox() {
     useEffect(() => { convActivaRef.current = convActiva; }, [convActiva]);
 
     // ── Secciones derivadas del array convs ───────────────────────────────
-    const misActivas       = convs.filter(c => c.asignadoAId === myUserId && c.estado !== 'resuelta');
-    const sinAsignar       = convs.filter(c => c.estado === 'sin_asignar');
-    const misResueltas     = convs.filter(c => c.asignadoAId === myUserId && c.estado === 'resuelta');
-    const otrasActivas     = esAdmin ? convs.filter(c => c.asignadoAId && c.asignadoAId !== myUserId && c.estado !== 'resuelta') : [];
-    const resueltasPorOtros = esAdmin ? convs.filter(c => c.estado === 'resuelta' && c.asignadoAId !== myUserId) : [];
+    // Filtrado local por línea seleccionada
+    const convsFiltradas = selectedConfigId !== null
+        ? convs.filter(c => c.configId === selectedConfigId)
+        : convs;
+
+    const misActivas       = convsFiltradas.filter(c => c.asignadoAId === myUserId && c.estado !== 'resuelta');
+    const sinAsignar       = convsFiltradas.filter(c => c.estado === 'sin_asignar');
+    const misResueltas     = convsFiltradas.filter(c => c.asignadoAId === myUserId && c.estado === 'resuelta');
+    const otrasActivas     = esAdmin ? convsFiltradas.filter(c => c.asignadoAId && c.asignadoAId !== myUserId && c.estado !== 'resuelta') : [];
+    const resueltasPorOtros = esAdmin ? convsFiltradas.filter(c => c.estado === 'resuelta' && c.asignadoAId !== myUserId) : [];
 
     // ── Búsqueda por ANI / nombre ─────────────────────────────────────────
     const terminoBusqueda = busqueda.trim().toLowerCase();
     const resultadosBusqueda = terminoBusqueda
-        ? convs.filter(c => {
+        ? convsFiltradas.filter(c => {
             if (terminoBusqueda.startsWith('#')) {
                 const idBuscado = terminoBusqueda.slice(1);
                 return idBuscado !== '' && String(c.id) === idBuscado;
@@ -244,6 +262,13 @@ export default function WapiInbox() {
     }, []);
 
     useEffect(() => { cargarConvs(); }, [cargarConvs]);
+
+    // Cargar configs activas
+    useEffect(() => {
+        api.get('/wapi/config')
+            .then(r => setConfigs(r.data))
+            .catch(() => {});
+    }, []);
 
     // Cargar respuestas rápidas
     useEffect(() => {
@@ -306,7 +331,11 @@ export default function WapiInbox() {
 
         socket.on('connect', () => socket.emit('join_inbox'));
 
-        socket.on('wapi:nuevo_mensaje', ({ conversacion, mensaje }) => {
+        socket.on('wapi:nuevo_mensaje', ({ conversacion, mensaje, configId }) => {
+            // Filtrar si hay una línea seleccionada
+            const sel = selectedConfigId;
+            if (sel !== null && configId !== sel) return;
+
             upsertConv({ ...conversacion, ultimoMensajeAt: mensaje.timestamp, mensajes: [mensaje] });
             setConvActiva(prev => {
                 if (prev?.id === conversacion.id) {
@@ -317,16 +346,29 @@ export default function WapiInbox() {
             mostrarNotificacionRef.current?.(conversacion, mensaje);
         });
 
-        socket.on('wapi:conversacion_actualizada', (conv) => {
+        socket.on('wapi:conversacion_actualizada', (data) => {
+            const { configId, ...conv } = data;
+            // Filtrar si hay una línea seleccionada
+            const sel = selectedConfigId;
+            if (sel !== null && configId !== sel) return;
+
             upsertConv(conv);
             setConvActiva(prev => prev?.id === conv.id ? { ...prev, ...conv } : prev);
         });
 
-        socket.on('wapi:mensaje_status', ({ waMessageId, status }) => {
+        socket.on('wapi:mensaje_status', ({ waMessageId, status, configId }) => {
+            // Filtrar si hay una línea seleccionada
+            const sel = selectedConfigId;
+            if (sel !== null && configId !== sel) return;
+
             setMessageStatuses(prev => ({ ...prev, [waMessageId]: status }));
         });
 
-        socket.on('wapi:typing', ({ numero }) => {
+        socket.on('wapi:typing', ({ numero, configId }) => {
+            // Filtrar si hay una línea seleccionada
+            const sel = selectedConfigId;
+            if (sel !== null && configId !== sel) return;
+
             setTypingNums(prev => new Set([...prev, numero]));
             clearTimeout(typingTimers.current[numero]);
             typingTimers.current[numero] = setTimeout(() => {
@@ -687,6 +729,35 @@ export default function WapiInbox() {
                     />
                 </Box>
 
+                {/* Selector de línea (multi-línea) */}
+                {configs.length > 0 && (
+                    <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <ToggleButtonGroup
+                            value={selectedConfigId}
+                            exclusive
+                            onChange={(_, v) => {
+                                setSelectedConfigId(v);
+                                localStorage.setItem('wapi_inbox_selected_config', v ?? '');
+                            }}
+                            size="small"
+                            sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}
+                        >
+                            <ToggleButton value={null} sx={{ flex: 1, minWidth: 60, fontSize: 11, py: 0.5 }}>
+                                Todas
+                            </ToggleButton>
+                            {configs.map(c => (
+                                <ToggleButton
+                                    key={c.id}
+                                    value={c.id}
+                                    sx={{ flex: 1, minWidth: 60, fontSize: 11, py: 0.5 }}
+                                >
+                                    {c.nombre ?? `Línea ${c.id}`}
+                                </ToggleButton>
+                            ))}
+                        </ToggleButtonGroup>
+                    </Box>
+                )}
+
                 {error && <Alert severity="error" onClose={() => setError('')} sx={{ m: 1, py: 0.25 }}>{error}</Alert>}
 
                 <Box sx={{ overflowY: 'auto', flex: 1 }}>
@@ -705,6 +776,8 @@ export default function WapiInbox() {
                                 typingNums={typingNums}
                                 onContextMenuConv={handleContextMenuConv}
                                 drafts={drafts}
+                                configs={configs}
+                                selectedConfigId={selectedConfigId}
                             />
                             {!resultadosBusqueda.length && (
                                 <Box sx={{ p: 4, textAlign: 'center' }}>
@@ -725,6 +798,8 @@ export default function WapiInbox() {
                                 typingNums={typingNums}
                                 onContextMenuConv={handleContextMenuConv}
                                 drafts={drafts}
+                                configs={configs}
+                                selectedConfigId={selectedConfigId}
                             />
                             <SeccionLista
                                 titulo="Sin asignar"
@@ -736,6 +811,8 @@ export default function WapiInbox() {
                                 typingNums={typingNums}
                                 onContextMenuConv={handleContextMenuConv}
                                 drafts={drafts}
+                                configs={configs}
+                                selectedConfigId={selectedConfigId}
                             />
                             {esAdmin && (
                                 <SeccionLista
@@ -747,6 +824,8 @@ export default function WapiInbox() {
                                     defaultOpen={false}
                                     typingNums={typingNums}
                                     onContextMenuConv={handleContextMenuConv}
+                                    configs={configs}
+                                    selectedConfigId={selectedConfigId}
                                 />
                             )}
                             <SeccionLista
@@ -759,6 +838,8 @@ export default function WapiInbox() {
                                 typingNums={typingNums}
                                 onContextMenuConv={handleContextMenuConv}
                                 drafts={drafts}
+                                configs={configs}
+                                selectedConfigId={selectedConfigId}
                             />
                             {esAdmin && (
                                 <SeccionLista
@@ -770,6 +851,8 @@ export default function WapiInbox() {
                                     defaultOpen={false}
                                     typingNums={typingNums}
                                     onContextMenuConv={handleContextMenuConv}
+                                    configs={configs}
+                                    selectedConfigId={selectedConfigId}
                                 />
                             )}
                             {!misActivas.length && !sinAsignar.length && !misResueltas.length && !otrasActivas.length && !resueltasPorOtros.length && (
@@ -832,6 +915,15 @@ export default function WapiInbox() {
                                             sx={{ height: 18, fontSize: 10, maxWidth: 140 }}
                                         />
                                     </Tooltip>
+                                )}
+                                {convActiva.config && configs.length > 1 && (
+                                    <Chip
+                                        label={convActiva.config.nombre ?? `Línea ${convActiva.config.id}`}
+                                        size="small"
+                                        color="info"
+                                        variant="outlined"
+                                        sx={{ height: 18, fontSize: 10 }}
+                                    />
                                 )}
                                 <Tooltip title="ID de contacto — clic para copiar">
                                     <Chip

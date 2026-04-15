@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { WaApiConfig } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { GuardarWapiConfigDto } from './dtos/guardar-wapi-config.dto';
 
@@ -69,5 +70,12 @@ export class WapiConfigService {
     });
     if (!config) throw new NotFoundException('No hay configuración de WhatsApp API guardada');
     return config;
+  }
+
+  /** Obtiene config por phoneNumberId (usado por webhook) */
+  async obtenerConfigPorPhoneNumberId(phoneNumberId: string): Promise<WaApiConfig | null> {
+    return this.prisma.waApiConfig.findFirst({
+      where: { phoneNumberId },
+    });
   }
 }

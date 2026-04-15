@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { WapiInboxService } from '../inbox/wapi-inbox.service';
 import { WapiBajasService } from '../bajas/wapi-bajas.service';
+import { WapiConfigService } from '../config/wapi-config.service';
 import { SocketGateway } from 'src/websocket/socket.gateway';
 
 type MetaWebhookPayload = any; // tipado completo en Fase 5
@@ -15,6 +16,7 @@ export class WapiWebhookService {
     private readonly prisma: PrismaService,
     private readonly inboxService: WapiInboxService,
     private readonly bajasService: WapiBajasService,
+    private readonly configService: WapiConfigService,
     private readonly socketGateway: SocketGateway,
   ) {}
 
@@ -23,17 +25,32 @@ export class WapiWebhookService {
     const changes = entry?.changes?.[0]?.value;
     if (!changes) return;
 
+    // Extraer phoneNumberId y buscar config
+    const phoneNumberId = changes.metadata?.phone_number_id;
+    if (!phoneNumberId) {
+      this.logger.warn('Webhook sin phone_number_id en metadata — ignorando evento');
+      return;
+    }
+
+    const config = await this.configService.obtenerConfigPorPhoneNumberId(phoneNumberId);
+    if (!config) {
+      this.logger.warn(`No existe config para phoneNumberId=${phoneNumberId} — ignorando evento`);
+      return;
+    }
+
+    const configId = config.id;
+
     // Status updates (sent/delivered/read/failed)
     if (changes.statuses?.length) {
       for (const status of changes.statuses) {
-        await this.procesarStatusUpdate(status);
+        await this.procesarStatusUpdate(status, configId);
       }
     }
 
     // Mensajes entrantes
     if (changes.messages?.length) {
       for (const msg of changes.messages) {
-        await this.procesarMensajeEntrante(msg, changes.contacts?.[0]);
+        await this.procesarMensajeEntrante(msg, changes.contacts?.[0], configId);
       }
     }
 
@@ -42,14 +59,14 @@ export class WapiWebhookService {
       for (const t of changes.typing) {
         this.socketGateway.emitirEvento(
           'wapi:typing',
-          { numero: t.from, isTyping: true },
+          { numero: t.from, isTyping: true, configId },
           'inbox_wapi',
         );
       }
     }
   }
 
-  private async procesarStatusUpdate(status: any): Promise<void> {
+  private async procesarStatusUpdate(status: any, configId: number): Promise<void> {
     this.logger.log(`Status update: ${status.id} → ${status.status}`);
     const estadoMap: Record<string, string> = {
       sent: 'sent',
@@ -85,12 +102,12 @@ export class WapiWebhookService {
     // Emitir al inbox para actualizar ticks en tiempo real
     this.socketGateway.emitirEvento(
       'wapi:mensaje_status',
-      { waMessageId: status.id, status: nuevoEstado },
+      { waMessageId: status.id, status: nuevoEstado, configId },
       'inbox_wapi',
     );
   }
 
-  private async procesarMensajeEntrante(msg: any, contactMeta: any): Promise<void> {
+  private async procesarMensajeEntrante(msg: any, contactMeta: any, configId: number): Promise<void> {
     this.logger.log(`Mensaje entrante de ${msg.from}: tipo=${msg.type}`);
 
     const numero = msg.from;
@@ -99,12 +116,13 @@ export class WapiWebhookService {
     // Detectar si es respuesta a botón
     if (msg.type === 'button') {
       const payload = msg.button?.payload;
-      await this.procesarPayloadBoton(payload, numero, nombreContacto, msg);
+      await this.procesarPayloadBoton(payload, numero, nombreContacto, msg, configId);
       return;
     }
 
     // Texto libre → deriva a inbox
     await this.inboxService.procesarMensajeEntrante({
+      configId,
       numero,
       nombre: nombreContacto,
       waMessageId: msg.id,
@@ -119,11 +137,13 @@ export class WapiWebhookService {
     numero: string,
     nombre: string | null,
     msg: any,
+    configId: number,
   ): Promise<void> {
     // Si no hay payload configurado, derivamos al inbox por defecto
     if (!payload) {
       this.logger.log(`Botón sin payload de ${numero} → inbox por defecto`);
       await this.inboxService.procesarMensajeEntrante({
+        configId,
         numero,
         nombre,
         waMessageId: msg.id,
@@ -173,6 +193,7 @@ export class WapiWebhookService {
     // INBOX (default)
     this.logger.log(`Botón → inbox para ${numero} (payload: ${payload})`);
     await this.inboxService.procesarMensajeEntrante({
+      configId,
       numero,
       nombre,
       waMessageId: msg.id,

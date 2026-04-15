@@ -279,6 +279,7 @@ model WaApiConfig {
   creadoAt            DateTime @default(now())
   updatedAt           DateTime @updatedAt
   campanias           WaApiCampaña[]
+  conversaciones      WaApiConversacion[]
   @@map("WaApiConfig")
 }
 
@@ -357,7 +358,9 @@ enum EstadoConversacion {
 
 model WaApiConversacion {
   id                  Int                @id @default(autoincrement())
-  numero              String             @unique // teléfono del contacto en E.164
+  numero              String             // teléfono del contacto en E.164
+  configId            Int                @default(1) // FK a WaApiConfig
+  config              WaApiConfig        @relation(fields: [configId], references: [id])
   nombre              String?            // nombre de display del contacto
   estado              EstadoConversacion @default(sin_asignar)
   asignadoAId         Int?               // FK a Usuario
@@ -372,8 +375,10 @@ model WaApiConversacion {
   creadoAt            DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   mensajes            WaApiMensaje[]
+  @@unique([numero, configId])
   @@index([asignadoAId])
   @@index([estado])
+  @@index([configId])
   @@map("WaApiConversacion")
 }
 

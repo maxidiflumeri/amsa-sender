@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, Res, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { Response } from 'express';
@@ -14,16 +14,18 @@ export class WapiInboxController {
 
   /** Conversaciones propias del asesor (o todas si es admin) */
   @Get()
-  listar(@Req() req: any) {
+  listar(@Req() req: any, @Query('configId') configId?: string) {
     const esAdmin = req['usuario']?.permisos?.includes('wapi.inbox.admin') ?? false;
-    return this.inboxService.listarConversaciones(req['usuario']?.sub, esAdmin);
+    const configIdNum = configId ? parseInt(configId, 10) : undefined;
+    return this.inboxService.listarConversaciones(req['usuario']?.sub, esAdmin, configIdNum);
   }
 
   /** Cola de conversaciones sin asignar — solo admin */
   @Get('sin-asignar')
   @RequiredPermiso('wapi.inbox.admin')
-  listarSinAsignar() {
-    return this.inboxService.listarSinAsignar();
+  listarSinAsignar(@Query('configId') configId?: string) {
+    const configIdNum = configId ? parseInt(configId, 10) : undefined;
+    return this.inboxService.listarSinAsignar(configIdNum);
   }
 
   @Get(':id')
