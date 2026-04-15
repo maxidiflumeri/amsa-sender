@@ -42,7 +42,7 @@ export class WapiInboxService {
     const nuevoEstado = esNueva ? 'sin_asignar' : (esReabierta ? 'sin_asignar' : existing.estado);
 
     // Usar upsert para evitar race conditions
-    const conv = await this.prisma.waApiConversacion.upsert({
+    let conv = await this.prisma.waApiConversacion.upsert({
       where: { numero_configId: { numero: dto.numero, configId: dto.configId } },
       create: {
         numero: dto.numero,
