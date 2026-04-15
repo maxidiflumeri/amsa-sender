@@ -382,7 +382,7 @@ export class WapiInboxService {
       throw new Error('La ventana de 24hs está cerrada. Solo se pueden enviar templates.');
     }
 
-    const config = await this.configService.obtenerConfigCompleta();
+    const config = await this.configService.obtenerConfigCompleta(conv.configId);
     const url = `${META_API_BASE}/${META_API_VERSION}/${config.phoneNumberId}/messages`;
 
     const res = await fetch(url, {
@@ -452,7 +452,7 @@ export class WapiInboxService {
     const diff = Date.now() - new Date(conv.ventana24hAt).getTime();
     if (diff > 24 * 60 * 60 * 1000) throw new BadRequestException('Ventana de 24hs cerrada.');
 
-    const config = await this.configService.obtenerConfigCompleta();
+    const config = await this.configService.obtenerConfigCompleta(conv.configId);
 
     // 1. Subir el archivo a Meta
     const formData = new FormData();
