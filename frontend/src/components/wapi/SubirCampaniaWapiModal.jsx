@@ -53,6 +53,14 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
     const [configs, setConfigs] = useState([]);
     const [configId, setConfigId] = useState('');
 
+    // Templates filtrados según la línea seleccionada (mismo wabaId)
+    const templatesFiltrados = configId
+        ? templates.filter(t => {
+            const cfg = configs.find(c => String(c.id) === configId);
+            return cfg ? t.wabaId === cfg.wabaId : true;
+        })
+        : templates;
+
     useEffect(() => {
         api.get('/wapi/config')
             .then(res => {
@@ -160,7 +168,13 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
                             <Select
                                 value={configId}
                                 label="Línea de envío"
-                                onChange={e => setConfigId(e.target.value)}
+                                onChange={e => {
+                                    setConfigId(e.target.value);
+                                    setTemplateId('');
+                                    setTemplateSeleccionado(null);
+                                    setVariablesTemplate([]);
+                                    setVariableMapping({});
+                                }}
                             >
                                 {configs.map(c => (
                                     <MenuItem key={c.id} value={String(c.id)}>
@@ -179,7 +193,7 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
                             onChange={e => handleTemplateChange(e.target.value)}
                             disabled={loadingTemplates}
                         >
-                            {templates.map(t => (
+                            {templatesFiltrados.map(t => (
                                 <MenuItem key={t.id} value={t.id}>
                                     <Box display="flex" alignItems="center" gap={1}>
                                         <span>{t.metaNombre}</span>
@@ -188,8 +202,10 @@ export default function SubirCampaniaWapiModal({ onCreado }) {
                                     </Box>
                                 </MenuItem>
                             ))}
-                            {templates.length === 0 && !loadingTemplates && (
-                                <MenuItem disabled>No hay templates aprobados. Sincronizá primero.</MenuItem>
+                            {templatesFiltrados.length === 0 && !loadingTemplates && (
+                                <MenuItem disabled>
+                                    {configId ? 'No hay templates aprobados para esta línea. Sincronizá primero.' : 'Seleccioná una línea primero.'}
+                                </MenuItem>
                             )}
                         </Select>
                     </FormControl>
