@@ -102,6 +102,14 @@ export default function ListadoDeudores() {
 
     // Buscar deudores
     const buscarDeudores = useCallback(async () => {
+        // Validar que haya al menos un filtro activo
+        if (!debouncedQ && !empresa && !nroEmpresa && !remesa) {
+            setDeudores([]);
+            setTotal(0);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         setError(null);
 
@@ -286,7 +294,18 @@ export default function ListadoDeudores() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {loading ? (
+                            {!debouncedQ && !empresa && !nroEmpresa && !remesa ? (
+                                <TableRow>
+                                    <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                                        <Typography
+                                            variant="body1"
+                                            color={theme.palette.text.secondary}
+                                        >
+                                            Utilice los filtros superiores para buscar deudores
+                                        </Typography>
+                                    </TableCell>
+                                </TableRow>
+                            ) : loading ? (
                                 <>
                                     <SkeletonRow />
                                     <SkeletonRow />

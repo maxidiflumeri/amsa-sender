@@ -160,6 +160,22 @@ export default function ReportesDeudores() {
     }, [tab, empresa, desde, hasta, page, rowsPerPage]);
 
     const cargarReportes = async () => {
+        // Validar que haya al menos un filtro en tab 0, o empresa en tab 1
+        if (tab === 0 && !empresa && !desde && !hasta) {
+            setReportes([]);
+            setTotal(0);
+            setKpis({ totalDeudores: 0, totalEnvios: 0, tasaAperturaEmail: 0, tasaLecturaWapi: 0 });
+            setLoading(false);
+            return;
+        }
+        if (tab === 1 && !empresa) {
+            setReportes([]);
+            setTotal(0);
+            setKpis({ totalDeudores: 0, totalEnvios: 0, tasaAperturaEmail: 0, tasaLecturaWapi: 0 });
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         setError(null);
 
@@ -465,9 +481,9 @@ export default function ReportesDeudores() {
                     </Alert>
                 )}
 
-                {!loading && !error && reportes.length === 0 && (
+                {!loading && !error && reportes.length === 0 && (tab === 0 ? (empresa || desde || hasta) : empresa) && (
                     <Alert severity="info" sx={{ m: 2 }}>
-                        Sin datos en el período seleccionado.
+                        Sin datos en el período seleccionado para los filtros aplicados.
                     </Alert>
                 )}
 
@@ -494,10 +510,34 @@ export default function ReportesDeudores() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {loading ? (
+                            {tab === 0 && !empresa && !desde && !hasta ? (
+                                <TableRow>
+                                    <TableCell colSpan={16} align="center" sx={{ py: 4 }}>
+                                        <Typography variant="body1" color="text.secondary">
+                                            Utilice los filtros superiores para ver los reportes
+                                        </Typography>
+                                    </TableCell>
+                                </TableRow>
+                            ) : tab === 1 && !empresa ? (
+                                <TableRow>
+                                    <TableCell colSpan={16} align="center" sx={{ py: 4 }}>
+                                        <Typography variant="body1" color="text.secondary">
+                                            Debe seleccionar una empresa para ver reportes por remesa
+                                        </Typography>
+                                    </TableCell>
+                                </TableRow>
+                            ) : loading ? (
                                 Array(5).fill(0).map((_, i) => (
                                     <SkeletonRow key={i} columns={tab === 0 ? 15 : 16} />
                                 ))
+                            ) : reportes.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={16} align="center" sx={{ py: 4 }}>
+                                        <Typography variant="body1" color="text.secondary">
+                                            No se encontraron reportes con estos filtros
+                                        </Typography>
+                                    </TableCell>
+                                </TableRow>
                             ) : (
                                 reportes.map((r, idx) => (
                                     <TableRow key={idx} hover>
