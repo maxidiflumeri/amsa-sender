@@ -6,9 +6,10 @@ import { AuthModule } from 'src/auth/auth.module';
 import { QueueModule } from 'src/queues/queue.module';
 import { WapiConfigModule } from '../config/wapi-config.module';
 import { WapiTemplatesModule } from '../templates/wapi-templates.module';
+import { DeudoresModule } from 'src/modules/deudores/deudores.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, QueueModule, WapiConfigModule, WapiTemplatesModule],
+  imports: [PrismaModule, AuthModule, QueueModule, WapiConfigModule, WapiTemplatesModule, DeudoresModule],
   controllers: [WapiCampaniasController],
   providers: [WapiCampaniasService],
   exports: [WapiCampaniasService],

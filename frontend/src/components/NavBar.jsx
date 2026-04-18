@@ -91,6 +91,11 @@ const inboxItems = [
     { label: 'Conversaciones', path: '/wapi/inbox', icon: <InboxIcon />, permiso: 'wapi.inbox' },
 ];
 
+const deudoresItems = [
+    { label: 'Buscar deudores', path: '/deudores', icon: <PeopleIcon />, permiso: 'deudores.ver' },
+    { label: 'Reportes', path: '/deudores/reportes', icon: <BarChartIcon />, permiso: 'deudores.reportes' },
+];
+
 // Switch estilo iOS con íconos dentro del track
 const ThemedSwitch = styled(Switch)(({ theme }) => ({
     width: 62,
@@ -158,6 +163,7 @@ export default function Layout({ children, mode, toggleTheme }) {
     const [openAdmin, setOpenAdmin] = useState(false);
     const [openWapi, setOpenWapi] = useState(false);
     const [openInbox, setOpenInbox] = useState(false);
+    const [openDeudores, setOpenDeudores] = useState(false);
     const { hasPermiso } = useAuth();
 
     const handleMenuOpen = (event) => {
@@ -501,6 +507,67 @@ export default function Layout({ children, mode, toggleTheme }) {
                                         component={RouterLink}
                                         to={path}
                                         selected={location.pathname.startsWith('/wapi/inbox')}
+                                        onClick={isMobile ? handleDrawerToggle : undefined}
+                                        sx={{
+                                            pl: collapsed ? 0 : 4,
+                                            justifyContent: collapsed ? 'center' : 'flex-start',
+                                            '&.Mui-selected': {
+                                                backgroundColor: theme.palette.action.selected,
+                                                fontWeight: 'bold',
+                                            }
+                                        }}
+                                    >
+                                        <ListItemIcon
+                                            sx={{
+                                                minWidth: 'auto',
+                                                mr: collapsed ? 0 : 1.5,
+                                                justifyContent: collapsed ? 'center' : 'flex-start',
+                                                width: collapsed ? '100%' : 'auto',
+                                                display: 'flex',
+                                            }}
+                                        >
+                                            {icon}
+                                        </ListItemIcon>
+                                        {!collapsed && <ListItemText primary={label} />}
+                                    </ListItemButton>
+                                </Tooltip>
+                            </ListItem>
+                        ))}
+                    </Collapse>
+                    </>}
+                    {/* Deudores */}
+                    {deudoresItems.some(i => hasPermiso(i.permiso)) && <>
+                    <ListItemButton onClick={() => setOpenDeudores(!openDeudores)}>
+                        <ListItemIcon
+                            sx={{
+                                minWidth: 'auto',
+                                mr: collapsed ? 0 : 1.5,
+                                backgroundColor: '#E3F2FD',
+                                borderRadius: '50%',
+                                width: 36, height: 36,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: '#1976d2',
+                                '& svg': { fontSize: collapsed ? 26 : 22 }
+                            }}
+                        >
+                            <PeopleIcon />
+                        </ListItemIcon>
+                        {!collapsed && (
+                            <ListItemText
+                                primary="Deudores"
+                                primaryTypographyProps={{ sx: { fontWeight: 'bold' } }}
+                            />
+                        )}
+                        {!collapsed && (openDeudores ? <ExpandLess /> : <ExpandMore />)}
+                    </ListItemButton>
+                    <Collapse in={openDeudores} timeout="auto" unmountOnExit>
+                        {deudoresItems.filter(i => hasPermiso(i.permiso)).map(({ label, path, icon }) => (
+                            <ListItem key={path} disablePadding>
+                                <Tooltip title={collapsed ? label : ''} placement="right">
+                                    <ListItemButton
+                                        component={RouterLink}
+                                        to={path}
+                                        selected={location.pathname.startsWith('/deudores')}
                                         onClick={isMobile ? handleDrawerToggle : undefined}
                                         sx={{
                                             pl: collapsed ? 0 : 4,

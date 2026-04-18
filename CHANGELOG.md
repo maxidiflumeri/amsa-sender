@@ -1,5 +1,138 @@
 # Changelog
 
+## [2026-04-17] — Módulo Deudores: ficha 360°, timeline omnicanal y reportes (Fase 0 integración AMSA Gestión)
+
+### Contexto
+
+Primera fase de la integración con AMSA Gestión (Opción B: Gestión como SOR). Se normalizó el modelo de contactos creando una entidad maestra `Deudor` que unifica los registros que hoy viven dispersos en los 3 canales (WhatsApp legacy, Email, WAPI Meta). Cada `Contacto` / `ContactoEmail` / `WaApiContacto` queda enlazado opcionalmente a un `Deudor` por FK, y los nuevos imports populan la entidad master automáticamente. Sobre esa base se construyó la **ficha 360° de deudor** con timeline omnicanal y los **reportes agregados por empresa y remesa** con exportación CSV/XLSX.
+
+### Schema — `prisma/schema.prisma`
+
+- **Modelo `Deudor`**: `id`, `idDeudor Int? @unique` (id externo del sistema fuente), `nombre`, `documento`, `nroEmpresa`, `empresa`, `remesa`, `datos Json?` (campos extra del CSV), `creadoEn`, `actualizadoEn`. Relaciones inversas a `Contacto[]`, `ContactoEmail[]`, `WaApiContacto[]`. Índices `@@index([empresa, nroEmpresa])` y `@@index([nroEmpresa])`.
+- **`Contacto`**: agregado `deudorId Int?` + relación a `Deudor`. Índices `@@index([deudorId])` y `@@index([deudorId, campañaId])`.
+- **`ContactoEmail`**: agregado `deudorId Int?` + relación. Índice `@@index([deudorId])`.
+- **`WaApiContacto`**: agregado `deudorId Int?` + relación. Índice `@@index([deudorId])`.
+- **`Reporte`**: nuevos índices `@@index([campañaId, numero])` (para joins textuales del timeline WhatsApp legacy) y `@@index([enviadoAt])`.
+- **`ReporteEmail`**: nuevo índice `@@index([enviadoAt])`.
+- **`WaApiReporte`**: nuevo índice `@@index([enviadoAt])`.
+
+### Migración manual — `prisma/sql/fase-0-migracion-deudor-sin-funcion.sql`
+
+Script SQL pensado para correr en MySQL Workbench contra producción sin requerir privilegios `SUPER` (RDS-compatible, sin stored functions). 8 secciones idempotentes:
+
+1. DDL: crea `Deudor` y agrega `deudorId` + FK + índices a las 3 tablas hijas.
+2. Crea staging table `_stg_deudor_import`.
+3. Pobla la staging desde `Contacto.datos`, `ContactoEmail.datos` y `WaApiContacto.variables` usando `JSON_TABLE` + `JSON_KEYS` con búsqueda case-insensitive de las claves (`deudor`, `iddeudor`, `apenom`, `nombre`, `cuitdoc`, `documento`, `empresa`, `nroemp`, `remesa`).
+4. Inspección de la staging.
+5. INSERT en `Deudor` con `GROUP BY idDeudor` + `ON DUPLICATE KEY UPDATE` con `COALESCE` para no pisar campos previos con NULL.
+6. Backfill de `deudorId` en las 3 tablas hijas vía JOIN con la staging.
+7. Verificación de cobertura.
+8. Cleanup de la staging.
+
+### Backend — `src/modules/deudores/` *(nuevo módulo)*
+
+#### `deudores.service.ts`
+
+- **`upsertDesdeImport(rawRow)`**: idempotente, case-insensitive sobre las claves del CSV, no pisa campos existentes con NULL/vacío, hace deep-merge del campo `datos`, maneja race condition `P2002` con retry. Devuelve el `Deudor` o `null` si la fila no trae `idDeudor`.
+- **`buscar(filtros)`**: paginación offset (10/20/50/100), búsqueda libre por `nombre`/`documento`/`nroEmpresa` o por `idDeudor` cuando el query es numérico, filtros por `empresa`/`nroEmpresa`/`remesa`. Devuelve `_count` por canal (chips de la lista).
+- **`obtenerEmpresas()`** y **`obtenerRemesas(empresa?)`**: distinct ordenado para alimentar los selects en cascada.
+- **`obtenerPorId(id)`**: devuelve la ficha master + arrays únicos de teléfonos (mergea WhatsApp legacy + WAPI) y emails (normalizados a lowercase).
+- **`obtenerTimeline(id, query)`**: UNION ALL de 4 subqueries con `Prisma.sql` parametrizado (cero string concat):
+  - WhatsApp legacy (`Reporte` ↔ `Contacto` por cruce textual `(campañaId, numero)`)
+  - Email envíos (`ReporteEmail` ↔ `ContactoEmail`)
+  - Email eventos (`EmailEvento` con `OPEN`/`CLICK`)
+  - WAPI Meta (`WaApiReporte` ↔ `WaApiContacto`, joineando `WaApiTemplate` para nombre del template)
+
+  Filtros dinámicos por canal (incluye/excluye subqueries) y por rango `desde`/`hasta`. Paginación + `COUNT` en paralelo.
+- **`obtenerReporteEmpresas(query)`** y **`obtenerReporteRemesas(query)`**: ejecutan 5 queries SQL agregadas en paralelo (deudores+contactos por canal, envíos WA, envíos+métricas Email, rebotes Email, envíos+estados WAPI), mergean por empresa (o empresa+remesa) en un `Map`, calculan tasas con `safeDivide` (denominador 0 → 0) redondeadas a 4 decimales. Internamente delegan en métodos privados `calcularReporteEmpresas`/`calcularReporteRemesas` que devuelven el array completo sin paginar (reutilizables por el export).
+- **`exportarReporte(query)`**: orquesta generación de buffer según `tipo` (`empresa`|`remesa`) y `formato` (`csv`|`xlsx`). Devuelve `{ buffer, filename, contentType }` con timestamp en el nombre.
+- **`exportarDetalle(query)`**: genera exportación global desglosada (fila por actividad), integrando interacciones de WhatsApp Legacy, Email y WAPI Meta. Devuelve CSV o XLSX con 16 columnas estandarizadas de deudores y datos de campaña.
+- **CSV**: separador `;` (estándar Excel ES), BOM UTF-8 para tildes/ñ, escapado de comillas y saltos. Tasas como string `XX.XX%`.
+- **XLSX (ExcelJS)**: header en negrita con fondo gris, columnas con anchos calibrados, tasas como decimal con `numFmt: '0.00%'` para que Excel las renderice y permita cálculos.
+
+#### `deudores.controller.ts`
+
+Endpoints bajo `/api/deudores`, protegidos con `JwtAuthGuard` + `PermisosGuard`. Rutas fijas declaradas **antes** de `:id` para evitar colisión con el param dinámico:
+
+- `GET /buscar` — `deudores.ver`
+- `GET /empresas` — `deudores.ver`
+- `GET /remesas?empresa=` — `deudores.ver`
+- `GET /reportes/empresas` — `deudores.reportes`
+- `GET /reportes/remesas` — `deudores.reportes`
+- `GET /reportes/exportar` — `deudores.reportes` (devuelve archivo con `Content-Disposition: attachment`)
+- `GET /reportes/exportar-detalle` — `deudores.reportes` (descarga archivo detallado de cada actividad con múltiples filtros opcionales)
+- `GET /:id` — `deudores.ver`
+- `GET /:id/timeline` — `deudores.ver`
+
+#### DTOs
+
+- `BuscarDeudoresDto` (q, empresa, nroEmpresa, remesa, page, size).
+- `TimelineQueryDto` (page, size, canal `whatsapp|email|wapi`, desde, hasta ISO 8601).
+- `ReporteQueryDto` (empresa, desde, hasta, page, size).
+- `ExportarReporteDto` (tipo, formato, empresa, desde, hasta).
+
+#### Integración con imports CSV existentes
+
+- **`whatsapp/campanias/campanias.service.ts`**: loop serial llamando `upsertDesdeImport` por contacto.
+- **`email/campanias-email/campanias-email.service.ts`**: upsert en chunks de 1000 con `Map<idCsv, deudorId>`, luego `createMany` en chunks de 10k.
+- **`wapi/campanias/wapi-campanias.service.ts`**: mismo patrón, `createMany` en chunks de 5k.
+- Parsers (`utils/csv-parser*.ts`) ahora devuelven `rawRow: Record<string, any>` para alimentar el upsert.
+
+### Backend — `src/modules/auth/`
+
+- Nuevos permisos disponibles para asignación: `deudores.ver` y `deudores.reportes`.
+
+### Frontend — `src/components/deudores/` *(nuevo)*
+
+#### `ListadoDeudores.jsx`
+
+Buscador con debounce de 400ms, filtros en cascada (empresa → remesa cargados desde la API), tabla MUI con chips por canal (WhatsApp/Email/WAPI), `TablePagination` (10/20/50/100), skeleton loading, empty state, dark mode estricto. Click en fila navega a `/deudores/:id`.
+
+#### `FichaDeudor.jsx`
+
+Vista 360° del deudor:
+- Header con botón Volver + nombre + chip de `idDeudor`.
+- Card "Datos del deudor" (documento, empresa, nroEmpresa, remesa, fechas).
+- Card "Canales de contacto" con chips de teléfonos y emails únicos.
+- Card "Datos adicionales" con render del JSON `datos`.
+- Sección de timeline omnicanal embebida (`<TimelineDeudor />`).
+- Estados de loading (skeleton), 404 y error genérico.
+
+#### `TimelineEntry.jsx`
+
+Card horizontal por interacción:
+- Avatar circular con icono y color según canal:
+  - **WhatsApp Web** (legacy): `PhonelinkIcon` púrpura `#7B1FA2` — mismo del sidebar.
+  - **WhatsApp Meta** (WAPI): `WhatsAppIcon` verde `#25D366`.
+  - **Email envío**: `EmailIcon` info, **open**: `MarkEmailReadIcon`, **click**: `AdsClickIcon` naranja.
+- Header: `{Canal} · {Tipo}` + chip de estado coloreado.
+- Detalle condicional: asunto, mensaje (truncado a 80), templateNombre, urlDestino (link), error (rojo), nombre de campaña.
+- Borde izquierdo del color del canal, soporte dark/light.
+
+#### `TimelineDeudor.jsx`
+
+Container del timeline:
+- Filtros: `Select` canal (Todos / WhatsApp Web / WhatsApp Meta / Email), `TextField` desde/hasta, botón Limpiar.
+- Lista vertical de `TimelineEntry`, paginación (10/30/50/100).
+- Estados loading (skeletons), error (Alert), empty.
+
+#### `ReportesDeudores.jsx`
+
+Dashboard de reportes con 2 tabs (Por empresa / Por remesa):
+- Filtros compartidos: empresa (solo en tab remesa), desde, hasta.
+- 4 KPI cards arriba: Total Deudores, Total Envíos, Tasa Apertura Email (ponderada por entregados), Tasa Lectura WAPI (ponderada).
+- Tabla con: deudores, contactos por canal (chips), envíos por canal, métricas Email (entregados/abiertos/clicks/rebotes/% apertura/% click), métricas WAPI (entregados/leídos/fallidos/% entrega/% lectura).
+- Botón **Exportar** con `<Menu>` (CSV / XLSX): fetch con `responseType: 'blob'`, extracción de filename desde `Content-Disposition`, descarga vía `<a download>` y limpieza del blob URL. `CircularProgress` durante la descarga.
+- Menú **Exportar Actividades (Fila x Actv.)**: Despliega subopciones para descargar un reporte de eventos uno a uno de contactos y deudores, con un filtro por canal (WhatsApp/Email) insertado a la medida de este exporte, además de la remesa.
+
+### Frontend — integración
+
+- **`App.jsx`**: rutas `/deudores`, `/deudores/reportes` (declarada antes de `/deudores/:id`) y `/deudores/:id`, todas con `RutaProtegida`.
+- **`NavBar.jsx`**: nueva sección colapsable "Deudores" con items "Buscar deudores" (`PeopleIcon`, permiso `deudores.ver`) y "Reportes" (`BarChartIcon`, permiso `deudores.reportes`).
+- **`GestionRoles.jsx`**: agregada sección "Deudores" en el editor de roles con los 2 permisos.
+
+---
+
 ## [2026-04-15] — WapiInbox: soporte multi-línea (multi-WABA)
 
 ### Contexto

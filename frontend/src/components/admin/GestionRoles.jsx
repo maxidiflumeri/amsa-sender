@@ -71,6 +71,13 @@ const TODOS_LOS_PERMISOS = [
             { key: 'wapi.respuestas_rapidas', label: 'Plantillas rápidas' },
         ],
     },
+    {
+        seccion: 'Deudores',
+        items: [
+            { key: 'deudores.ver', label: 'Buscar y ver fichas' },
+            { key: 'deudores.reportes', label: 'Reportes por empresa/remesa' },
+        ],
+    },
 ];
 
 function PermisosEditor({ permisos, onChange }) {

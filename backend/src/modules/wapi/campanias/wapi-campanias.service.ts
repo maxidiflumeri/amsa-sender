@@ -6,6 +6,7 @@ import * as fs from 'fs/promises';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CrearWapiCampaniaDto } from './dtos/crear-wapi-campania.dto';
 import { parseCsvWapi } from './utils/csv-parser-wapi';
+import { DeudoresService } from 'src/modules/deudores/deudores.service';
 
 @Injectable()
 export class WapiCampaniasService {
@@ -14,6 +15,7 @@ export class WapiCampaniasService {
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue('wapiEnvios') private readonly wapiQueue: Queue,
+    private readonly deudoresService: DeudoresService,
   ) {}
 
   async crearCampania(dto: CrearWapiCampaniaDto, filePath: string, userId: number) {
@@ -45,16 +47,34 @@ export class WapiCampaniasService {
       },
     });
 
-    // Crear contactos en bloques (excluyendo bajas)
+    // Filtrar bajas
     const contactosFiltrados = contactosRaw.filter(c => !bajasSet.has(c.numero));
-    const bloques = chunk(contactosFiltrados, 5000);
-    for (const bloque of bloques) {
+
+    // Upsert deudores en chunks de 1000 → map globalIdx → deudorId
+    const deudoresMap = new Map<number, number | null>();
+    const upsertChunkSize = 1000;
+    for (let i = 0; i < contactosFiltrados.length; i += upsertChunkSize) {
+      const slice = contactosFiltrados.slice(i, i + upsertChunkSize);
+      await Promise.all(
+        slice.map(async (c, localIdx) => {
+          const globalIdx = i + localIdx;
+          const deudor = await this.deudoresService.upsertDesdeImport(c.rawRow);
+          deudoresMap.set(globalIdx, deudor?.id ?? null);
+        }),
+      );
+    }
+
+    // Crear contactos en bloques de 5000 con deudorId resuelto
+    const createChunkSize = 5000;
+    for (let i = 0; i < contactosFiltrados.length; i += createChunkSize) {
+      const slice = contactosFiltrados.slice(i, i + createChunkSize);
       await this.prisma.waApiContacto.createMany({
-        data: bloque.map(c => ({
+        data: slice.map((c, localIdx) => ({
           campañaId: campaña.id,
           numero: c.numero,
           nombre: c.nombre ?? null,
           variables: c.datos,
+          deudorId: deudoresMap.get(i + localIdx) ?? null,
         })),
       });
     }

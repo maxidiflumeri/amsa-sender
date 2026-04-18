@@ -37,6 +37,9 @@ import WapiAnalitica from './components/wapi/analitica/WapiAnalitica';
 import WapiLiveDashboard from './components/wapi/WapiLiveDashboard';
 import WapiRespuestasRapidas from './components/wapi/WapiRespuestasRapidas';
 import DevSimulador from './components/dev/DevSimulador';
+import ListadoDeudores from './components/deudores/ListadoDeudores';
+import FichaDeudor from './components/deudores/FichaDeudor';
+import ReportesDeudores from './components/deudores/ReportesDeudores';
 
 export default function App() {
     const [mode, setMode] = useState('light');
@@ -275,6 +278,10 @@ export default function App() {
                     {/* Inbox WA */}
                     <Route path="/wapi/inbox" element={<RutaProtegida permiso="wapi.inbox"><WapiInbox /></RutaProtegida>} />
                     <Route path="/wapi/analitica" element={<RutaProtegida permiso="wapi.analitica"><WapiAnalitica /></RutaProtegida>} />
+                    {/* Deudores */}
+                    <Route path="/deudores" element={<RutaProtegida permiso="deudores.ver"><ListadoDeudores /></RutaProtegida>} />
+                    <Route path="/deudores/reportes" element={<RutaProtegida permiso="deudores.reportes"><ReportesDeudores /></RutaProtegida>} />
+                    <Route path="/deudores/:id" element={<RutaProtegida permiso="deudores.ver"><FichaDeudor /></RutaProtegida>} />
                     {import.meta.env.DEV && (
                         <Route path="/dev/simulador" element={<DevSimulador />} />
                     )}

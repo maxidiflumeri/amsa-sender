@@ -13,6 +13,7 @@ import * as Handlebars from 'handlebars';
 import { AgendarCampañaDto } from './dtos/agendar-campaña.dto';
 import { Job, Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
+import { DeudoresService } from 'src/modules/deudores/deudores.service';
 
 @Injectable()
 export class CampaniasService {
@@ -21,6 +22,7 @@ export class CampaniasService {
     constructor(
         private prisma: PrismaService,
         @InjectQueue('colaEnvios') private readonly colaEnvios: Queue,
+        private deudoresService: DeudoresService,
     ) { }
 
     async procesarCsv(filePath: string, nombreCampaña: string) {
@@ -34,12 +36,14 @@ export class CampaniasService {
             this.logger.log(`📦 Campaña creada con ID: ${campaña.id} (${nombreCampaña})`);
 
             for (const c of contactos) {
+                const deudor = await this.deudoresService.upsertDesdeImport(c.rawRow);
                 await this.prisma.contacto.create({
                     data: {
                         numero: c.numero,
                         mensaje: c.mensaje,
                         datos: c.datos,
                         campañaId: campaña.id,
+                        deudorId: deudor?.id ?? null,
                     },
                 });
             }

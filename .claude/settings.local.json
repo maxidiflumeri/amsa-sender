@@ -14,7 +14,11 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(git:*)",
       "Bash(find /c/Users/MDIFLUME/Documents/Proyectos/Propios/amsa-sender/frontend/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
-      "Bash(npm list:*)"
+      "Bash(npm list:*)",
+      "Bash(npm update:*)",
+      "Bash(claude:*)",
+      "Bash(ls:*)",
+      "Read(//c/Users/MDIFLUME/Documents/Proyectos/Propios/amsa-gestion/**)"
     ]
   }
 }

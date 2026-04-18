@@ -5,6 +5,7 @@ import * as fs from 'fs/promises';
 import { parseCsvEmail } from 'src/modules/whatsapp/campanias/utils/csv-parser';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
+import { DeudoresService } from 'src/modules/deudores/deudores.service';
 
 @Injectable()
 export class CampaniasEmailService {
@@ -13,6 +14,7 @@ export class CampaniasEmailService {
     constructor(
         private readonly prisma: PrismaService,
         @InjectQueue('emailsEnvios') private readonly emailsEnvios: Queue,
+        private readonly deudoresService: DeudoresService,
     ) { }
 
     async obtenerCampañas() {
@@ -94,14 +96,32 @@ export class CampaniasEmailService {
                 },
             });
 
-            // 2. Agregar contactos en bloques de 10.000
-            const bloques = chunk(contactos, 10000);
-            for (const grupo of bloques) {
+            // 2. Upsert deudores en chunks de 1000 → map globalIdx → deudorId
+            const deudoresMap = new Map<number, number | null>();
+            const upsertChunkSize = 1000;
+            for (let i = 0; i < contactos.length; i += upsertChunkSize) {
+                const slice = contactos.slice(i, i + upsertChunkSize);
+                await Promise.all(
+                    slice.map(async (c, localIdx) => {
+                        const globalIdx = i + localIdx;
+                        const deudor = await this.deudoresService.upsertDesdeImport(c.rawRow, {
+                            aliasesIdDeudor: ['id_contacto'],
+                        });
+                        deudoresMap.set(globalIdx, deudor?.id ?? null);
+                    }),
+                );
+            }
+
+            // 3. Agregar contactos en bloques de 10.000 con deudorId resuelto
+            const createChunkSize = 10000;
+            for (let i = 0; i < contactos.length; i += createChunkSize) {
+                const slice = contactos.slice(i, i + createChunkSize);
                 await this.prisma.contactoEmail.createMany({
-                    data: grupo.map((c) => ({
+                    data: slice.map((c, localIdx) => ({
                         email: c.email,
                         datos: c.datos,
                         campañaId: campania.id,
+                        deudorId: deudoresMap.get(i + localIdx) ?? null,
                     })),
                 });
             }
@@ -115,8 +135,8 @@ export class CampaniasEmailService {
                 mensaje: 'Campaña creada correctamente',
             };
         } catch (error) {
-            console.log('Error al crear campaña de email:', error);
-            console.log(error.message)
+            this.logger.error('Error al crear campaña de email:', error?.stack);
+            this.logger.error(error.message, error?.stack);
             throw new InternalServerErrorException('Error al crear campaña de email: ' + error.message);
         }
     }

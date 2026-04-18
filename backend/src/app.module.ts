@@ -19,11 +19,12 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { WapiModule } from './modules/wapi/wapi.module';
 import { WapiWorkerModule } from './workers/wapi-worker.module';
 import { DevSimuladorModule } from './modules/dev/dev-simulador.module';
+import { DeudoresModule } from './modules/deudores/deudores.module';
 
 const devModules = process.env.NODE_ENV !== 'production' ? [DevSimuladorModule] : [];
 
 @Module({
-  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule, AuthModule, EmailModule, ConfiguracionModule, SchedulerModule, CampaniaLogsModule, RolesModule, UsuariosModule, WapiModule, WapiWorkerModule, WebsocketModule, ...devModules],
+  imports: [PrismaModule, WhatsappModule, ConfigModule.forRoot({ isGlobal: true }), SesionesModule, QueueModule, AuthModule, EmailModule, ConfiguracionModule, SchedulerModule, CampaniaLogsModule, RolesModule, UsuariosModule, WapiModule, WapiWorkerModule, WebsocketModule, DeudoresModule, ...devModules],
   controllers: [AppController],
   providers: [AppService, PubSubService],
 })

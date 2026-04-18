@@ -5,11 +5,13 @@ export interface ContactoCsv {
     numero: string;
     mensaje?: string;
     datos: Record<string, any>;
+    rawRow: Record<string, any>;
 }
 
 export interface ContactoEmail {
     email: string;
-    datos: any
+    datos: any;
+    rawRow: Record<string, any>;
 }
 
 export async function parseCsv(filePath: string): Promise<ContactoCsv[]> {
@@ -29,6 +31,7 @@ export async function parseCsv(filePath: string): Promise<ContactoCsv[]> {
                     numero,
                     mensaje: mensaje || null,
                     datos: otrosCampos,
+                    rawRow: data,
                 });
             })
             .on('end', () => resolve(contactos))
@@ -50,6 +53,7 @@ export async function parseCsvEmail(filePath: string): Promise<ContactoEmail[]> 
                 contactos.push({
                     email,
                     datos: otrosCampos,
+                    rawRow: data,
                 });
             })
             .on('end', () => resolve(contactos))

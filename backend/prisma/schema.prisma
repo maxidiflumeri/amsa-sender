@@ -38,6 +38,10 @@ model Contacto {
   datos      Json? // ⬅️ Acá irán los datos variables del CSV
   campañaId Int
   campaña   Campaña @relation(fields: [campañaId], references: [id])
+  deudorId  Int?
+  deudor    Deudor?  @relation(fields: [deudorId], references: [id])
+  @@index([deudorId])
+  @@index([deudorId, campañaId])
   @@map("Contacto")
 }
 
@@ -51,6 +55,8 @@ model Reporte {
   datos      Json? // ← Nuevo campo para almacenar los datos del contacto (del CSV)
   campaña   Campaña? @relation(fields: [campañaId], references: [id], onDelete: SetNull)
   campañaId Int?
+  @@index([campañaId, numero])
+  @@index([enviadoAt])
   @@map("Reporte")
 }
 
@@ -160,6 +166,9 @@ model ContactoEmail {
   campañaId Int
   campaña   CampañaEmail  @relation(fields: [campañaId], references: [id], onDelete: Cascade)
   reportes   ReporteEmail[]
+  deudorId  Int?
+  deudor    Deudor?  @relation(fields: [deudorId], references: [id])
+  @@index([deudorId])
   @@map("ContactoEmail")
 }
 
@@ -172,10 +181,10 @@ model ReporteEmail {
   error            String? @db.Text
   asunto           String? // asunto final con variables reemplazadas
   html             String?       @db.MediumText // HTML renderizado con datos del contacto
-  creadoAt         DateTime      
+  creadoAt         DateTime
   trackingTok      String?       @unique // token por envío (se setea al enviar)
   primeroAbiertoAt DateTime?
-  primeroClickAt   DateTime?  
+  primeroClickAt   DateTime?
   smtpMessageId    String?        @unique @db.VarChar(255)
   campaña          CampañaEmail @relation(fields: [campañaId], references: [id], onDelete: Cascade)
   contacto         ContactoEmail @relation(fields: [contactoId], references: [id], onDelete: Cascade)
@@ -184,6 +193,7 @@ model ReporteEmail {
 
   @@index([campañaId])
   @@index([contactoId])
+  @@index([enviadoAt])
   @@map("ReporteEmail")
 }
 
@@ -328,6 +338,9 @@ model WaApiContacto {
   campañaId Int
   campaña  WaApiCampaña @relation(fields: [campañaId], references: [id], onDelete: Cascade)
   reporte   WaApiReporte?
+  deudorId  Int?
+  deudor    Deudor?  @relation(fields: [deudorId], references: [id])
+  @@index([deudorId])
   @@map("WaApiContacto")
 }
 
@@ -347,6 +360,7 @@ model WaApiReporte {
   campaña    WaApiCampaña @relation(fields: [campañaId], references: [id], onDelete: Cascade)
   contacto    WaApiContacto @relation(fields: [contactoId], references: [id], onDelete: Cascade)
   @@index([campañaId])
+  @@index([enviadoAt])
   @@map("WaApiReporte")
 }
 
@@ -473,4 +487,31 @@ model EjecucionTarea {
 
   @@index([tareaId])
   @@map("EjecucionTarea")
+}
+
+model Deudor {
+  id            Int       @id @default(autoincrement())
+  idDeudor      Int?      @unique     // nullable como salvaguarda
+
+  nombre        String?
+  documento     String?
+  nroEmpresa    String?
+  empresa       String?
+  remesa        String?
+  datos         Json?
+
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  contactosWhatsapp Contacto[]
+  contactosEmail    ContactoEmail[]
+  contactosWapi     WaApiContacto[]
+
+  @@index([empresa, nroEmpresa])
+  @@index([nroEmpresa])
+  @@index([empresa])
+  @@index([remesa])
+  @@index([documento])
+  @@index([nombre])
+  @@map("Deudor")
 }
