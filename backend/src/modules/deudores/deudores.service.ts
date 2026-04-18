@@ -88,7 +88,7 @@ export class DeudoresService {
               },
             },
           },
-          orderBy: { actualizadoEn: 'desc' },
+          orderBy: { id: 'desc' },
           skip: page * size,
           take: size,
         }),
