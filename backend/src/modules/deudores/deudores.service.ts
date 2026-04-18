@@ -664,14 +664,12 @@ export class DeudoresService {
         GROUP BY d.empresa
       `;
 
-      // Ejecutar todas las queries en paralelo
-      const [rowsA, rowsB, rowsC, rowsD, rowsE] = await Promise.all([
-        this.prisma.$queryRaw<RawEmpresaTotalesRow[]>`${queryA}`,
-        this.prisma.$queryRaw<RawEmpresaEnviosRow[]>`${queryB}`,
-        this.prisma.$queryRaw<RawEmpresaEmailRow[]>`${queryC}`,
-        this.prisma.$queryRaw<RawEmpresaRebotesRow[]>`${queryD}`,
-        this.prisma.$queryRaw<RawEmpresaWapiRow[]>`${queryE}`,
-      ]);
+      // Ejecutar de forma secuencial para no saturar el pool de conexiones de Prisma
+      const rowsA = await this.prisma.$queryRaw<RawEmpresaTotalesRow[]>`${queryA}`;
+      const rowsB = await this.prisma.$queryRaw<RawEmpresaEnviosRow[]>`${queryB}`;
+      const rowsC = await this.prisma.$queryRaw<RawEmpresaEmailRow[]>`${queryC}`;
+      const rowsD = await this.prisma.$queryRaw<RawEmpresaRebotesRow[]>`${queryD}`;
+      const rowsE = await this.prisma.$queryRaw<RawEmpresaWapiRow[]>`${queryE}`;
 
       // Mergear resultados
       const reporteMap = new Map<string, ReporteEmpresa>();
@@ -919,14 +917,12 @@ export class DeudoresService {
         GROUP BY d.empresa, d.remesa
       `;
 
-      // Ejecutar todas las queries en paralelo
-      const [rowsA, rowsB, rowsC, rowsD, rowsE] = await Promise.all([
-        this.prisma.$queryRaw<RawRemesaTotalesRow[]>`${queryA}`,
-        this.prisma.$queryRaw<RawRemesaEnviosRow[]>`${queryB}`,
-        this.prisma.$queryRaw<RawRemesaEmailRow[]>`${queryC}`,
-        this.prisma.$queryRaw<RawRemesaRebotesRow[]>`${queryD}`,
-        this.prisma.$queryRaw<RawRemesaWapiRow[]>`${queryE}`,
-      ]);
+      // Ejecutar de forma secuencial para no saturar el pool de conexiones de Prisma
+      const rowsA = await this.prisma.$queryRaw<RawRemesaTotalesRow[]>`${queryA}`;
+      const rowsB = await this.prisma.$queryRaw<RawRemesaEnviosRow[]>`${queryB}`;
+      const rowsC = await this.prisma.$queryRaw<RawRemesaEmailRow[]>`${queryC}`;
+      const rowsD = await this.prisma.$queryRaw<RawRemesaRebotesRow[]>`${queryD}`;
+      const rowsE = await this.prisma.$queryRaw<RawRemesaWapiRow[]>`${queryE}`;
 
       // Mergear resultados (key = empresa||remesa)
       const reporteMap = new Map<string, ReporteRemesa>();
