@@ -6,7 +6,8 @@ import { useAuth } from './AuthContext';
 const NotificationContext = createContext();
 
 export const NotificationProvider = ({ children }) => {
-    const { user, isLoggedIn } = useAuth();
+    const { user } = useAuth();
+    const loggedIn = !!user;
     const myUserId = user?.sub;
 
     const [unreadCount, setUnreadCount] = useState(0);
@@ -16,9 +17,10 @@ export const NotificationProvider = ({ children }) => {
     const socketRef = useRef(null);
 
     const refreshCounts = useCallback(async () => {
-        if (!isLoggedIn) return;
+        if (!loggedIn) return;
         try {
             const { data } = await api.get('/wapi/inbox');
+            if (!Array.isArray(data)) return;
             setConversations(data);
             
             let unread = 0;
@@ -29,9 +31,10 @@ export const NotificationProvider = ({ children }) => {
                 if (c.estado === 'sin_asignar') {
                     unassigned++;
                 }
-                if (c.asignadoAId === myUserId && c.estado !== 'resuelta') {
+                const isMine = c.asignadoAId && String(c.asignadoAId) === String(myUserId);
+                if (isMine && c.estado !== 'resuelta') {
                     myActive++;
-                    if (c.unreadCount > 0) unread++;
+                    if ((c.unreadCount || 0) > 0) unread++;
                 }
             });
 
@@ -41,10 +44,10 @@ export const NotificationProvider = ({ children }) => {
         } catch (error) {
             console.error('Error fetching notification counts:', error);
         }
-    }, [isLoggedIn, myUserId]);
+    }, [loggedIn, myUserId]);
 
     useEffect(() => {
-        if (isLoggedIn) {
+        if (loggedIn) {
             refreshCounts();
 
             const socket = io(import.meta.env.VITE_HOST_SOCKET);
@@ -55,8 +58,6 @@ export const NotificationProvider = ({ children }) => {
             });
 
             const handleUpdate = () => {
-                // For simplicity, we refresh when anything happens. 
-                // In a high-traffic app, we would update state incrementally.
                 refreshCounts();
             };
 
@@ -64,7 +65,9 @@ export const NotificationProvider = ({ children }) => {
             socket.on('wapi:conversacion_actualizada', handleUpdate);
 
             return () => {
-                socket.disconnect();
+                if (socketRef.current) {
+                    socketRef.current.disconnect();
+                }
             };
         } else {
             setUnreadCount(0);
@@ -72,7 +75,7 @@ export const NotificationProvider = ({ children }) => {
             setMyActiveCount(0);
             setConversations([]);
         }
-    }, [isLoggedIn, refreshCounts]);
+    }, [loggedIn, refreshCounts]);
 
     return (
         <NotificationContext.Provider value={{ 

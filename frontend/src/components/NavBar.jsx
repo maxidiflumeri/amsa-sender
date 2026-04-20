@@ -697,7 +697,6 @@ export default function Layout({ children, mode, toggleTheme }) {
                                 <ListItemIcon
                                     sx={{
                                         minWidth: 'auto',
-                                        justifyContent: 'center',
                                         mr: collapsed ? 0 : 1.5,
                                         backgroundColor: '#FCE4EC',
                                         borderRadius: '50%',
