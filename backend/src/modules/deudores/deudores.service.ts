@@ -1107,8 +1107,9 @@ export class DeudoresService {
     const desde = query.desde ? new Date(query.desde) : null;
     const hasta = query.hasta ? new Date(query.hasta) : null;
 
-    const baseName = this.buildExportFilename(`reporte-${query.tipo}`, {
+    const baseName = this.buildExportFilename('reporte', {
       empresas: query.empresas,
+      remesas: query.remesas,
       desde,
       hasta,
     });
@@ -1815,28 +1816,32 @@ export class DeudoresService {
 
     const parts: string[] = [prefix];
 
+    // Empresas
     if (opts.empresas && opts.empresas.length > 0) {
-      const s = summarize(opts.empresas);
-      if (s) parts.push(`emp-${s}`);
-    }
-    if (opts.remesas && opts.remesas.length > 0) {
-      const s = summarize(opts.remesas);
-      if (s) parts.push(`rem-${s}`);
-    }
-    if (opts.canal) {
-      parts.push(`canal-${sanitize(opts.canal)}`);
-    }
-    if (opts.desde) {
-      parts.push(`desde-${opts.desde.toISOString().slice(0, 10)}`);
-    }
-    if (opts.hasta) {
-      parts.push(`hasta-${opts.hasta.toISOString().slice(0, 10)}`);
+      parts.push(summarize(opts.empresas));
+    } else {
+      parts.push('todas-emp');
     }
 
-    const now = new Date();
-    const pad = (n: number): string => String(n).padStart(2, '0');
-    const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
-    parts.push(ts);
+    // Remesas
+    if (opts.remesas && opts.remesas.length > 0) {
+      parts.push(summarize(opts.remesas));
+    } else {
+      parts.push('todas-rem');
+    }
+
+    // Canal (solo si existe)
+    if (opts.canal) {
+      parts.push(sanitize(opts.canal));
+    }
+
+    // Fechas
+    parts.push(opts.desde ? opts.desde.toISOString().slice(0, 10) : 'inicio');
+    parts.push(opts.hasta ? opts.hasta.toISOString().slice(0, 10) : 'fin');
+
+    // Random / Unique
+    const random = Math.random().toString(36).substring(2, 7).toUpperCase();
+    parts.push(random);
 
     return parts.join('_');
   }
