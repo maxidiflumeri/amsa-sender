@@ -350,7 +350,6 @@ export default function Layout({ children, mode, toggleTheme }) {
                         <ListItemIcon
                             sx={{
                                 minWidth: 'auto',
-                                justifyContent: 'center',
                                 mr: collapsed ? 0 : 1.5,
                                 backgroundColor: '#EDE7F6',
                                 borderRadius: '50%',
@@ -415,7 +414,6 @@ export default function Layout({ children, mode, toggleTheme }) {
                         <ListItemIcon
                             sx={{
                                 minWidth: 'auto',
-                                justifyContent: 'center',
                                 mr: collapsed ? 0 : 1.5,
                                 ...(collapsed && {
                                     backgroundColor: '#E3F2FD',
@@ -623,7 +621,6 @@ export default function Layout({ children, mode, toggleTheme }) {
                         <ListItemIcon
                             sx={{
                                 minWidth: 'auto',
-                                justifyContent: 'center',
                                 mr: collapsed ? 0 : 1.5,
                                 ...(collapsed && {
                                     backgroundColor: '#ECEFF1',
