@@ -51,6 +51,7 @@ import LiveTvIcon from '@mui/icons-material/LiveTv';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import Badge from '@mui/material/Badge';
 import Popover from '@mui/material/Popover';
 
@@ -857,9 +858,40 @@ export default function Layout({ children, mode, toggleTheme }) {
                         {hasPermiso('wapi.inbox') && (
                             <>
                                 <Tooltip title="Pendientes de Inbox">
-                                    <IconButton color="inherit" onClick={handleNotifOpen}>
-                                        <Badge badgeContent={totalPendientes} color="error" max={99}>
-                                            <NotificationsIcon />
+                                    <IconButton 
+                                        color="inherit" 
+                                        onClick={handleNotifOpen}
+                                        sx={{
+                                            p: 1,
+                                            transition: 'all 0.2s ease-in-out',
+                                            '&:hover': { 
+                                                bgcolor: 'rgba(255, 255, 255, 0.1)',
+                                                transform: 'scale(1.05)' 
+                                            }
+                                        }}
+                                    >
+                                        <Badge 
+                                            badgeContent={totalPendientes} 
+                                            overlap="circular"
+                                            sx={{
+                                                '& .MuiBadge-badge': {
+                                                    bgcolor: '#FF3B30', // iOS Red
+                                                    color: '#fff',
+                                                    fontSize: '9px',
+                                                    fontWeight: 700,
+                                                    height: '18px',
+                                                    minWidth: '18px',
+                                                    padding: '0 4px',
+                                                    border: '1.5px solid #075E54',
+                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                                }
+                                            }}
+                                        >
+                                            {totalPendientes > 0 ? (
+                                                <NotificationsActiveIcon sx={{ color: '#b0ffc8', fontSize: 24 }} />
+                                            ) : (
+                                                <NotificationsIcon sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 24 }} />
+                                            )}
                                         </Badge>
                                     </IconButton>
                                 </Tooltip>
