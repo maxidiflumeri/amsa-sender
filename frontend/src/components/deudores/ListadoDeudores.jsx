@@ -6,8 +6,6 @@ import {
     Paper,
     Typography,
     TextField,
-    Select,
-    MenuItem,
     Button,
     Table,
     TableHead,
@@ -20,14 +18,17 @@ import {
     Alert,
     useTheme,
     Grid,
-    FormControl,
-    InputLabel,
+    Autocomplete,
+    LinearProgress,
+    CircularProgress,
+    Fade,
 } from '@mui/material';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import EmailIcon from '@mui/icons-material/Email';
 import ApiIcon from '@mui/icons-material/Api';
 import ClearIcon from '@mui/icons-material/Clear';
+import SearchIcon from '@mui/icons-material/Search';
 import api from '../../api/axios';
 
 const SkeletonRow = () => (
@@ -44,12 +45,14 @@ export default function ListadoDeudores() {
     const theme = useTheme();
     const navigate = useNavigate();
 
-    // Filtros
-    const [q, setQ] = useState('');
-    const [debouncedQ, setDebouncedQ] = useState('');
-    const [empresa, setEmpresa] = useState('');
-    const [nroEmpresa, setNroEmpresa] = useState('');
-    const [remesa, setRemesa] = useState('');
+    // Estado del formulario (inputs del usuario)
+    const [qInput, setQInput] = useState('');
+    const [empresasInput, setEmpresasInput] = useState([]);
+    const [nroEmpresaInput, setNroEmpresaInput] = useState('');
+    const [remesasInput, setRemesasInput] = useState([]);
+
+    // Filtros aplicados (los que se usan para buscar)
+    const [appliedFilters, setAppliedFilters] = useState(null);
 
     // Data
     const [deudores, setDeudores] = useState([]);
@@ -58,27 +61,17 @@ export default function ListadoDeudores() {
     const [rowsPerPage, setRowsPerPage] = useState(20);
 
     // Loading states
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [empresas, setEmpresas] = useState([]);
     const [remesas, setRemesas] = useState([]);
     const [error, setError] = useState(null);
-
-    // Debounce para el campo de búsqueda
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedQ(q);
-            setPage(0); // Reset a primera página cuando cambia búsqueda
-        }, 400);
-
-        return () => clearTimeout(timer);
-    }, [q]);
 
     // Cargar empresas al montar
     useEffect(() => {
         const cargarEmpresas = async () => {
             try {
                 const res = await api.get('/deudores/empresas');
-                setEmpresas(res.data);
+                setEmpresas(res.data || []);
             } catch (err) {
                 console.error('Error al cargar empresas:', err);
             }
@@ -86,29 +79,41 @@ export default function ListadoDeudores() {
         cargarEmpresas();
     }, []);
 
-    // Cargar remesas cuando cambia empresa
+    // Cargar remesas cuando cambian las empresas del formulario
     useEffect(() => {
         const cargarRemesas = async () => {
             try {
-                const params = empresa ? { empresa } : {};
+                const params = empresasInput.length > 0
+                    ? { empresas: empresasInput.join(',') }
+                    : {};
                 const res = await api.get('/deudores/remesas', { params });
-                setRemesas(res.data);
+                setRemesas(res.data || []);
             } catch (err) {
                 console.error('Error al cargar remesas:', err);
             }
         };
         cargarRemesas();
-    }, [empresa]);
+    }, [empresasInput]);
+
+    // Depura remesas seleccionadas si dejan de pertenecer al listado
+    useEffect(() => {
+        if (remesasInput.length === 0) return;
+        const filtradas = remesasInput.filter((r) => remesas.includes(r));
+        if (filtradas.length !== remesasInput.length) {
+            setRemesasInput(filtradas);
+        }
+    }, [remesas, remesasInput]);
+
+    const hasActiveInputs = Boolean(
+        qInput ||
+            empresasInput.length > 0 ||
+            nroEmpresaInput ||
+            remesasInput.length > 0,
+    );
 
     // Buscar deudores
     const buscarDeudores = useCallback(async () => {
-        // Validar que haya al menos un filtro activo
-        if (!debouncedQ && !empresa && !nroEmpresa && !remesa) {
-            setDeudores([]);
-            setTotal(0);
-            setLoading(false);
-            return;
-        }
+        if (!appliedFilters) return;
 
         setLoading(true);
         setError(null);
@@ -119,10 +124,14 @@ export default function ListadoDeudores() {
                 size: rowsPerPage,
             };
 
-            if (debouncedQ) params.q = debouncedQ;
-            if (empresa) params.empresa = empresa;
-            if (nroEmpresa) params.nroEmpresa = nroEmpresa;
-            if (remesa) params.remesa = remesa;
+            if (appliedFilters.q) params.q = appliedFilters.q;
+            if (appliedFilters.empresas && appliedFilters.empresas.length > 0) {
+                params.empresas = appliedFilters.empresas.join(',');
+            }
+            if (appliedFilters.nroEmpresa) params.nroEmpresa = appliedFilters.nroEmpresa;
+            if (appliedFilters.remesas && appliedFilters.remesas.length > 0) {
+                params.remesas = appliedFilters.remesas.join(',');
+            }
 
             const res = await api.get('/deudores/buscar', { params });
             setDeudores(res.data.data);
@@ -134,20 +143,39 @@ export default function ListadoDeudores() {
         } finally {
             setLoading(false);
         }
-    }, [debouncedQ, empresa, nroEmpresa, remesa, page, rowsPerPage]);
+    }, [appliedFilters, page, rowsPerPage]);
 
-    // Ejecutar búsqueda cuando cambian los filtros o la paginación
     useEffect(() => {
         buscarDeudores();
     }, [buscarDeudores]);
 
-    const limpiarFiltros = () => {
-        setQ('');
-        setDebouncedQ('');
-        setEmpresa('');
-        setNroEmpresa('');
-        setRemesa('');
+    const handleBuscar = () => {
+        if (!hasActiveInputs) return;
+        setAppliedFilters({
+            q: qInput.trim(),
+            empresas: empresasInput,
+            nroEmpresa: nroEmpresaInput.trim(),
+            remesas: remesasInput,
+        });
         setPage(0);
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            handleBuscar();
+        }
+    };
+
+    const limpiarFiltros = () => {
+        setQInput('');
+        setEmpresasInput([]);
+        setNroEmpresaInput('');
+        setRemesasInput([]);
+        setAppliedFilters(null);
+        setDeudores([]);
+        setTotal(0);
+        setPage(0);
+        setError(null);
     };
 
     const handleChangePage = (event, newPage) => {
@@ -182,78 +210,92 @@ export default function ListadoDeudores() {
                 }}
             >
                 <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6} md={3}>
+                    <Grid item xs={12} md={6}>
+                        <Autocomplete
+                            multiple
+                            size="small"
+                            options={empresas}
+                            value={empresasInput}
+                            onChange={(_, v) => setEmpresasInput(v)}
+                            onKeyDown={handleKeyDown}
+                            filterSelectedOptions
+                            disableCloseOnSelect
+                            limitTags={3}
+                            ChipProps={{ size: 'small' }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Empresas"
+                                    placeholder={empresasInput.length === 0 ? 'Todas' : ''}
+                                />
+                            )}
+                            noOptionsText="Sin coincidencias"
+                        />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                        <Autocomplete
+                            multiple
+                            size="small"
+                            options={remesas}
+                            value={remesasInput}
+                            onChange={(_, v) => setRemesasInput(v)}
+                            onKeyDown={handleKeyDown}
+                            filterSelectedOptions
+                            disableCloseOnSelect
+                            limitTags={3}
+                            ChipProps={{ size: 'small' }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Remesas"
+                                    placeholder={remesasInput.length === 0 ? 'Todas' : ''}
+                                />
+                            )}
+                            noOptionsText={empresasInput.length > 0 ? 'Sin coincidencias' : 'Se listan todas las remesas'}
+                        />
+                    </Grid>
+                    <Grid item xs={12} sm={8} md={6}>
                         <TextField
                             fullWidth
-                            label="Buscar"
-                            placeholder="ID, Nombre, Documento, Nro. Empresa..."
-                            value={q}
-                            onChange={(e) => setQ(e.target.value)}
+                            label="Buscar (ID, Nombre, Documento)"
+                            placeholder="Escriba y presione Buscar..."
+                            value={qInput}
+                            onChange={(e) => setQInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             size="small"
                         />
                     </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <FormControl fullWidth size="small">
-                            <InputLabel>Empresa</InputLabel>
-                            <Select
-                                value={empresa}
-                                label="Empresa"
-                                onChange={(e) => {
-                                    setEmpresa(e.target.value);
-                                    setPage(0);
-                                }}
-                            >
-                                <MenuItem value="">Todas</MenuItem>
-                                {empresas.map((emp) => (
-                                    <MenuItem key={emp} value={emp}>
-                                        {emp}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={2}>
+                    <Grid item xs={12} sm={4} md={3}>
                         <TextField
                             fullWidth
                             label="Nro. Empresa"
-                            value={nroEmpresa}
-                            onChange={(e) => {
-                                setNroEmpresa(e.target.value);
-                                setPage(0);
-                            }}
+                            value={nroEmpresaInput}
+                            onChange={(e) => setNroEmpresaInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             size="small"
                         />
                     </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <FormControl fullWidth size="small">
-                            <InputLabel>Remesa</InputLabel>
-                            <Select
-                                value={remesa}
-                                label="Remesa"
-                                onChange={(e) => {
-                                    setRemesa(e.target.value);
-                                    setPage(0);
-                                }}
+                    <Grid item xs={12} md={3}>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                                fullWidth
+                                variant="contained"
+                                onClick={handleBuscar}
+                                disabled={!hasActiveInputs || loading}
+                                startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <SearchIcon />}
+                                sx={{ height: 40 }}
                             >
-                                <MenuItem value="">Todas</MenuItem>
-                                {remesas.map((rem) => (
-                                    <MenuItem key={rem} value={rem}>
-                                        {rem}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={1}>
-                        <Button
-                            fullWidth
-                            variant="outlined"
-                            onClick={limpiarFiltros}
-                            startIcon={<ClearIcon />}
-                            sx={{ height: '40px' }}
-                        >
-                            Limpiar
-                        </Button>
+                                Buscar
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                onClick={limpiarFiltros}
+                                sx={{ height: 40, minWidth: 40, px: 1 }}
+                                title="Limpiar filtros"
+                            >
+                                <ClearIcon fontSize="small" />
+                            </Button>
+                        </Box>
                     </Grid>
                 </Grid>
             </Paper>
@@ -271,8 +313,22 @@ export default function ListadoDeudores() {
                     bgcolor: theme.palette.background.paper,
                     borderRadius: 2,
                     overflow: 'hidden',
+                    position: 'relative',
                 }}
             >
+                <Fade in={loading} unmountOnExit>
+                    <LinearProgress
+                        sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            zIndex: 2,
+                            height: 3,
+                        }}
+                    />
+                </Fade>
+
                 <Box sx={{ overflowX: 'auto' }}>
                     <Table>
                         <TableHead>
@@ -294,15 +350,18 @@ export default function ListadoDeudores() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {!debouncedQ && !empresa && !nroEmpresa && !remesa ? (
+                            {!appliedFilters && !loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                                        <Typography
-                                            variant="body1"
-                                            color={theme.palette.text.secondary}
-                                        >
-                                            Utilice los filtros superiores para buscar deudores
-                                        </Typography>
+                                    <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                                            <SearchIcon sx={{ fontSize: 48, color: theme.palette.text.disabled }} />
+                                            <Typography
+                                                variant="body1"
+                                                color={theme.palette.text.secondary}
+                                            >
+                                                Utilice los filtros y presione <strong>Buscar</strong> para listar deudores
+                                            </Typography>
+                                        </Box>
                                     </TableCell>
                                 </TableRow>
                             ) : loading ? (

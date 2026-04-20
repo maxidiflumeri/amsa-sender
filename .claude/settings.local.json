@@ -18,7 +18,9 @@
       "Bash(npm update:*)",
       "Bash(claude:*)",
       "Bash(ls:*)",
-      "Read(//c/Users/MDIFLUME/Documents/Proyectos/Propios/amsa-gestion/**)"
+      "Read(//c/Users/MDIFLUME/Documents/Proyectos/Propios/amsa-gestion/**)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(npx eslint *)"
     ]
   }
 }

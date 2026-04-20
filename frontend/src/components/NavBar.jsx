@@ -567,7 +567,13 @@ export default function Layout({ children, mode, toggleTheme }) {
                                     <ListItemButton
                                         component={RouterLink}
                                         to={path}
-                                        selected={location.pathname.startsWith('/deudores')}
+                                        selected={
+                                            path === '/deudores/reportes'
+                                                ? location.pathname.startsWith('/deudores/reportes')
+                                                : location.pathname === '/deudores' ||
+                                                  (location.pathname.startsWith('/deudores/') &&
+                                                    !location.pathname.startsWith('/deudores/reportes'))
+                                        }
                                         onClick={isMobile ? handleDrawerToggle : undefined}
                                         sx={{
                                             pl: collapsed ? 0 : 4,

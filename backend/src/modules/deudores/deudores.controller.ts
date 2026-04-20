@@ -37,13 +37,16 @@ export class DeudoresController {
   }
 
   /**
-   * Obtener lista de remesas únicas (opcionalmente filtradas por empresa)
-   * GET /api/deudores/remesas?empresa=...
+   * Obtener lista de remesas únicas (opcionalmente filtradas por una o varias empresas)
+   * GET /api/deudores/remesas?empresas=A,B,C
    */
   @Get('remesas')
   @RequiredPermiso('deudores.ver')
-  async remesas(@Query('empresa') empresa?: string) {
-    return this.deudoresService.obtenerRemesas(empresa);
+  async remesas(@Query('empresas') empresas?: string) {
+    const arr = empresas
+      ? empresas.split(',').map((v) => v.trim()).filter(Boolean)
+      : undefined;
+    return this.deudoresService.obtenerRemesas(arr);
   }
 
   /**
