@@ -24,6 +24,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import BoltIcon from '@mui/icons-material/Bolt';
 import MarkChatUnreadIcon from '@mui/icons-material/MarkChatUnread';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -53,8 +55,30 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                 sx={{ px: 2, py: 0.75, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'action.hover' } }}
             >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="caption" fontWeight={600} color={color}>{titulo}</Typography>
-                    <Chip label={convs.length} size="small" sx={{ height: 16, fontSize: 10 }} />
+                    <Typography 
+                        variant="caption" 
+                        fontWeight={700} 
+                        color={color}
+                        sx={{ 
+                            ...(titulo.includes('sin asignar') && convs.length > 0 && {
+                                color: '#E65100',
+                                animation: 'pulse 2s infinite',
+                                '@keyframes pulse': {
+                                    '0%': { opacity: 1 },
+                                    '50%': { opacity: 0.6 },
+                                    '100%': { opacity: 1 }
+                                }
+                            })
+                        }}
+                    >
+                        {titulo.toUpperCase()}
+                    </Typography>
+                    <Chip 
+                        label={convs.length} 
+                        size="small" 
+                        color={titulo.includes('sin asignar') && convs.length > 0 ? "warning" : "default"}
+                        sx={{ height: 16, fontSize: 10, fontWeight: 700 }} 
+                    />
                 </Box>
                 {open ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
             </Box>
@@ -73,9 +97,24 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                             sx={{ py: 0.75 }}
                         >
                             <ListItemAvatar sx={{ minWidth: 44 }}>
-                                <Avatar sx={{ width: 34, height: 34, fontSize: 14, bgcolor: conv.estado === 'resuelta' ? '#757575' : conv.estado === 'sin_asignar' ? '#E65100' : '#00695C' }}>
-                                    {(conv.nombre ?? conv.numero)[0].toUpperCase()}
-                                </Avatar>
+                                <Badge
+                                    overlap="circular"
+                                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                                    badgeContent={(() => {
+                                        if (conv.estado === 'resuelta') return null;
+                                        const lastMsg = conv.mensajes?.[0];
+                                        if (lastMsg && !lastMsg.fromMe) {
+                                            const diffHs = (Date.now() - new Date(conv.ultimoMensajeAt).getTime()) / (1000 * 60 * 60);
+                                            if (diffHs > 2) return <Tooltip title="Urgente: Sin respuesta > 2hs"><ErrorOutlineIcon sx={{ fontSize: 14, color: '#f44336', bgcolor: 'white', borderRadius: '50%' }} /></Tooltip>;
+                                            if (diffHs > 1) return <Tooltip title="Pendiente: Sin respuesta > 1h"><AccessTimeIcon sx={{ fontSize: 14, color: '#ff9800', bgcolor: 'white', borderRadius: '50%' }} /></Tooltip>;
+                                        }
+                                        return null;
+                                    })()}
+                                >
+                                    <Avatar sx={{ width: 34, height: 34, fontSize: 14, bgcolor: conv.estado === 'resuelta' ? '#757575' : conv.estado === 'sin_asignar' ? '#E65100' : '#00695C', border: (conv.unreadCount > 0) ? '2px solid #25D366' : 'none' }}>
+                                        {(conv.nombre ?? conv.numero)[0].toUpperCase()}
+                                    </Avatar>
+                                </Badge>
                             </ListItemAvatar>
                             <ListItemText
                                 primary={

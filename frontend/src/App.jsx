@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { AuthProvider } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
 import ConectarSesion from './components/ConectarSesion';
 import EstadoSesiones from './components/EstadoSesiones';
 import SubirCampaña from './components/SubirCampaña';
@@ -44,14 +45,9 @@ import ReportesDeudores from './components/deudores/ReportesDeudores';
 export default function App() {
     const [mode, setMode] = useState('light');
     const location = useLocation();
-    const isLoggedIn = !!localStorage.getItem('token');
 
     const publicRoutes = ['/login', '/mailing/vista'];
     const isPublicRoute = publicRoutes.some((r) => location.pathname.startsWith(r));
-
-    if (!isLoggedIn && !isPublicRoute) {
-        return <Navigate to="/login" />;
-    }
 
     useEffect(() => {
         const savedMode = localStorage.getItem('themeMode');
@@ -237,60 +233,62 @@ export default function App() {
 
     return (
         <AuthProvider>
-        <ThemeProvider theme={theme}>
-            <CssBaseline />
-            <Routes>
-                {/* Ruta pública */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/mailing/vista/:id" element={<VistaPublicaEmail />} />
-                <Route path='/mailing/desuscribirse' element={<DesuscripcionConfirmar />} />
-                <Route path='/mailing/desuscribirse/resultado' element={<DesuscripcionResultado />} />
+            <NotificationProvider>
+                <ThemeProvider theme={theme}>
+                    <CssBaseline />
+                    <Routes>
+                        {/* Ruta pública */}
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/mailing/vista/:id" element={<VistaPublicaEmail />} />
+                        <Route path='/mailing/desuscribirse' element={<DesuscripcionConfirmar />} />
+                        <Route path='/mailing/desuscribirse/resultado' element={<DesuscripcionResultado />} />
 
-                {/* Rutas privadas con layout */}
-                <Route element={<LayoutPrivado mode={mode} toggleTheme={toggleTheme} />}>
-                    <Route path="/" element={<PaginaInicio />} />
-                    <Route path="/sesiones" element={<RutaProtegida permiso="whatsapp.sesiones"><EstadoSesiones /></RutaProtegida>} />
-                    <Route path="/conectar" element={<RutaProtegida permiso="whatsapp.conectar"><ConectarSesion /></RutaProtegida>} />
-                    <Route path="/subir-campania" element={<RutaProtegida permiso="whatsapp.campanias"><SubirCampaña /></RutaProtegida>} />
-                    <Route path="/campanias" element={<RutaProtegida permiso="whatsapp.campanias"><VerCampañas /></RutaProtegida>} />
-                    <Route path="/enviar" element={<RutaProtegida permiso="whatsapp.campanias"><EnviarMensajes /></RutaProtegida>} />
-                    <Route path="/reportes" element={<RutaProtegida permiso="whatsapp.reportes"><VerReportes /></RutaProtegida>} />
-                    <Route path="/templates" element={<RutaProtegida permiso="whatsapp.templates"><VerTemplates /></RutaProtegida>} />
-                    <Route path="/metricas" element={<RutaProtegida permiso="whatsapp.metricas"><VerMetricas /></RutaProtegida>} />
-                    <Route path="/config/respuestas-rapidas" element={<RutaProtegida permiso="wapi.respuestas_rapidas"><WapiRespuestasRapidas /></RutaProtegida>} />
-                    <Route path="/config/tareas-programadas" element={<RutaProtegida permiso="config.tareas_programadas"><TareasProgramadas /></RutaProtegida>} />
-                    <Route path="/email/cuentas" element={<RutaProtegida permiso="email.cuentas_smtp"><CuentasSMTP /></RutaProtegida>} />
-                    <Route path="/email/crearTemplate" element={<RutaProtegida permiso="email.templates"><CrearTemplate /></RutaProtegida>} />
-                    <Route path="/email/templates" element={<RutaProtegida permiso="email.templates"><VerTemplatesEmail /></RutaProtegida>} />
-                    <Route path="/preview-template/:id" element={<RutaProtegida permiso="email.templates"><PreviewTemplate /></RutaProtegida>} />
-                    <Route path="/email/campanias" element={<RutaProtegida permiso="email.campanias"><VerCampañasEmail /></RutaProtegida>} />
-                    <Route path="/email/reportes" element={<RutaProtegida permiso="email.reportes"><VerReportesEmail /></RutaProtegida>} />
-                    <Route path="/email/desuscripciones" element={<RutaProtegida permiso="email.desuscripciones"><VerDesuscripcionesEmail /></RutaProtegida>} />
-                    <Route path="/email/envio-manual" element={<RutaProtegida permiso="email.envio_manual"><EnvioManual /></RutaProtegida>} />
-                    <Route path="/admin/usuarios" element={<RutaProtegida permiso="admin.usuarios"><GestionUsuarios /></RutaProtegida>} />
-                    <Route path="/admin/roles" element={<RutaProtegida permiso="admin.usuarios"><GestionRoles /></RutaProtegida>} />
-                    {/* WhatsApp API */}
-                    <Route path="/wapi/config" element={<RutaProtegida permiso="wapi.config"><WapiConfig /></RutaProtegida>} />
-                    <Route path="/wapi/templates" element={<RutaProtegida permiso="wapi.templates"><WapiTemplates /></RutaProtegida>} />
-                    <Route path="/wapi/campanias" element={<RutaProtegida permiso="wapi.campanias"><VerCampaniasWapi /></RutaProtegida>} />
-                    <Route path="/wapi/live" element={<RutaProtegida permiso="wapi.campanias"><WapiLiveDashboard /></RutaProtegida>} />
-                    <Route path="/wapi/bajas" element={<RutaProtegida permiso="wapi.bajas"><WapiBajas /></RutaProtegida>} />
-                    {/* Inbox WA */}
-                    <Route path="/wapi/inbox" element={<RutaProtegida permiso="wapi.inbox"><WapiInbox /></RutaProtegida>} />
-                    <Route path="/wapi/analitica" element={<RutaProtegida permiso="wapi.analitica"><WapiAnalitica /></RutaProtegida>} />
-                    {/* Deudores */}
-                    <Route path="/deudores" element={<RutaProtegida permiso="deudores.ver"><ListadoDeudores /></RutaProtegida>} />
-                    <Route path="/deudores/reportes" element={<RutaProtegida permiso="deudores.reportes"><ReportesDeudores /></RutaProtegida>} />
-                    <Route path="/deudores/:id" element={<RutaProtegida permiso="deudores.ver"><FichaDeudor /></RutaProtegida>} />
-                    {import.meta.env.DEV && (
-                        <Route path="/dev/simulador" element={<DevSimulador />} />
-                    )}
-                </Route>
+                        {/* Rutas privadas con layout */}
+                        <Route element={<LayoutPrivado mode={mode} toggleTheme={toggleTheme} />}>
+                            <Route path="/" element={<PaginaInicio />} />
+                            <Route path="/sesiones" element={<RutaProtegida permiso="whatsapp.sesiones"><EstadoSesiones /></RutaProtegida>} />
+                            <Route path="/conectar" element={<RutaProtegida permiso="whatsapp.conectar"><ConectarSesion /></RutaProtegida>} />
+                            <Route path="/subir-campania" element={<RutaProtegida permiso="whatsapp.campanias"><SubirCampaña /></RutaProtegida>} />
+                            <Route path="/campanias" element={<RutaProtegida permiso="whatsapp.campanias"><VerCampañas /></RutaProtegida>} />
+                            <Route path="/enviar" element={<RutaProtegida permiso="whatsapp.campanias"><EnviarMensajes /></RutaProtegida>} />
+                            <Route path="/reportes" element={<RutaProtegida permiso="whatsapp.reportes"><VerReportes /></RutaProtegida>} />
+                            <Route path="/templates" element={<RutaProtegida permiso="whatsapp.templates"><VerTemplates /></RutaProtegida>} />
+                            <Route path="/metricas" element={<RutaProtegida permiso="whatsapp.metricas"><VerMetricas /></RutaProtegida>} />
+                            <Route path="/config/respuestas-rapidas" element={<RutaProtegida permiso="wapi.respuestas_rapidas"><WapiRespuestasRapidas /></RutaProtegida>} />
+                            <Route path="/config/tareas-programadas" element={<RutaProtegida permiso="config.tareas_programadas"><TareasProgramadas /></RutaProtegida>} />
+                            <Route path="/email/cuentas" element={<RutaProtegida permiso="email.cuentas_smtp"><CuentasSMTP /></RutaProtegida>} />
+                            <Route path="/email/crearTemplate" element={<RutaProtegida permiso="email.templates"><CrearTemplate /></RutaProtegida>} />
+                            <Route path="/email/templates" element={<RutaProtegida permiso="email.templates"><VerTemplatesEmail /></RutaProtegida>} />
+                            <Route path="/preview-template/:id" element={<RutaProtegida permiso="email.templates"><PreviewTemplate /></RutaProtegida>} />
+                            <Route path="/email/campanias" element={<RutaProtegida permiso="email.campanias"><VerCampañasEmail /></RutaProtegida>} />
+                            <Route path="/email/reportes" element={<RutaProtegida permiso="email.reportes"><VerReportesEmail /></RutaProtegida>} />
+                            <Route path="/email/desuscripciones" element={<RutaProtegida permiso="email.desuscripciones"><VerDesuscripcionesEmail /></RutaProtegida>} />
+                            <Route path="/email/envio-manual" element={<RutaProtegida permiso="email.envio_manual"><EnvioManual /></RutaProtegida>} />
+                            <Route path="/admin/usuarios" element={<RutaProtegida permiso="admin.usuarios"><GestionUsuarios /></RutaProtegida>} />
+                            <Route path="/admin/roles" element={<RutaProtegida permiso="admin.usuarios"><GestionRoles /></RutaProtegida>} />
+                            {/* WhatsApp API */}
+                            <Route path="/wapi/config" element={<RutaProtegida permiso="wapi.config"><WapiConfig /></RutaProtegida>} />
+                            <Route path="/wapi/templates" element={<RutaProtegida permiso="wapi.templates"><WapiTemplates /></RutaProtegida>} />
+                            <Route path="/wapi/campanias" element={<RutaProtegida permiso="wapi.campanias"><VerCampaniasWapi /></RutaProtegida>} />
+                            <Route path="/wapi/live" element={<RutaProtegida permiso="wapi.campanias"><WapiLiveDashboard /></RutaProtegida>} />
+                            <Route path="/wapi/bajas" element={<RutaProtegida permiso="wapi.bajas"><WapiBajas /></RutaProtegida>} />
+                            {/* Inbox WA */}
+                            <Route path="/wapi/inbox" element={<RutaProtegida permiso="wapi.inbox"><WapiInbox /></RutaProtegida>} />
+                            <Route path="/wapi/analitica" element={<RutaProtegida permiso="wapi.analitica"><WapiAnalitica /></RutaProtegida>} />
+                            {/* Deudores */}
+                            <Route path="/deudores" element={<RutaProtegida permiso="deudores.ver"><ListadoDeudores /></RutaProtegida>} />
+                            <Route path="/deudores/reportes" element={<RutaProtegida permiso="deudores.reportes"><ReportesDeudores /></RutaProtegida>} />
+                            <Route path="/deudores/:id" element={<RutaProtegida permiso="deudores.ver"><FichaDeudor /></RutaProtegida>} />
+                            {import.meta.env.DEV && (
+                                <Route path="/dev/simulador" element={<DevSimulador />} />
+                            )}
+                        </Route>
 
-                {/* Catch-all */}
-                <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
-        </ThemeProvider>
+                        {/* Catch-all */}
+                        <Route path="*" element={<Navigate to="/" />} />
+                    </Routes>
+                </ThemeProvider>
+            </NotificationProvider>
         </AuthProvider>
     );
 }

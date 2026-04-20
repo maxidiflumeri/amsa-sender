@@ -16,7 +16,9 @@ import {
     Divider,
     Switch,
     Tooltip,
-    CssBaseline
+    CssBaseline,
+    Chip,
+    Button
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
@@ -47,6 +49,10 @@ import BlockIcon from '@mui/icons-material/Block';
 import BoltIcon from '@mui/icons-material/Bolt';
 import LiveTvIcon from '@mui/icons-material/LiveTv';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
+import NotificationsIcon from '@mui/icons-material/Notifications';
+import Badge from '@mui/material/Badge';
+import Popover from '@mui/material/Popover';
 
 const drawerWidth = 220;
 
@@ -165,6 +171,15 @@ export default function Layout({ children, mode, toggleTheme }) {
     const [openInbox, setOpenInbox] = useState(false);
     const [openDeudores, setOpenDeudores] = useState(false);
     const { hasPermiso } = useAuth();
+    const { unreadCount, unassignedCount, myActiveCount } = useNotifications();
+
+    const [notifAnchorEl, setNotifAnchorEl] = useState(null);
+    const openNotif = Boolean(notifAnchorEl);
+
+    const handleNotifOpen = (event) => setNotifAnchorEl(event.currentTarget);
+    const handleNotifClose = () => setNotifAnchorEl(null);
+
+    const totalPendientes = unreadCount + unassignedCount;
 
     const handleMenuOpen = (event) => {
         setAnchorEl(event.currentTarget);
@@ -841,8 +856,60 @@ export default function Layout({ children, mode, toggleTheme }) {
                         </Box>
                     </Box>
 
-                    {/* Derecha: avatar / menú usuario */}
-                    <Box display="flex" alignItems="center" gap={2}>
+                    {/* Derecha: Notificaciones + avatar */}
+                    <Box display="flex" alignItems="center" gap={1.5}>
+                        {hasPermiso('wapi.inbox') && (
+                            <>
+                                <Tooltip title="Pendientes de Inbox">
+                                    <IconButton color="inherit" onClick={handleNotifOpen}>
+                                        <Badge badgeContent={totalPendientes} color="error" max={99}>
+                                            <NotificationsIcon />
+                                        </Badge>
+                                    </IconButton>
+                                </Tooltip>
+                                <Popover
+                                    open={openNotif}
+                                    anchorEl={notifAnchorEl}
+                                    onClose={handleNotifClose}
+                                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                                    PaperProps={{ sx: { p: 2, minWidth: 220, borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' } }}
+                                >
+                                    <Typography variant="subtitle2" fontWeight={700} gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <NotificationsIcon fontSize="small" /> Resumen de Pendientes
+                                    </Typography>
+                                    <Divider sx={{ my: 1 }} />
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Typography variant="body2">Mensajes sin leer:</Typography>
+                                            <Chip label={unreadCount} size="small" color={unreadCount > 0 ? "error" : "default"} />
+                                        </Box>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Typography variant="body2">Chats sin asignar:</Typography>
+                                            <Chip label={unassignedCount} size="small" color={unassignedCount > 0 ? "warning" : "default"} />
+                                        </Box>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Typography variant="body2">Tus chats activos:</Typography>
+                                            <Chip label={myActiveCount} size="small" color="primary" variant="outlined" />
+                                        </Box>
+                                        <Divider sx={{ my: 1 }} />
+                                        <Button
+                                            component={RouterLink}
+                                            to="/wapi/inbox"
+                                            fullWidth
+                                            variant="contained"
+                                            size="small"
+                                            onClick={handleNotifClose}
+                                            startIcon={<InboxIcon />}
+                                            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+                                        >
+                                            Ver Inbox
+                                        </Button>
+                                    </Box>
+                                </Popover>
+                            </>
+                        )}
+                        
                         <Tooltip title={user?.nombre || ''}>
                             <IconButton onClick={handleMenuOpen} color="inherit">
                                 {avatarContent}
