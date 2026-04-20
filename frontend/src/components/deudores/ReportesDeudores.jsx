@@ -395,10 +395,11 @@ export default function ReportesDeudores() {
             </Box>
 
             <Paper sx={{ mb: 3, p: 2, bgcolor: theme.palette.background.paper }}>
-                <Grid container spacing={2} sx={{ mb: 2 }}>
-                    <Grid item xs={12} md={6}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap', width: '100%', mb: 2 }}>
+                    <Box sx={{ flex: 3, minWidth: 200 }}>
                         <Autocomplete
                             multiple
+                            fullWidth
                             size="small"
                             options={empresas}
                             value={empresasInput}
@@ -413,16 +414,18 @@ export default function ReportesDeudores() {
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
+                                    fullWidth
                                     label="Empresas"
                                     placeholder={empresasInput.length === 0 ? 'Todas' : ''}
                                 />
                             )}
                             noOptionsText="Sin coincidencias"
                         />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
+                    </Box>
+                    <Box sx={{ flex: 2, minWidth: 120 }}>
                         <Autocomplete
                             multiple
+                            fullWidth
                             size="small"
                             disabled={empresasInput.length === 0}
                             options={remesasList}
@@ -436,10 +439,11 @@ export default function ReportesDeudores() {
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
-                                    label="Remesas (Exporte)"
+                                    fullWidth
+                                    label="Remesas"
                                     placeholder={
                                         empresasInput.length === 0
-                                            ? 'Seleccione una empresa primero'
+                                            ? 'Empresa...'
                                             : remesasInput.length === 0
                                                 ? 'Todas'
                                                 : ''
@@ -448,8 +452,8 @@ export default function ReportesDeudores() {
                             )}
                             noOptionsText="Sin coincidencias"
                         />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
+                    </Box>
+                    <Box sx={{ flex: 1.5, minWidth: 130 }}>
                         <TextField
                             fullWidth
                             size="small"
@@ -460,8 +464,8 @@ export default function ReportesDeudores() {
                             onKeyDown={handleKeyDown}
                             InputLabelProps={{ shrink: true }}
                         />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
+                    </Box>
+                    <Box sx={{ flex: 1.5, minWidth: 130 }}>
                         <TextField
                             fullWidth
                             size="small"
@@ -472,13 +476,13 @@ export default function ReportesDeudores() {
                             onKeyDown={handleKeyDown}
                             InputLabelProps={{ shrink: true }}
                         />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
+                    </Box>
+                    <Box sx={{ flex: 2, minWidth: 120 }}>
                         <FormControl fullWidth size="small">
-                            <InputLabel>Canal (Exporte)</InputLabel>
+                            <InputLabel>Canal</InputLabel>
                             <Select
                                 value={canalInput}
-                                label="Canal (Exporte)"
+                                label="Canal"
                                 onChange={(e) => setCanalInput(e.target.value)}
                             >
                                 <MenuItem value="">Todos</MenuItem>
@@ -487,30 +491,30 @@ export default function ReportesDeudores() {
                                 <MenuItem value="wapi">WhatsApp Meta</MenuItem>
                             </Select>
                         </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
+                    </Box>
+                    <Box sx={{ flex: 2, minWidth: 120 }}>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
                             <Button
                                 fullWidth
                                 variant="contained"
                                 onClick={handleBuscar}
                                 disabled={!hasMinInputs || loading}
                                 startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <SearchIcon />}
-                                sx={{ height: 40 }}
+                                sx={{ height: 40, px: 1 }}
                             >
                                 Buscar
                             </Button>
                             <Button
                                 variant="outlined"
                                 onClick={handleLimpiarFiltros}
-                                sx={{ height: 40, minWidth: 40, px: 1 }}
+                                sx={{ height: 40, minWidth: 40, px: 0 }}
                                 title="Limpiar filtros"
                             >
                                 <ClearIcon fontSize="small" />
                             </Button>
                         </Box>
-                    </Grid>
-                </Grid>
+                    </Box>
+                </Box>
 
                 {/* KPI Cards */}
                 <Grid container spacing={2} sx={{ mb: 2 }}>

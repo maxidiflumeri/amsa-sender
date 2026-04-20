@@ -222,10 +222,11 @@ export default function ListadoDeudores() {
                     borderRadius: 2,
                 }}
             >
-                <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap', width: '100%' }}>
+                    <Box sx={{ flex: 3, minWidth: 250 }}>
                         <Autocomplete
                             multiple
+                            fullWidth
                             size="small"
                             options={empresas}
                             value={empresasInput}
@@ -240,16 +241,18 @@ export default function ListadoDeudores() {
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
+                                    fullWidth
                                     label="Empresas"
                                     placeholder={empresasInput.length === 0 ? 'Todas' : ''}
                                 />
                             )}
                             noOptionsText="Sin coincidencias"
                         />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
+                    </Box>
+                    <Box sx={{ flex: 2, minWidth: 150 }}>
                         <Autocomplete
                             multiple
+                            fullWidth
                             size="small"
                             disabled={empresasInput.length === 0}
                             options={remesas}
@@ -263,10 +266,11 @@ export default function ListadoDeudores() {
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
+                                    fullWidth
                                     label="Remesas"
                                     placeholder={
                                         empresasInput.length === 0
-                                            ? 'Seleccione una empresa primero'
+                                            ? 'Empresa...'
                                             : remesasInput.length === 0
                                                 ? 'Todas'
                                                 : ''
@@ -275,19 +279,19 @@ export default function ListadoDeudores() {
                             )}
                             noOptionsText="Sin coincidencias"
                         />
-                    </Grid>
-                    <Grid item xs={12} sm={8} md={6}>
+                    </Box>
+                    <Box sx={{ flex: 3.5, minWidth: 200 }}>
                         <TextField
                             fullWidth
                             label="Buscar (ID, Nombre, Documento)"
-                            placeholder="Escriba y presione Buscar..."
+                            placeholder="Buscar..."
                             value={qInput}
                             onChange={(e) => setQInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             size="small"
                         />
-                    </Grid>
-                    <Grid item xs={12} sm={4} md={3}>
+                    </Box>
+                    <Box sx={{ flex: 1.5, minWidth: 100 }}>
                         <TextField
                             fullWidth
                             label="Nro. Empresa"
@@ -296,30 +300,30 @@ export default function ListadoDeudores() {
                             onKeyDown={handleKeyDown}
                             size="small"
                         />
-                    </Grid>
-                    <Grid item xs={12} md={3}>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
+                    </Box>
+                    <Box sx={{ flex: 2, minWidth: 120 }}>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
                             <Button
                                 fullWidth
                                 variant="contained"
                                 onClick={handleBuscar}
                                 disabled={!hasActiveInputs || loading}
                                 startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <SearchIcon />}
-                                sx={{ height: 40 }}
+                                sx={{ height: 40, px: 1 }}
                             >
                                 Buscar
                             </Button>
                             <Button
                                 variant="outlined"
                                 onClick={limpiarFiltros}
-                                sx={{ height: 40, minWidth: 40, px: 1 }}
+                                sx={{ height: 40, minWidth: 40, px: 0 }}
                                 title="Limpiar filtros"
                             >
                                 <ClearIcon fontSize="small" />
                             </Button>
                         </Box>
-                    </Grid>
-                </Grid>
+                    </Box>
+                </Box>
             </Paper>
 
             {/* Error */}
