@@ -586,15 +586,16 @@ export class DeudoresService {
     const page = query.page ?? 0;
     const size = Math.min(query.size ?? 20, 100);
     const empresas = query.empresas;
+    const remesas = query.remesas;
     const desde = query.desde ? new Date(query.desde) : null;
     const hasta = query.hasta ? new Date(query.hasta) : null;
 
     this.logger.log(
-      `Obteniendo reporte de empresas: empresas=${(empresas || []).join('|') || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}, page=${page}, size=${size}`,
+      `Obteniendo reporte de empresas: empresas=${(empresas || []).join('|') || 'todas'}, remesas=${(remesas || []).join('|') || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}, page=${page}, size=${size}`,
     );
 
     try {
-      const all = await this.calcularReporteEmpresas(empresas, desde, hasta);
+      const all = await this.calcularReporteEmpresas(empresas, remesas, desde, hasta);
       const total = all.length;
       const data = all.slice(page * size, page * size + size);
       const totalPages = Math.ceil(total / size);
@@ -620,12 +621,14 @@ export class DeudoresService {
    */
   private async calcularReporteEmpresas(
     empresas: string[] | undefined,
+    remesas: string[] | undefined,
     desde: Date | null,
     hasta: Date | null,
   ): Promise<ReporteEmpresa[]> {
     try {
-      // Construir WHERE dinámico para empresas (soporta múltiples)
+      // Construir WHERE dinámico para empresas y remesas
       const whereEmpresaClause = this.buildEmpresaWhereClause(empresas);
+      const whereRemesaClause = this.buildRemesaWhereClause(remesas);
 
       // Construir WHERE dinámico para fechas
       const whereFechaWa = this.buildFechaWhereClause('r', 'enviadoAt', desde, hasta);
@@ -647,6 +650,7 @@ export class DeudoresService {
         LEFT JOIN \`WaApiContacto\` cwa ON cwa.deudorId = d.id
         WHERE 1=1
           ${whereEmpresaClause}
+          ${whereRemesaClause}
         GROUP BY d.empresa
         ORDER BY totalDeudores DESC
       `;
@@ -661,6 +665,7 @@ export class DeudoresService {
         INNER JOIN \`Deudor\` d ON d.id = co.deudorId
         WHERE r.enviadoAt IS NOT NULL
           ${whereEmpresaClause}
+          ${whereRemesaClause}
           ${whereFechaWa}
         GROUP BY d.empresa
       `;
@@ -678,6 +683,7 @@ export class DeudoresService {
         INNER JOIN \`Deudor\` d ON d.id = co.deudorId
         WHERE re.enviadoAt IS NOT NULL
           ${whereEmpresaClause}
+          ${whereRemesaClause}
           ${whereFechaEmail}
         GROUP BY d.empresa
       `;
@@ -693,6 +699,7 @@ export class DeudoresService {
         INNER JOIN \`Deudor\` d ON d.id = co.deudorId
         WHERE 1=1
           ${whereEmpresaClause}
+          ${whereRemesaClause}
           ${whereFechaRebote}
         GROUP BY d.empresa
       `;
@@ -710,6 +717,7 @@ export class DeudoresService {
         INNER JOIN \`Deudor\` d ON d.id = co.deudorId
         WHERE wr.enviadoAt IS NOT NULL
           ${whereEmpresaClause}
+          ${whereRemesaClause}
           ${whereFechaWapi}
         GROUP BY d.empresa
       `;
@@ -832,15 +840,16 @@ export class DeudoresService {
     const page = query.page ?? 0;
     const size = Math.min(query.size ?? 20, 100);
     const empresas = query.empresas;
+    const remesas = query.remesas;
     const desde = query.desde ? new Date(query.desde) : null;
     const hasta = query.hasta ? new Date(query.hasta) : null;
 
     this.logger.log(
-      `Obteniendo reporte de remesas: empresas=${(empresas || []).join('|') || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}, page=${page}, size=${size}`,
+      `Obteniendo reporte de remesas: empresas=${(empresas || []).join('|') || 'todas'}, remesas=${(remesas || []).join('|') || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}, page=${page}, size=${size}`,
     );
 
     try {
-      const all = await this.calcularReporteRemesas(empresas, desde, hasta);
+      const all = await this.calcularReporteRemesas(empresas, remesas, desde, hasta);
       const total = all.length;
       const data = all.slice(page * size, page * size + size);
       const totalPages = Math.ceil(total / size);
@@ -866,12 +875,14 @@ export class DeudoresService {
    */
   private async calcularReporteRemesas(
     empresas: string[] | undefined,
+    remesas: string[] | undefined,
     desde: Date | null,
     hasta: Date | null,
   ): Promise<ReporteRemesa[]> {
     try {
-      // Construir WHERE dinámico para empresas (soporta múltiples)
+      // Construir WHERE dinámico para empresas y remesas
       const whereEmpresaClause = this.buildEmpresaWhereClause(empresas);
+      const whereRemesaClause = this.buildRemesaWhereClause(remesas);
 
       // Construir WHERE dinámico para fechas
       const whereFechaWa = this.buildFechaWhereClause('r', 'enviadoAt', desde, hasta);
@@ -894,6 +905,7 @@ export class DeudoresService {
         LEFT JOIN \`WaApiContacto\` cwa ON cwa.deudorId = d.id
         WHERE 1=1
           ${whereEmpresaClause}
+          ${whereRemesaClause}
         GROUP BY d.empresa, d.remesa
         ORDER BY d.empresa ASC, totalDeudores DESC
       `;
@@ -909,6 +921,7 @@ export class DeudoresService {
         INNER JOIN \`Deudor\` d ON d.id = co.deudorId
         WHERE r.enviadoAt IS NOT NULL
           ${whereEmpresaClause}
+          ${whereRemesaClause}
           ${whereFechaWa}
         GROUP BY d.empresa, d.remesa
       `;
@@ -927,6 +940,7 @@ export class DeudoresService {
         INNER JOIN \`Deudor\` d ON d.id = co.deudorId
         WHERE re.enviadoAt IS NOT NULL
           ${whereEmpresaClause}
+          ${whereRemesaClause}
           ${whereFechaEmail}
         GROUP BY d.empresa, d.remesa
       `;
@@ -943,6 +957,7 @@ export class DeudoresService {
         INNER JOIN \`Deudor\` d ON d.id = co.deudorId
         WHERE 1=1
           ${whereEmpresaClause}
+          ${whereRemesaClause}
           ${whereFechaRebote}
         GROUP BY d.empresa, d.remesa
       `;
@@ -961,6 +976,7 @@ export class DeudoresService {
         INNER JOIN \`Deudor\` d ON d.id = co.deudorId
         WHERE wr.enviadoAt IS NOT NULL
           ${whereEmpresaClause}
+          ${whereRemesaClause}
           ${whereFechaWapi}
         GROUP BY d.empresa, d.remesa
       `;
@@ -1107,7 +1123,7 @@ export class DeudoresService {
       let contentType: string;
 
       if (query.tipo === 'empresa') {
-        const data = await this.calcularReporteEmpresas(query.empresas, desde, hasta);
+        const data = await this.calcularReporteEmpresas(query.empresas, query.remesas, desde, hasta);
         if (query.formato === 'csv') {
           buffer = await this.generarCsvEmpresas(data);
           filename = `${baseName}.csv`;
@@ -1118,7 +1134,7 @@ export class DeudoresService {
           contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         }
       } else {
-        const data = await this.calcularReporteRemesas(query.empresas, desde, hasta);
+        const data = await this.calcularReporteRemesas(query.empresas, query.remesas, desde, hasta);
         if (query.formato === 'csv') {
           buffer = await this.generarCsvRemesas(data);
           filename = `${baseName}.csv`;
@@ -1755,6 +1771,17 @@ export class DeudoresService {
       return Prisma.sql`AND d.empresa = ${empresas[0]}`;
     }
     return Prisma.sql`AND d.empresa IN (${Prisma.join(empresas)})`;
+  }
+
+  /**
+   * Helper: construye la cláusula WHERE para filtro de remesas (soporta múltiples)
+   */
+  private buildRemesaWhereClause(remesas: string[] | undefined): Prisma.Sql {
+    if (!remesas || remesas.length === 0) return Prisma.empty;
+    if (remesas.length === 1) {
+      return Prisma.sql`AND d.remesa = ${remesas[0]}`;
+    }
+    return Prisma.sql`AND d.remesa IN (${Prisma.join(remesas)})`;
   }
 
   /**

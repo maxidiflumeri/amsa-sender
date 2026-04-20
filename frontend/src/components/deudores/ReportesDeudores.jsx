@@ -635,16 +635,16 @@ export default function ReportesDeudores() {
                                         <TableCell align="center">{r.totalDeudores.toLocaleString()}</TableCell>
                                         <TableCell align="center">
                                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
-                                                <Chip icon={<WhatsAppIcon />} label={r.contactosPorCanal.whatsapp} size="small" color="success" />
+                                                <Chip icon={<WhatsAppIcon />} label={r.contactosPorCanal.wapi} size="small" color="success" />
                                                 <Chip icon={<EmailIcon />} label={r.contactosPorCanal.email} size="small" color="primary" />
-                                                <Chip icon={<ApiIcon />} label={r.contactosPorCanal.wapi} size="small" color="secondary" />
+                                                <Chip icon={<ApiIcon />} label={r.contactosPorCanal.whatsapp} size="small" color="secondary" />
                                             </Box>
                                         </TableCell>
                                         <TableCell align="center">
                                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
-                                                <Chip icon={<WhatsAppIcon />} label={r.envios.whatsapp} size="small" variant="outlined" color="success" />
+                                                <Chip icon={<WhatsAppIcon />} label={r.envios.wapi} size="small" variant="outlined" color="success" />
                                                 <Chip icon={<EmailIcon />} label={r.envios.email} size="small" variant="outlined" color="primary" />
-                                                <Chip icon={<ApiIcon />} label={r.envios.wapi} size="small" variant="outlined" color="secondary" />
+                                                <Chip icon={<ApiIcon />} label={r.envios.whatsapp} size="small" variant="outlined" color="secondary" />
                                             </Box>
                                         </TableCell>
                                         <TableCell align="center">{r.email.entregados}</TableCell>

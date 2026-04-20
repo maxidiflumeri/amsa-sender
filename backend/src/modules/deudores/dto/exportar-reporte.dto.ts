@@ -37,6 +37,12 @@ export class ExportarReporteDto {
   empresas?: string[];
 
   @IsOptional()
+  @Transform(toStringArray)
+  @IsArray()
+  @IsString({ each: true })
+  remesas?: string[];
+
+  @IsOptional()
   @IsISO8601()
   desde?: string;
 
