@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Box,
     Container,
@@ -21,14 +21,15 @@ import {
     Grid,
     FormControl,
     InputLabel,
-    Tabs,
-    Tab,
     Card,
     CardContent,
     Menu,
     ListItemIcon,
     ListItemText,
     CircularProgress,
+    Autocomplete,
+    LinearProgress,
+    Fade,
 } from '@mui/material';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
@@ -36,12 +37,12 @@ import EmailIcon from '@mui/icons-material/Email';
 import ApiIcon from '@mui/icons-material/Api';
 import ClearIcon from '@mui/icons-material/Clear';
 import DownloadIcon from '@mui/icons-material/Download';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import SendIcon from '@mui/icons-material/Send';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import TableChartIcon from '@mui/icons-material/TableChart';
+import SearchIcon from '@mui/icons-material/Search';
 import api from '../../api/axios';
 
 const SkeletonRow = ({ columns }) => (
@@ -86,15 +87,15 @@ const formatPercentage = (value) => {
 export default function ReportesDeudores() {
     const theme = useTheme();
 
-    // Tab actual
-    const [tab, setTab] = useState(0); // 0 = empresas, 1 = remesas
+    // Inputs del formulario
+    const [empresasInput, setEmpresasInput] = useState([]);
+    const [desdeInput, setDesdeInput] = useState('');
+    const [hastaInput, setHastaInput] = useState('');
+    const [canalInput, setCanalInput] = useState('');
+    const [remesasInput, setRemesasInput] = useState([]);
 
-    // Filtros
-    const [empresa, setEmpresa] = useState('');
-    const [desde, setDesde] = useState('');
-    const [hasta, setHasta] = useState('');
-    const [canal, setCanal] = useState('');
-    const [remesa, setRemesa] = useState('');
+    // Filtros aplicados (los que realmente se usan)
+    const [appliedFilters, setAppliedFilters] = useState(null);
 
     // Data
     const [reportes, setReportes] = useState([]);
@@ -135,65 +136,63 @@ export default function ReportesDeudores() {
         cargarEmpresas();
     }, []);
 
-    // Cargar remesas al cambiar la empresa
+    // Cargar remesas al cambiar empresas del formulario
     useEffect(() => {
         const cargarRemesas = async () => {
-            if (!empresa) {
-                setRemesasList([]);
-                setRemesa('');
-                return;
-            }
             try {
-                const res = await api.get(`/deudores/remesas?empresa=${encodeURIComponent(empresa)}`);
+                const params = empresasInput.length > 0
+                    ? { empresas: empresasInput.join(',') }
+                    : {};
+                const res = await api.get('/deudores/remesas', { params });
                 setRemesasList(res.data || []);
             } catch (err) {
                 console.error('Error al cargar remesas:', err);
             }
         };
         cargarRemesas();
-    }, [empresa]);
+    }, [empresasInput]);
 
-    // Cargar reportes cuando cambian filtros, tab, o paginación
+    // Depura remesas seleccionadas si no están en la lista nueva
     useEffect(() => {
-        cargarReportes();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tab, empresa, desde, hasta, page, rowsPerPage]);
+        if (remesasInput.length === 0) return;
+        const filtradas = remesasInput.filter((r) => remesasList.includes(r));
+        if (filtradas.length !== remesasInput.length) {
+            setRemesasInput(filtradas);
+        }
+    }, [remesasList, remesasInput]);
 
-    const cargarReportes = async () => {
-        // Validar que haya al menos un filtro en tab 0, o empresa en tab 1
-        if (tab === 0 && !empresa && !desde && !hasta) {
-            setReportes([]);
-            setTotal(0);
-            setKpis({ totalDeudores: 0, totalEnvios: 0, tasaAperturaEmail: 0, tasaLecturaWapi: 0 });
-            setLoading(false);
-            return;
-        }
-        if (tab === 1 && !empresa) {
-            setReportes([]);
-            setTotal(0);
-            setKpis({ totalDeudores: 0, totalEnvios: 0, tasaAperturaEmail: 0, tasaLecturaWapi: 0 });
-            setLoading(false);
-            return;
-        }
+    // Validación mínima para habilitar la búsqueda
+    const hasMinInputs = Boolean(empresasInput.length > 0 || desdeInput || hastaInput);
+
+    const cargarReportes = useCallback(async () => {
+        if (!appliedFilters) return;
 
         setLoading(true);
         setError(null);
 
         try {
-            const endpoint = tab === 0 ? '/deudores/reportes/empresas' : '/deudores/reportes/remesas';
+            const endpoint = '/deudores/reportes/empresas';
             const params = {
                 page,
                 size: rowsPerPage,
             };
-            if (empresa) params.empresa = empresa;
-            if (desde) params.desde = new Date(desde).toISOString();
-            if (hasta) params.hasta = new Date(hasta).toISOString();
+            if (appliedFilters.empresas && appliedFilters.empresas.length > 0) {
+                params.empresas = appliedFilters.empresas.join(',');
+            }
+            if (appliedFilters.desde) {
+                const d = new Date(appliedFilters.desde);
+                d.setHours(0, 0, 0, 0);
+                params.desde = d.toISOString();
+            }
+            if (appliedFilters.hasta) {
+                const h = new Date(appliedFilters.hasta);
+                h.setHours(23, 59, 59, 999);
+                params.hasta = h.toISOString();
+            }
 
             const res = await api.get(endpoint, { params });
             setReportes(res.data.data || []);
             setTotal(res.data.total || 0);
-
-            // Calcular KPIs de la página actual
             calcularKpis(res.data.data || []);
         } catch (err) {
             console.error('Error al cargar reportes:', err);
@@ -201,7 +200,11 @@ export default function ReportesDeudores() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [appliedFilters, page, rowsPerPage]);
+
+    useEffect(() => {
+        cargarReportes();
+    }, [cargarReportes]);
 
     const calcularKpis = (data) => {
         if (!data || data.length === 0) {
@@ -236,18 +239,36 @@ export default function ReportesDeudores() {
         });
     };
 
-    const handleLimpiarFiltros = () => {
-        setEmpresa('');
-        setDesde('');
-        setHasta('');
-        setCanal('');
-        setRemesa('');
+    const handleBuscar = () => {
+        if (!hasMinInputs) return;
+        setAppliedFilters({
+            empresas: empresasInput,
+            desde: desdeInput,
+            hasta: hastaInput,
+            canal: canalInput,
+            remesas: remesasInput,
+        });
         setPage(0);
     };
 
-    const handleTabChange = (event, newValue) => {
-        setTab(newValue);
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            handleBuscar();
+        }
+    };
+
+    const handleLimpiarFiltros = () => {
+        setEmpresasInput([]);
+        setDesdeInput('');
+        setHastaInput('');
+        setCanalInput('');
+        setRemesasInput([]);
+        setAppliedFilters(null);
+        setReportes([]);
+        setTotal(0);
+        setKpis({ totalDeudores: 0, totalEnvios: 0, tasaAperturaEmail: 0, tasaLecturaWapi: 0 });
         setPage(0);
+        setError(null);
     };
 
     const handleChangePage = (event, newPage) => {
@@ -259,6 +280,7 @@ export default function ReportesDeudores() {
         setPage(0);
     };
 
+    // Para exportar se usan los inputs actuales (el usuario decide qué exporta)
     const handleExportar = async (formato) => {
         setAnchorExport(null);
         setExportando(true);
@@ -266,12 +288,20 @@ export default function ReportesDeudores() {
 
         try {
             const params = new URLSearchParams({
-                tipo: tab === 0 ? 'empresa' : 'remesa',
+                tipo: 'empresa',
                 formato,
             });
-            if (empresa) params.append('empresa', empresa);
-            if (desde) params.append('desde', new Date(desde).toISOString());
-            if (hasta) params.append('hasta', new Date(hasta).toISOString());
+            if (empresasInput.length > 0) params.append('empresas', empresasInput.join(','));
+            if (desdeInput) {
+                const d = new Date(desdeInput);
+                d.setHours(0, 0, 0, 0);
+                params.append('desde', d.toISOString());
+            }
+            if (hastaInput) {
+                const h = new Date(hastaInput);
+                h.setHours(23, 59, 59, 999);
+                params.append('hasta', h.toISOString());
+            }
 
             const response = await api.get(`/deudores/reportes/exportar?${params.toString()}`, {
                 responseType: 'blob',
@@ -304,11 +334,19 @@ export default function ReportesDeudores() {
 
         try {
             const params = new URLSearchParams({ formato });
-            if (empresa) params.append('empresa', empresa);
-            if (desde) params.append('desde', new Date(desde).toISOString());
-            if (hasta) params.append('hasta', new Date(hasta).toISOString());
-            if (canal) params.append('canal', canal);
-            if (remesa) params.append('remesa', remesa);
+            if (empresasInput.length > 0) params.append('empresas', empresasInput.join(','));
+            if (desdeInput) {
+                const d = new Date(desdeInput);
+                d.setHours(0, 0, 0, 0);
+                params.append('desde', d.toISOString());
+            }
+            if (hastaInput) {
+                const h = new Date(hastaInput);
+                h.setHours(23, 59, 59, 999);
+                params.append('hasta', h.toISOString());
+            }
+            if (canalInput) params.append('canal', canalInput);
+            if (remesasInput.length > 0) params.append('remesas', remesasInput.join(','));
 
             const response = await api.get(`/deudores/reportes/exportar-detalle?${params.toString()}`, {
                 responseType: 'blob',
@@ -344,58 +382,82 @@ export default function ReportesDeudores() {
             </Box>
 
             <Paper sx={{ mb: 3, p: 2, bgcolor: theme.palette.background.paper }}>
-                <Tabs value={tab} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-                    <Tab label="Por empresa" />
-                    <Tab label="Por remesa" />
-                </Tabs>
-
                 <Grid container spacing={2} sx={{ mb: 2 }}>
-                    {tab === 1 && (
-                        <Grid item xs={12} md={3}>
-                            <FormControl fullWidth size="small">
-                                <InputLabel>Empresa</InputLabel>
-                                <Select
-                                    value={empresa}
-                                    label="Empresa"
-                                    onChange={(e) => { setEmpresa(e.target.value); setPage(0); }}
-                                >
-                                    <MenuItem value="">Todas</MenuItem>
-                                    {empresas.map((emp) => (
-                                        <MenuItem key={emp} value={emp}>{emp}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        </Grid>
-                    )}
-                    <Grid item xs={12} md={tab === 1 ? 2 : 2}>
+                    <Grid item xs={12} md={6}>
+                        <Autocomplete
+                            multiple
+                            size="small"
+                            options={empresas}
+                            value={empresasInput}
+                            onChange={(_, v) => setEmpresasInput(v)}
+                            onKeyDown={handleKeyDown}
+                            filterSelectedOptions
+                            disableCloseOnSelect
+                            limitTags={3}
+                            ChipProps={{ size: 'small' }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Empresas"
+                                    placeholder={empresasInput.length === 0 ? 'Todas' : ''}
+                                />
+                            )}
+                            noOptionsText="Sin coincidencias"
+                        />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                        <Autocomplete
+                            multiple
+                            size="small"
+                            options={remesasList}
+                            value={remesasInput}
+                            onChange={(_, v) => setRemesasInput(v)}
+                            onKeyDown={handleKeyDown}
+                            filterSelectedOptions
+                            disableCloseOnSelect
+                            limitTags={3}
+                            ChipProps={{ size: 'small' }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Remesas (Exporte)"
+                                    placeholder={remesasInput.length === 0 ? 'Todas' : ''}
+                                />
+                            )}
+                            noOptionsText={empresasInput.length > 0 ? 'Sin coincidencias' : 'Se listan todas las remesas'}
+                        />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
                         <TextField
                             fullWidth
                             size="small"
                             type="date"
                             label="Desde"
-                            value={desde}
-                            onChange={(e) => { setDesde(e.target.value); setPage(0); }}
+                            value={desdeInput}
+                            onChange={(e) => setDesdeInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             InputLabelProps={{ shrink: true }}
                         />
                     </Grid>
-                    <Grid item xs={12} md={tab === 1 ? 2 : 2}>
+                    <Grid item xs={12} sm={6} md={3}>
                         <TextField
                             fullWidth
                             size="small"
                             type="date"
                             label="Hasta"
-                            value={hasta}
-                            onChange={(e) => { setHasta(e.target.value); setPage(0); }}
+                            value={hastaInput}
+                            onChange={(e) => setHastaInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             InputLabelProps={{ shrink: true }}
                         />
                     </Grid>
-                    <Grid item xs={12} md={tab === 1 ? 3 : 4}>
+                    <Grid item xs={12} sm={6} md={3}>
                         <FormControl fullWidth size="small">
                             <InputLabel>Canal (Exporte)</InputLabel>
                             <Select
-                                value={canal}
+                                value={canalInput}
                                 label="Canal (Exporte)"
-                                onChange={(e) => { setCanal(e.target.value); setPage(0); }}
+                                onChange={(e) => setCanalInput(e.target.value)}
                             >
                                 <MenuItem value="">Todos</MenuItem>
                                 <MenuItem value="whatsapp">WhatsApp Legacy</MenuItem>
@@ -404,32 +466,27 @@ export default function ReportesDeudores() {
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} md={tab === 1 ? 2 : 2}>
-                        <FormControl fullWidth size="small">
-                            <InputLabel>Remesa (Exporte)</InputLabel>
-                            <Select
-                                value={remesa}
-                                label="Remesa (Exporte)"
-                                onChange={(e) => { setRemesa(e.target.value); setPage(0); }}
-                                disabled={!empresa || remesasList.length === 0}
+                    <Grid item xs={12} sm={6} md={3}>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                                fullWidth
+                                variant="contained"
+                                onClick={handleBuscar}
+                                disabled={!hasMinInputs || loading}
+                                startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <SearchIcon />}
+                                sx={{ height: 40 }}
                             >
-                                <MenuItem value="">Todas</MenuItem>
-                                {remesasList.map((r) => (
-                                    <MenuItem key={r} value={r}>{r}</MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={tab === 1 ? 1 : 2}>
-                        <Button
-                            fullWidth
-                            variant="outlined"
-                            startIcon={<ClearIcon />}
-                            onClick={handleLimpiarFiltros}
-                            sx={{ height: '100%' }}
-                        >
-                            Limpiar
-                        </Button>
+                                Buscar
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                onClick={handleLimpiarFiltros}
+                                sx={{ height: 40, minWidth: 40, px: 1 }}
+                                title="Limpiar filtros"
+                            >
+                                <ClearIcon fontSize="small" />
+                            </Button>
+                        </Box>
                     </Grid>
                 </Grid>
 
@@ -474,14 +531,27 @@ export default function ReportesDeudores() {
                 </Grid>
             </Paper>
 
-            <Paper sx={{ bgcolor: theme.palette.background.paper }}>
+            <Paper sx={{ bgcolor: theme.palette.background.paper, position: 'relative' }}>
+                <Fade in={loading} unmountOnExit>
+                    <LinearProgress
+                        sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            zIndex: 2,
+                            height: 3,
+                        }}
+                    />
+                </Fade>
+
                 {error && (
                     <Alert severity="error" sx={{ m: 2 }}>
                         {error}
                     </Alert>
                 )}
 
-                {!loading && !error && reportes.length === 0 && (tab === 0 ? (empresa || desde || hasta) : empresa) && (
+                {!loading && !error && appliedFilters && reportes.length === 0 && (
                     <Alert severity="info" sx={{ m: 2 }}>
                         Sin datos en el período seleccionado para los filtros aplicados.
                     </Alert>
@@ -492,7 +562,6 @@ export default function ReportesDeudores() {
                         <TableHead>
                             <TableRow sx={{ bgcolor: theme.palette.mode === 'dark' ? '#2a2a2a' : '#f5f5f5' }}>
                                 <TableCell><strong>Empresa</strong></TableCell>
-                                {tab === 1 && <TableCell><strong>Remesa</strong></TableCell>}
                                 <TableCell align="center"><strong>Deudores</strong></TableCell>
                                 <TableCell align="center"><strong>Contactos</strong></TableCell>
                                 <TableCell align="center"><strong>Envíos</strong></TableCell>
@@ -510,29 +579,24 @@ export default function ReportesDeudores() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {tab === 0 && !empresa && !desde && !hasta ? (
+                            {!appliedFilters && !loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={16} align="center" sx={{ py: 4 }}>
-                                        <Typography variant="body1" color="text.secondary">
-                                            Utilice los filtros superiores para ver los reportes
-                                        </Typography>
-                                    </TableCell>
-                                </TableRow>
-                            ) : tab === 1 && !empresa ? (
-                                <TableRow>
-                                    <TableCell colSpan={16} align="center" sx={{ py: 4 }}>
-                                        <Typography variant="body1" color="text.secondary">
-                                            Debe seleccionar una empresa para ver reportes por remesa
-                                        </Typography>
+                                    <TableCell colSpan={15} align="center" sx={{ py: 6 }}>
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                                            <SearchIcon sx={{ fontSize: 48, color: theme.palette.text.disabled }} />
+                                            <Typography variant="body1" color="text.secondary">
+                                                Utilice los filtros y presione <strong>Buscar</strong> para ver los reportes
+                                            </Typography>
+                                        </Box>
                                     </TableCell>
                                 </TableRow>
                             ) : loading ? (
                                 Array(5).fill(0).map((_, i) => (
-                                    <SkeletonRow key={i} columns={tab === 0 ? 15 : 16} />
+                                    <SkeletonRow key={i} columns={15} />
                                 ))
                             ) : reportes.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={16} align="center" sx={{ py: 4 }}>
+                                    <TableCell colSpan={15} align="center" sx={{ py: 4 }}>
                                         <Typography variant="body1" color="text.secondary">
                                             No se encontraron reportes con estos filtros
                                         </Typography>
@@ -542,7 +606,6 @@ export default function ReportesDeudores() {
                                 reportes.map((r, idx) => (
                                     <TableRow key={idx} hover>
                                         <TableCell>{r.empresa}</TableCell>
-                                        {tab === 1 && <TableCell>{r.remesa}</TableCell>}
                                         <TableCell align="center">{r.totalDeudores.toLocaleString()}</TableCell>
                                         <TableCell align="center">
                                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -606,7 +669,7 @@ export default function ReportesDeudores() {
                                 </MenuItem>
                             </Menu>
                         </Box>
-                        
+
                         <Box>
                             <Button
                                 color="secondary"

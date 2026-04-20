@@ -34,7 +34,7 @@ export class DeudoresService {
   async buscar(
     filtros: BuscarDeudoresDto,
   ): Promise<PaginatedResponse<DeudorListItem>> {
-    const { q, empresa, nroEmpresa, remesa } = filtros;
+    const { q, empresas, nroEmpresa, remesas } = filtros;
     const page = filtros.page ?? 0;
     const size = Math.min(filtros.size ?? 20, 100);
 
@@ -60,19 +60,19 @@ export class DeudoresService {
       where.OR = orConditions;
     }
 
-    // Filtros específicos (igualdad exacta)
-    if (empresa && empresa.trim() !== '') {
-      where.empresa = empresa;
+    // Filtros específicos
+    if (empresas && empresas.length > 0) {
+      where.empresa = empresas.length === 1 ? empresas[0] : { in: empresas };
     }
     if (nroEmpresa && nroEmpresa.trim() !== '') {
       where.nroEmpresa = nroEmpresa;
     }
-    if (remesa && remesa.trim() !== '') {
-      where.remesa = remesa;
+    if (remesas && remesas.length > 0) {
+      where.remesa = remesas.length === 1 ? remesas[0] : { in: remesas };
     }
 
     this.logger.log(
-      `Buscando deudores: q=${q || ''}, empresa=${empresa || ''}, nroEmpresa=${nroEmpresa || ''}, remesa=${remesa || ''}, page=${page}, size=${size}`,
+      `Buscando deudores: q=${q || ''}, empresas=${(empresas || []).join('|') || 'todas'}, nroEmpresa=${nroEmpresa || ''}, remesas=${(remesas || []).join('|') || 'todas'}, page=${page}, size=${size}`,
     );
 
     try {
@@ -155,17 +155,17 @@ export class DeudoresService {
   }
 
   /**
-   * Obtener lista de remesas únicas (opcionalmente filtradas por empresa)
+   * Obtener lista de remesas únicas (opcionalmente filtradas por una o varias empresas)
    */
-  async obtenerRemesas(empresa?: string): Promise<string[]> {
+  async obtenerRemesas(empresas?: string[]): Promise<string[]> {
     this.logger.log(
-      `Obteniendo lista de remesas${empresa ? ` para empresa=${empresa}` : ''}`,
+      `Obteniendo lista de remesas${empresas && empresas.length > 0 ? ` para empresas=${empresas.join('|')}` : ''}`,
     );
 
     try {
       const where: Prisma.DeudorWhereInput = { remesa: { not: null } };
-      if (empresa && empresa.trim() !== '') {
-        where.empresa = empresa;
+      if (empresas && empresas.length > 0) {
+        where.empresa = empresas.length === 1 ? empresas[0] : { in: empresas };
       }
 
       const result = await this.prisma.deudor.findMany({
@@ -533,16 +533,16 @@ export class DeudoresService {
   ): Promise<PaginatedResponse<ReporteEmpresa>> {
     const page = query.page ?? 0;
     const size = Math.min(query.size ?? 20, 100);
-    const empresa = query.empresa;
+    const empresas = query.empresas;
     const desde = query.desde ? new Date(query.desde) : null;
     const hasta = query.hasta ? new Date(query.hasta) : null;
 
     this.logger.log(
-      `Obteniendo reporte de empresas: empresa=${empresa || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}, page=${page}, size=${size}`,
+      `Obteniendo reporte de empresas: empresas=${(empresas || []).join('|') || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}, page=${page}, size=${size}`,
     );
 
     try {
-      const all = await this.calcularReporteEmpresas(empresa, desde, hasta);
+      const all = await this.calcularReporteEmpresas(empresas, desde, hasta);
       const total = all.length;
       const data = all.slice(page * size, page * size + size);
       const totalPages = Math.ceil(total / size);
@@ -567,15 +567,13 @@ export class DeudoresService {
    * Calcular reporte de empresas sin paginación (para export)
    */
   private async calcularReporteEmpresas(
-    empresa: string | undefined,
+    empresas: string[] | undefined,
     desde: Date | null,
     hasta: Date | null,
   ): Promise<ReporteEmpresa[]> {
     try {
-      // Construir WHERE dinámico para empresa
-      const whereEmpresaClause = empresa
-        ? Prisma.sql`AND d.empresa = ${empresa}`
-        : Prisma.empty;
+      // Construir WHERE dinámico para empresas (soporta múltiples)
+      const whereEmpresaClause = this.buildEmpresaWhereClause(empresas);
 
       // Construir WHERE dinámico para fechas
       const whereFechaWa = this.buildFechaWhereClause('r', 'enviadoAt', desde, hasta);
@@ -620,7 +618,7 @@ export class DeudoresService {
         SELECT
           COALESCE(d.empresa, 'SIN EMPRESA') AS empresa,
           COUNT(*) AS enviosEmail,
-          SUM(CASE WHEN re.estado IN ('enviado','entregado','delivered') THEN 1 ELSE 0 END) AS entregadosEmail,
+          SUM(CASE WHEN re.estado IN ('enviado','entregado','delivered','queja') THEN 1 ELSE 0 END) AS entregadosEmail,
           SUM(CASE WHEN re.primeroAbiertoAt IS NOT NULL THEN 1 ELSE 0 END) AS abiertosEmail,
           SUM(CASE WHEN re.primeroClickAt IS NOT NULL THEN 1 ELSE 0 END) AS clicksEmail
         FROM \`ReporteEmail\` re
@@ -636,7 +634,7 @@ export class DeudoresService {
       const queryD = Prisma.sql`
         SELECT
           COALESCE(d.empresa, 'SIN EMPRESA') AS empresa,
-          COUNT(*) AS rebotesEmail
+          COUNT(DISTINCT reb.reporteId) AS rebotesEmail
         FROM \`EmailRebote\` reb
         INNER JOIN \`ReporteEmail\` re ON re.id = reb.reporteId
         INNER JOIN \`ContactoEmail\` co ON co.id = re.contactoId
@@ -781,16 +779,16 @@ export class DeudoresService {
   ): Promise<PaginatedResponse<ReporteRemesa>> {
     const page = query.page ?? 0;
     const size = Math.min(query.size ?? 20, 100);
-    const empresa = query.empresa;
+    const empresas = query.empresas;
     const desde = query.desde ? new Date(query.desde) : null;
     const hasta = query.hasta ? new Date(query.hasta) : null;
 
     this.logger.log(
-      `Obteniendo reporte de remesas: empresa=${empresa || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}, page=${page}, size=${size}`,
+      `Obteniendo reporte de remesas: empresas=${(empresas || []).join('|') || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}, page=${page}, size=${size}`,
     );
 
     try {
-      const all = await this.calcularReporteRemesas(empresa, desde, hasta);
+      const all = await this.calcularReporteRemesas(empresas, desde, hasta);
       const total = all.length;
       const data = all.slice(page * size, page * size + size);
       const totalPages = Math.ceil(total / size);
@@ -815,15 +813,13 @@ export class DeudoresService {
    * Calcular reporte de remesas sin paginación (para export)
    */
   private async calcularReporteRemesas(
-    empresa: string | undefined,
+    empresas: string[] | undefined,
     desde: Date | null,
     hasta: Date | null,
   ): Promise<ReporteRemesa[]> {
     try {
-      // Construir WHERE dinámico para empresa
-      const whereEmpresaClause = empresa
-        ? Prisma.sql`AND d.empresa = ${empresa}`
-        : Prisma.empty;
+      // Construir WHERE dinámico para empresas (soporta múltiples)
+      const whereEmpresaClause = this.buildEmpresaWhereClause(empresas);
 
       // Construir WHERE dinámico para fechas
       const whereFechaWa = this.buildFechaWhereClause('r', 'enviadoAt', desde, hasta);
@@ -871,7 +867,7 @@ export class DeudoresService {
           COALESCE(d.empresa, 'SIN EMPRESA') AS empresa,
           COALESCE(d.remesa, 'SIN REMESA') AS remesa,
           COUNT(*) AS enviosEmail,
-          SUM(CASE WHEN re.estado IN ('enviado','entregado','delivered') THEN 1 ELSE 0 END) AS entregadosEmail,
+          SUM(CASE WHEN re.estado IN ('enviado','entregado','delivered','queja') THEN 1 ELSE 0 END) AS entregadosEmail,
           SUM(CASE WHEN re.primeroAbiertoAt IS NOT NULL THEN 1 ELSE 0 END) AS abiertosEmail,
           SUM(CASE WHEN re.primeroClickAt IS NOT NULL THEN 1 ELSE 0 END) AS clicksEmail
         FROM \`ReporteEmail\` re
@@ -888,7 +884,7 @@ export class DeudoresService {
         SELECT
           COALESCE(d.empresa, 'SIN EMPRESA') AS empresa,
           COALESCE(d.remesa, 'SIN REMESA') AS remesa,
-          COUNT(*) AS rebotesEmail
+          COUNT(DISTINCT reb.reporteId) AS rebotesEmail
         FROM \`EmailRebote\` reb
         INNER JOIN \`ReporteEmail\` re ON re.id = reb.reporteId
         INNER JOIN \`ContactoEmail\` co ON co.id = re.contactoId
@@ -1043,11 +1039,14 @@ export class DeudoresService {
     const desde = query.desde ? new Date(query.desde) : null;
     const hasta = query.hasta ? new Date(query.hasta) : null;
 
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const baseName = `reporte-${query.tipo}-${timestamp}`;
+    const baseName = this.buildExportFilename(`reporte-${query.tipo}`, {
+      empresas: query.empresas,
+      desde,
+      hasta,
+    });
 
     this.logger.log(
-      `Exportando reporte: tipo=${query.tipo}, formato=${query.formato}, empresa=${query.empresa || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}`,
+      `Exportando reporte: tipo=${query.tipo}, formato=${query.formato}, empresas=${(query.empresas || []).join('|') || 'todas'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}`,
     );
 
     try {
@@ -1056,7 +1055,7 @@ export class DeudoresService {
       let contentType: string;
 
       if (query.tipo === 'empresa') {
-        const data = await this.calcularReporteEmpresas(query.empresa, desde, hasta);
+        const data = await this.calcularReporteEmpresas(query.empresas, desde, hasta);
         if (query.formato === 'csv') {
           buffer = await this.generarCsvEmpresas(data);
           filename = `${baseName}.csv`;
@@ -1067,7 +1066,7 @@ export class DeudoresService {
           contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         }
       } else {
-        const data = await this.calcularReporteRemesas(query.empresa, desde, hasta);
+        const data = await this.calcularReporteRemesas(query.empresas, desde, hasta);
         if (query.formato === 'csv') {
           buffer = await this.generarCsvRemesas(data);
           filename = `${baseName}.csv`;
@@ -1351,17 +1350,22 @@ export class DeudoresService {
     const desde = query.desde ? new Date(query.desde) : null;
     const hasta = query.hasta ? new Date(query.hasta) : null;
 
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const baseName = `actividades-detalladas-${timestamp}`;
+    const baseName = this.buildExportFilename('actividades', {
+      empresas: query.empresas,
+      remesas: query.remesas,
+      canal: query.canal,
+      desde,
+      hasta,
+    });
 
     this.logger.log(
-      `Exportando actividades detalladas: formato=${query.formato}, empresa=${query.empresa || 'todas'}, remesa=${query.remesa || 'todas'}, canal=${query.canal || 'todos'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}`,
+      `Exportando actividades detalladas: formato=${query.formato}, empresas=${(query.empresas || []).join('|') || 'todas'}, remesas=${(query.remesas || []).join('|') || 'todas'}, canal=${query.canal || 'todos'}, desde=${desde?.toISOString() || 'sin límite'}, hasta=${hasta?.toISOString() || 'sin límite'}`,
     );
 
     try {
       const data = await this.obtenerDetalleActividades(
-        query.empresa,
-        query.remesa,
+        query.empresas,
+        query.remesas,
         query.canal,
         desde,
         hasta
@@ -1393,21 +1397,29 @@ export class DeudoresService {
   }
 
   private async obtenerDetalleActividades(
-    empresa?: string,
-    remesa?: string,
+    empresas?: string[],
+    remesas?: string[],
     canal?: string,
     desde?: Date | null,
     hasta?: Date | null,
   ): Promise<RawDetalleRow[]> {
     const parts: Prisma.Sql[] = [];
-    
+
     // Condicionales de Deudor
     const deudorWhereClauses: Prisma.Sql[] = [Prisma.sql`1=1`];
-    if (empresa) {
-        deudorWhereClauses.push(Prisma.sql`d.empresa = ${empresa}`);
+    if (empresas && empresas.length > 0) {
+      if (empresas.length === 1) {
+        deudorWhereClauses.push(Prisma.sql`d.empresa = ${empresas[0]}`);
+      } else {
+        deudorWhereClauses.push(Prisma.sql`d.empresa IN (${Prisma.join(empresas)})`);
+      }
     }
-    if (remesa) {
-        deudorWhereClauses.push(Prisma.sql`d.remesa = ${remesa}`);
+    if (remesas && remesas.length > 0) {
+      if (remesas.length === 1) {
+        deudorWhereClauses.push(Prisma.sql`d.remesa = ${remesas[0]}`);
+      } else {
+        deudorWhereClauses.push(Prisma.sql`d.remesa IN (${Prisma.join(remesas)})`);
+      }
     }
     const deudorWhereCondition = Prisma.join(deudorWhereClauses, ' AND ');
 
@@ -1656,6 +1668,74 @@ export class DeudoresService {
       parts.push(Prisma.sql`AND ${Prisma.raw(tableAlias)}.${Prisma.raw(columnName)} <= ${hasta}`);
     }
     return parts.length > 0 ? Prisma.join(parts, ' ') : Prisma.empty;
+  }
+
+  /**
+   * Helper: construye la cláusula WHERE para filtro de empresas (soporta múltiples)
+   */
+  private buildEmpresaWhereClause(empresas: string[] | undefined): Prisma.Sql {
+    if (!empresas || empresas.length === 0) return Prisma.empty;
+    if (empresas.length === 1) {
+      return Prisma.sql`AND d.empresa = ${empresas[0]}`;
+    }
+    return Prisma.sql`AND d.empresa IN (${Prisma.join(empresas)})`;
+  }
+
+  /**
+   * Helper: construye un nombre de archivo descriptivo para exportaciones
+   * Incluye empresas, remesas, canal, rango de fechas y timestamp
+   */
+  private buildExportFilename(
+    prefix: string,
+    opts: {
+      empresas?: string[];
+      remesas?: string[];
+      canal?: string;
+      desde?: Date | null;
+      hasta?: Date | null;
+    },
+  ): string {
+    const sanitize = (s: string): string =>
+      s
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 24);
+
+    const summarize = (arr: string[]): string => {
+      if (arr.length <= 2) {
+        return arr.map(sanitize).filter(Boolean).join('-');
+      }
+      return `${arr.slice(0, 2).map(sanitize).filter(Boolean).join('-')}-y${arr.length - 2}mas`;
+    };
+
+    const parts: string[] = [prefix];
+
+    if (opts.empresas && opts.empresas.length > 0) {
+      const s = summarize(opts.empresas);
+      if (s) parts.push(`emp-${s}`);
+    }
+    if (opts.remesas && opts.remesas.length > 0) {
+      const s = summarize(opts.remesas);
+      if (s) parts.push(`rem-${s}`);
+    }
+    if (opts.canal) {
+      parts.push(`canal-${sanitize(opts.canal)}`);
+    }
+    if (opts.desde) {
+      parts.push(`desde-${opts.desde.toISOString().slice(0, 10)}`);
+    }
+    if (opts.hasta) {
+      parts.push(`hasta-${opts.hasta.toISOString().slice(0, 10)}`);
+    }
+
+    const now = new Date();
+    const pad = (n: number): string => String(n).padStart(2, '0');
+    const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+    parts.push(ts);
+
+    return parts.join('_');
   }
 
   /**
