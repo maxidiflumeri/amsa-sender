@@ -84,20 +84,31 @@ export class WapiWebhookService {
       failed: 'fallidoAt',
     };
 
-    await Promise.all([
-      this.prisma.waApiReporte.updateMany({
-        where: { waMessageId: status.id },
-        data: {
-          estado: nuevoEstado,
-          [campoFecha[nuevoEstado]]: new Date(Number(status.timestamp) * 1000),
-          ...(status.errors?.[0] ? { error: status.errors[0].message } : {}),
-        },
-      }),
-      this.prisma.waApiMensaje.updateMany({
-        where: { waMessageId: status.id },
-        data: { status: nuevoEstado },
-      }),
-    ]);
+    const timestamp = status.timestamp ? new Date(Number(status.timestamp) * 1000) : new Date();
+    const validDate = isNaN(timestamp.getTime()) ? new Date() : timestamp;
+
+    try {
+      await Promise.all([
+        this.prisma.waApiReporte.updateMany({
+          where: { waMessageId: status.id },
+          data: {
+            estado: nuevoEstado,
+            [campoFecha[nuevoEstado]]: validDate,
+            ...(status.errors?.[0] ? { error: status.errors[0].message } : {}),
+          },
+        }),
+        this.prisma.waApiMensaje.updateMany({
+          where: { waMessageId: status.id },
+          data: { status: nuevoEstado },
+        }),
+      ]);
+    } catch (error) {
+      this.logger.error(`Error updating status for wamid=${status.id}: ${error.message}`, error.stack);
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        this.logger.error(`Prisma error code: ${error.code}, meta: ${JSON.stringify(error.meta)}`);
+      }
+      throw error;
+    }
 
     // Emitir al inbox para actualizar ticks en tiempo real
     this.socketGateway.emitirEvento(
@@ -128,7 +139,10 @@ export class WapiWebhookService {
       waMessageId: msg.id,
       tipo: msg.type,
       contenido: this.extraerContenido(msg),
-      timestamp: new Date(Number(msg.timestamp) * 1000),
+      timestamp: (() => {
+        const t = msg.timestamp ? new Date(Number(msg.timestamp) * 1000) : new Date();
+        return isNaN(t.getTime()) ? new Date() : t;
+      })(),
     });
   }
 
