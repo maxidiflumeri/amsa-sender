@@ -202,6 +202,9 @@ export default function ReportesDeudores() {
                 h.setHours(23, 59, 59, 999);
                 params.hasta = h.toISOString();
             }
+            if (appliedFilters.remesas && appliedFilters.remesas.length > 0) {
+                params.remesas = appliedFilters.remesas.join(',');
+            }
 
             const res = await api.get(endpoint, { params });
             setReportes(res.data.data || []);
