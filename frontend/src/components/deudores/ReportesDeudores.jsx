@@ -315,6 +315,7 @@ export default function ReportesDeudores() {
                 h.setHours(23, 59, 59, 999);
                 params.append('hasta', h.toISOString());
             }
+            if (remesasInput.length > 0) params.append('remesas', remesasInput.join(','));
 
             const response = await api.get(`/deudores/reportes/exportar?${params.toString()}`, {
                 responseType: 'blob',
@@ -322,7 +323,17 @@ export default function ReportesDeudores() {
 
             const disposition = response.headers['content-disposition'] || '';
             const match = disposition.match(/filename="?([^";]+)"?/);
-            const filename = match ? match[1] : `reporte-${formato}.${formato}`;
+            
+            let filename = match ? match[1] : '';
+            if (!filename) {
+                const sanitize = (s) => s?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase() || '';
+                const emp = empresasInput.length > 0 ? sanitize(empresasInput[0].nombre) : 'todas-emp';
+                const rem = remesasInput.length > 0 ? sanitize(remesasInput.join('-')) : 'todas-rem';
+                const start = desdeInput ? desdeInput.split('T')[0] : 'inicio';
+                const end = hastaInput ? hastaInput.split('T')[0] : 'fin';
+                const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+                filename = `reporte_${emp}_${rem}_${start}_${end}_${rand}.${formato}`;
+            }
 
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
@@ -367,7 +378,17 @@ export default function ReportesDeudores() {
 
             const disposition = response.headers['content-disposition'] || '';
             const match = disposition.match(/filename="?([^";]+)"?/);
-            const filename = match ? match[1] : `actividades-${formato}.${formato}`;
+            
+            let filename = match ? match[1] : '';
+            if (!filename) {
+                const sanitize = (s) => s?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase() || '';
+                const emp = empresasInput.length > 0 ? sanitize(empresasInput[0].nombre) : 'todas-emp';
+                const rem = remesasInput.length > 0 ? sanitize(remesasInput.join('-')) : 'todas-rem';
+                const start = desdeInput ? desdeInput.split('T')[0] : 'inicio';
+                const end = hastaInput ? hastaInput.split('T')[0] : 'fin';
+                const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+                filename = `actividades_${emp}_${rem}_${start}_${end}_${rand}.${formato}`;
+            }
 
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
