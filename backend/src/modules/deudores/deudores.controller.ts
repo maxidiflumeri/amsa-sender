@@ -37,6 +37,17 @@ export class DeudoresController {
   }
 
   /**
+   * Obtener empresas presentes en DB que no están mapeadas en EMPRESAS_MAP.
+   * Útil para detectar IDs nuevos que hay que agregar al archivo de constantes.
+   * GET /api/deudores/empresas/no-mapeadas
+   */
+  @Get('empresas/no-mapeadas')
+  @RequiredPermiso('deudores.reportes')
+  async empresasNoMapeadas() {
+    return this.deudoresService.obtenerEmpresasNoMapeadas();
+  }
+
+  /**
    * Obtener lista de remesas únicas (opcionalmente filtradas por una o varias empresas)
    * GET /api/deudores/remesas?empresas=A,B,C
    */

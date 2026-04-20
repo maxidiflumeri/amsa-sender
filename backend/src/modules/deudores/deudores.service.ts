@@ -21,6 +21,12 @@ import {
   ReporteEmpresa,
   ReporteRemesa,
 } from './interfaces/timeline.interface';
+import { getNombreEmpresa, isEmpresaMapeada } from './constants/empresas.constants';
+
+export interface EmpresaOption {
+  id: string;
+  nombre: string;
+}
 
 @Injectable()
 export class DeudoresService {
@@ -126,9 +132,11 @@ export class DeudoresService {
   }
 
   /**
-   * Obtener lista de empresas únicas (ordenadas)
+   * Obtener lista de empresas únicas (ordenadas por nombre legible).
+   * Devuelve objetos `{ id, nombre }` donde `id` es el ID VFP y `nombre` se resuelve
+   * contra `EMPRESAS_MAP`. Si un ID no está mapeado, el nombre cae al propio ID.
    */
-  async obtenerEmpresas(): Promise<string[]> {
+  async obtenerEmpresas(): Promise<EmpresaOption[]> {
     this.logger.log('Obteniendo lista de empresas');
 
     try {
@@ -136,12 +144,14 @@ export class DeudoresService {
         where: { empresa: { not: null } },
         select: { empresa: true },
         distinct: ['empresa'],
-        orderBy: { empresa: 'asc' },
       });
 
-      const empresas = result
+      const empresas: EmpresaOption[] = result
         .map((r) => r.empresa)
-        .filter((e): e is string => e !== null);
+        .filter((e): e is string => e !== null)
+        .filter((id) => isEmpresaMapeada(id))
+        .map((id) => ({ id, nombre: getNombreEmpresa(id) }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
 
       this.logger.log(`Encontradas ${empresas.length} empresas únicas`);
       return empresas;
@@ -151,6 +161,40 @@ export class DeudoresService {
         error?.stack,
       );
       throw new InternalServerErrorException('Error al obtener empresas');
+    }
+  }
+
+  /**
+   * Obtener IDs de empresa presentes en la tabla `Deudor` que NO están mapeados
+   * en `EMPRESAS_MAP`. Útil para detectar empresas nuevas del sistema VFP que
+   * deben agregarse a `empresas.constants.ts`.
+   */
+  async obtenerEmpresasNoMapeadas(): Promise<Array<{ id: string; cantidadDeudores: number }>> {
+    this.logger.log('Obteniendo empresas no mapeadas');
+
+    try {
+      const result = await this.prisma.deudor.groupBy({
+        by: ['empresa'],
+        where: { empresa: { not: null } },
+        _count: { _all: true },
+      });
+
+      const noMapeadas = result
+        .map((r) => ({
+          id: r.empresa as string,
+          cantidadDeudores: r._count._all,
+        }))
+        .filter((r) => !isEmpresaMapeada(r.id))
+        .sort((a, b) => b.cantidadDeudores - a.cantidadDeudores);
+
+      this.logger.log(`Encontradas ${noMapeadas.length} empresas sin mapear`);
+      return noMapeadas;
+    } catch (error) {
+      this.logger.error(
+        `Error al obtener empresas no mapeadas: ${error.message}`,
+        error?.stack,
+      );
+      throw new InternalServerErrorException('Error al obtener empresas no mapeadas');
     }
   }
 
@@ -336,7 +380,15 @@ export class DeudoresService {
       'nroempresa',
     ]);
     const empresa = helper.getString(['empresa']);
-    const remesa = helper.getString(['remesa']);
+    const remesa = this.normalizeRemesa(helper.getString(['remesa']));
+
+    // Aviso temprano si aparece un ID de empresa sin mapear: permite detectar
+    // empresas nuevas del sistema VFP que todavía no están en EMPRESAS_MAP.
+    if (empresa && !isEmpresaMapeada(empresa)) {
+      this.logger.warn(
+        `Empresa sin mapear detectada en upsert: id="${empresa}" (idDeudor=${idDeudor}). Agregarla a empresas.constants.ts.`,
+      );
+    }
 
     // Campos excluidos que no van a datos
     const excludedKeys = [
@@ -1668,6 +1720,30 @@ export class DeudoresService {
       parts.push(Prisma.sql`AND ${Prisma.raw(tableAlias)}.${Prisma.raw(columnName)} <= ${hasta}`);
     }
     return parts.length > 0 ? Prisma.join(parts, ' ') : Prisma.empty;
+  }
+
+  /**
+   * Normaliza el campo remesa: numérico, máximo 5 caracteres, sin ceros a la izquierda.
+   * "000490" -> "490", "00" -> "0", "490" -> "490".
+   * Si no es todo dígitos, se deja el valor trimmeado (se loguea warning).
+   */
+  private normalizeRemesa(value: string | null | undefined): string | null {
+    if (value === null || value === undefined) return null;
+    const trimmed = String(value).trim();
+    if (trimmed === '') return null;
+
+    if (!/^\d+$/.test(trimmed)) {
+      this.logger.warn(`Remesa no numérica recibida: "${trimmed}" - se mantiene sin normalizar`);
+      return trimmed;
+    }
+
+    const stripped = trimmed.replace(/^0+/, '') || '0';
+
+    if (stripped.length > 5) {
+      this.logger.warn(`Remesa excede 5 caracteres tras normalizar: "${trimmed}" -> "${stripped}"`);
+    }
+
+    return stripped;
   }
 
   /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Box,
@@ -66,6 +66,15 @@ export default function ListadoDeudores() {
     const [remesas, setRemesas] = useState([]);
     const [error, setError] = useState(null);
 
+    const empresasMap = useMemo(() => {
+        const map = new Map();
+        for (const e of empresas) {
+            if (e && typeof e === 'object' && 'id' in e) map.set(e.id, e.nombre);
+        }
+        return map;
+    }, [empresas]);
+    const getEmpresaLabel = (id) => empresasMap.get(id) ?? id ?? '-';
+
     // Cargar empresas al montar
     useEffect(() => {
         const cargarEmpresas = async () => {
@@ -80,12 +89,16 @@ export default function ListadoDeudores() {
     }, []);
 
     // Cargar remesas cuando cambian las empresas del formulario
+    // Nota: sólo se consulta si hay al menos una empresa seleccionada.
     useEffect(() => {
+        if (empresasInput.length === 0) {
+            setRemesas([]);
+            setRemesasInput([]);
+            return;
+        }
         const cargarRemesas = async () => {
             try {
-                const params = empresasInput.length > 0
-                    ? { empresas: empresasInput.join(',') }
-                    : {};
+                const params = { empresas: empresasInput.map((e) => e.id).join(',') };
                 const res = await api.get('/deudores/remesas', { params });
                 setRemesas(res.data || []);
             } catch (err) {
@@ -126,7 +139,7 @@ export default function ListadoDeudores() {
 
             if (appliedFilters.q) params.q = appliedFilters.q;
             if (appliedFilters.empresas && appliedFilters.empresas.length > 0) {
-                params.empresas = appliedFilters.empresas.join(',');
+                params.empresas = appliedFilters.empresas.map((e) => e.id).join(',');
             }
             if (appliedFilters.nroEmpresa) params.nroEmpresa = appliedFilters.nroEmpresa;
             if (appliedFilters.remesas && appliedFilters.remesas.length > 0) {
@@ -222,6 +235,8 @@ export default function ListadoDeudores() {
                             disableCloseOnSelect
                             limitTags={3}
                             ChipProps={{ size: 'small' }}
+                            getOptionLabel={(o) => (typeof o === 'string' ? o : o?.nombre ?? '')}
+                            isOptionEqualToValue={(o, v) => o?.id === v?.id}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
@@ -236,6 +251,7 @@ export default function ListadoDeudores() {
                         <Autocomplete
                             multiple
                             size="small"
+                            disabled={empresasInput.length === 0}
                             options={remesas}
                             value={remesasInput}
                             onChange={(_, v) => setRemesasInput(v)}
@@ -248,10 +264,16 @@ export default function ListadoDeudores() {
                                 <TextField
                                     {...params}
                                     label="Remesas"
-                                    placeholder={remesasInput.length === 0 ? 'Todas' : ''}
+                                    placeholder={
+                                        empresasInput.length === 0
+                                            ? 'Seleccione una empresa primero'
+                                            : remesasInput.length === 0
+                                                ? 'Todas'
+                                                : ''
+                                    }
                                 />
                             )}
-                            noOptionsText={empresasInput.length > 0 ? 'Sin coincidencias' : 'Se listan todas las remesas'}
+                            noOptionsText="Sin coincidencias"
                         />
                     </Grid>
                     <Grid item xs={12} sm={8} md={6}>
@@ -402,7 +424,7 @@ export default function ListadoDeudores() {
                                         <TableCell>{deudor.idDeudor || '-'}</TableCell>
                                         <TableCell>{deudor.nombre || '-'}</TableCell>
                                         <TableCell>{deudor.documento || '-'}</TableCell>
-                                        <TableCell>{deudor.empresa || '-'}</TableCell>
+                                        <TableCell>{deudor.empresa ? getEmpresaLabel(deudor.empresa) : '-'}</TableCell>
                                         <TableCell>{deudor.nroEmpresa || '-'}</TableCell>
                                         <TableCell>{deudor.remesa || '-'}</TableCell>
                                         <TableCell>

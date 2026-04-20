@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Box,
     Container,
@@ -108,6 +108,15 @@ export default function ReportesDeudores() {
     const [remesasList, setRemesasList] = useState([]);
     const [error, setError] = useState(null);
 
+    const empresasMap = useMemo(() => {
+        const map = new Map();
+        for (const e of empresas) {
+            if (e && typeof e === 'object' && 'id' in e) map.set(e.id, e.nombre);
+        }
+        return map;
+    }, [empresas]);
+    const getEmpresaLabel = (id) => empresasMap.get(id) ?? id ?? '-';
+
     // Export states
     const [exportando, setExportando] = useState(false);
     const [anchorExport, setAnchorExport] = useState(null);
@@ -137,12 +146,16 @@ export default function ReportesDeudores() {
     }, []);
 
     // Cargar remesas al cambiar empresas del formulario
+    // Nota: sólo se consulta si hay al menos una empresa seleccionada.
     useEffect(() => {
+        if (empresasInput.length === 0) {
+            setRemesasList([]);
+            setRemesasInput([]);
+            return;
+        }
         const cargarRemesas = async () => {
             try {
-                const params = empresasInput.length > 0
-                    ? { empresas: empresasInput.join(',') }
-                    : {};
+                const params = { empresas: empresasInput.map((e) => e.id).join(',') };
                 const res = await api.get('/deudores/remesas', { params });
                 setRemesasList(res.data || []);
             } catch (err) {
@@ -177,7 +190,7 @@ export default function ReportesDeudores() {
                 size: rowsPerPage,
             };
             if (appliedFilters.empresas && appliedFilters.empresas.length > 0) {
-                params.empresas = appliedFilters.empresas.join(',');
+                params.empresas = appliedFilters.empresas.map((e) => e.id).join(',');
             }
             if (appliedFilters.desde) {
                 const d = new Date(appliedFilters.desde);
@@ -291,7 +304,7 @@ export default function ReportesDeudores() {
                 tipo: 'empresa',
                 formato,
             });
-            if (empresasInput.length > 0) params.append('empresas', empresasInput.join(','));
+            if (empresasInput.length > 0) params.append('empresas', empresasInput.map((e) => e.id).join(','));
             if (desdeInput) {
                 const d = new Date(desdeInput);
                 d.setHours(0, 0, 0, 0);
@@ -334,7 +347,7 @@ export default function ReportesDeudores() {
 
         try {
             const params = new URLSearchParams({ formato });
-            if (empresasInput.length > 0) params.append('empresas', empresasInput.join(','));
+            if (empresasInput.length > 0) params.append('empresas', empresasInput.map((e) => e.id).join(','));
             if (desdeInput) {
                 const d = new Date(desdeInput);
                 d.setHours(0, 0, 0, 0);
@@ -395,6 +408,8 @@ export default function ReportesDeudores() {
                             disableCloseOnSelect
                             limitTags={3}
                             ChipProps={{ size: 'small' }}
+                            getOptionLabel={(o) => (typeof o === 'string' ? o : o?.nombre ?? '')}
+                            isOptionEqualToValue={(o, v) => o?.id === v?.id}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
@@ -409,6 +424,7 @@ export default function ReportesDeudores() {
                         <Autocomplete
                             multiple
                             size="small"
+                            disabled={empresasInput.length === 0}
                             options={remesasList}
                             value={remesasInput}
                             onChange={(_, v) => setRemesasInput(v)}
@@ -421,10 +437,16 @@ export default function ReportesDeudores() {
                                 <TextField
                                     {...params}
                                     label="Remesas (Exporte)"
-                                    placeholder={remesasInput.length === 0 ? 'Todas' : ''}
+                                    placeholder={
+                                        empresasInput.length === 0
+                                            ? 'Seleccione una empresa primero'
+                                            : remesasInput.length === 0
+                                                ? 'Todas'
+                                                : ''
+                                    }
                                 />
                             )}
-                            noOptionsText={empresasInput.length > 0 ? 'Sin coincidencias' : 'Se listan todas las remesas'}
+                            noOptionsText="Sin coincidencias"
                         />
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
@@ -605,7 +627,7 @@ export default function ReportesDeudores() {
                             ) : (
                                 reportes.map((r, idx) => (
                                     <TableRow key={idx} hover>
-                                        <TableCell>{r.empresa}</TableCell>
+                                        <TableCell>{getEmpresaLabel(r.empresa)}</TableCell>
                                         <TableCell align="center">{r.totalDeudores.toLocaleString()}</TableCell>
                                         <TableCell align="center">
                                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
