@@ -16,6 +16,7 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import ShieldIcon from '@mui/icons-material/Shield';
 import ApiIcon from '@mui/icons-material/Api';
 import InboxIcon from '@mui/icons-material/Inbox';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import api from '../../api/axios';
 
 const TODOS_LOS_PERMISOS = [
@@ -79,6 +80,8 @@ const TODOS_LOS_PERMISOS = [
         ],
     },
 ];
+
+const TOTAL_PERMISOS = TODOS_LOS_PERMISOS.reduce((acc, s) => acc + s.items.length, 0);
 
 function PermisosEditor({ permisos, onChange }) {
     const toggle = (key) => {
@@ -146,7 +149,7 @@ const SECCION_META = [
     {
         key: 'whatsapp',
         label: 'WhatsApp',
-        icon: <WhatsAppIcon sx={{ fontSize: 14 }} />,
+        icon: <WhatsAppIcon sx={{ fontSize: 13 }} />,
         color: '#4caf50',
         bg: '#E8F5E9',
         permisos: ['whatsapp.sesiones', 'whatsapp.conectar', 'whatsapp.campanias', 'whatsapp.templates', 'whatsapp.reportes', 'whatsapp.metricas'],
@@ -154,15 +157,39 @@ const SECCION_META = [
     {
         key: 'email',
         label: 'Email',
-        icon: <MailIcon sx={{ fontSize: 14 }} />,
+        icon: <MailIcon sx={{ fontSize: 13 }} />,
         color: '#1976d2',
         bg: '#E3F2FD',
         permisos: ['email.cuentas_smtp', 'email.templates', 'email.campanias', 'email.envio_manual', 'email.reportes', 'email.desuscripciones'],
     },
     {
+        key: 'wapi',
+        label: 'WA API',
+        icon: <ApiIcon sx={{ fontSize: 13 }} />,
+        color: '#00695C',
+        bg: '#E0F2F1',
+        permisos: ['wapi.config', 'wapi.templates', 'wapi.campanias', 'wapi.bajas', 'wapi.analitica'],
+    },
+    {
+        key: 'inbox',
+        label: 'Inbox WA',
+        icon: <InboxIcon sx={{ fontSize: 13 }} />,
+        color: '#E65100',
+        bg: '#FFF3E0',
+        permisos: ['wapi.inbox', 'wapi.inbox.admin', 'wapi.respuestas_rapidas'],
+    },
+    {
+        key: 'deudores',
+        label: 'Deudores',
+        icon: <AccountBalanceIcon sx={{ fontSize: 13 }} />,
+        color: '#7B1FA2',
+        bg: '#F3E5F5',
+        permisos: ['deudores.ver', 'deudores.reportes'],
+    },
+    {
         key: 'config',
         label: 'Config',
-        icon: <SettingsIcon sx={{ fontSize: 14 }} />,
+        icon: <SettingsIcon sx={{ fontSize: 13 }} />,
         color: '#607d8b',
         bg: '#ECEFF1',
         permisos: ['config.tareas_programadas'],
@@ -170,151 +197,131 @@ const SECCION_META = [
     {
         key: 'admin',
         label: 'Admin',
-        icon: <AdminPanelSettingsIcon sx={{ fontSize: 14 }} />,
+        icon: <AdminPanelSettingsIcon sx={{ fontSize: 13 }} />,
         color: '#c2185b',
         bg: '#FCE4EC',
         permisos: ['admin.usuarios'],
     },
-    {
-        key: 'wapi',
-        label: 'WA API',
-        icon: <ApiIcon sx={{ fontSize: 14 }} />,
-        color: '#00695C',
-        bg: '#E0F2F1',
-        permisos: ['wapi.config', 'wapi.templates', 'wapi.campanias', 'wapi.bajas'],
-    },
-    {
-        key: 'inbox',
-        label: 'Inbox WA',
-        icon: <InboxIcon sx={{ fontSize: 14 }} />,
-        color: '#E65100',
-        bg: '#FFF3E0',
-        permisos: ['wapi.inbox', 'wapi.inbox.admin', 'wapi.respuestas_rapidas'],
-    },
 ];
-
-const TOTAL_PERMISOS = SECCION_META.reduce((acc, s) => acc + s.permisos.length, 0);
 
 function RolCard({ rol, onEditar, onEliminar }) {
     const theme = useTheme();
+    const isDark = theme.palette.mode === 'dark';
     const permisos = rol.permisos || [];
-    const pct = Math.round((permisos.length / TOTAL_PERMISOS) * 100);
-
-    const accentColor = pct === 100 ? '#4caf50' : pct >= 50 ? '#1976d2' : '#607d8b';
+    const pct = Math.min(100, Math.round((permisos.length / TOTAL_PERMISOS) * 100));
+    const accentColor = pct === 100 ? '#4caf50' : pct >= 60 ? '#1976d2' : pct >= 25 ? '#f59e0b' : '#607d8b';
 
     return (
-        <Box
-            sx={{
-                borderRadius: 3,
-                overflow: 'hidden',
-                border: '1px solid',
-                borderColor: 'divider',
-                backgroundColor: 'background.paper',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
-                transition: 'box-shadow 0.2s ease',
-                '&:hover': { boxShadow: '0 4px 16px rgba(0,0,0,0.13)' },
-                display: 'flex',
-                flexDirection: 'column',
-            }}
-        >
-            {/* Header con acento */}
-            <Box sx={{ height: 5, backgroundColor: accentColor }} />
+        <Box sx={{
+            borderRadius: 3,
+            overflow: 'hidden',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: 'background.paper',
+            boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 12px rgba(0,0,0,0.08)',
+            transition: 'box-shadow 0.2s ease, transform 0.15s ease',
+            '&:hover': {
+                boxShadow: isDark ? '0 6px 24px rgba(0,0,0,0.45)' : '0 6px 24px rgba(0,0,0,0.14)',
+                transform: 'translateY(-2px)',
+            },
+            display: 'flex',
+            flexDirection: 'column',
+        }}>
+            {/* Barra de acento superior */}
+            <Box sx={{
+                height: 7,
+                background: `linear-gradient(90deg, ${accentColor}, ${accentColor}88)`,
+            }} />
 
-            <Box sx={{ p: 2.5, flexGrow: 1 }}>
-                {/* Nombre + usuarios */}
-                <Box display="flex" alignItems="flex-start" justifyContent="space-between" mb={2}>
+            <Box sx={{ p: { xs: 2, sm: 2.5 }, flexGrow: 1 }}>
+                {/* Nombre + chip contador */}
+                <Box display="flex" alignItems="flex-start" justifyContent="space-between" mb={2.5} gap={1}>
                     <Box display="flex" alignItems="center" gap={1.5}>
-                        <Box
-                            sx={{
-                                width: 40, height: 40, borderRadius: 2,
-                                backgroundColor: accentColor + '18',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}
-                        >
-                            <ShieldIcon sx={{ color: accentColor, fontSize: 22 }} />
+                        <Box sx={{
+                            width: 46, height: 46, borderRadius: 2.5, flexShrink: 0,
+                            background: `linear-gradient(135deg, ${accentColor}28, ${accentColor}10)`,
+                            border: `1.5px solid ${accentColor}35`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <ShieldIcon sx={{ color: accentColor, fontSize: 24 }} />
                         </Box>
                         <Box>
-                            <Typography fontWeight="bold" fontSize={16} sx={{ textTransform: 'capitalize' }}>
+                            <Typography fontWeight={700} fontSize={17} sx={{ textTransform: 'capitalize', lineHeight: 1.25 }}>
                                 {rol.nombre}
                             </Typography>
-                            <Box display="flex" alignItems="center" gap={0.5}>
-                                <PeopleIcon sx={{ fontSize: 13, color: 'text.secondary' }} />
-                                <Typography variant="caption" color="text.secondary">
+                            <Box display="flex" alignItems="center" gap={0.5} mt={0.25}>
+                                <PeopleIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
+                                <Typography variant="caption" color="text.disabled" fontSize={11}>
                                     {rol.cantidadUsuarios} {rol.cantidadUsuarios === 1 ? 'usuario' : 'usuarios'}
                                 </Typography>
                             </Box>
                         </Box>
                     </Box>
                     <Chip
-                        label={`${permisos.length}/${TOTAL_PERMISOS}`}
+                        label={`${permisos.length} / ${TOTAL_PERMISOS}`}
                         size="small"
                         sx={{
-                            fontWeight: 'bold',
-                            fontSize: 11,
-                            backgroundColor: accentColor + '18',
+                            fontWeight: 700, fontSize: 12, height: 26, flexShrink: 0,
+                            background: `linear-gradient(135deg, ${accentColor}22, ${accentColor}0d)`,
                             color: accentColor,
-                            border: `1px solid ${accentColor}40`,
+                            border: `1px solid ${accentColor}45`,
                         }}
                     />
                 </Box>
 
                 {/* Barra de progreso total */}
-                <Box mb={2}>
+                <Box mb={2.5}>
                     <LinearProgress
                         variant="determinate"
                         value={pct}
                         sx={{
-                            height: 6, borderRadius: 3,
-                            backgroundColor: theme.palette.mode === 'dark' ? '#333' : '#eee',
-                            '& .MuiLinearProgress-bar': { backgroundColor: accentColor, borderRadius: 3 },
+                            height: 7, borderRadius: 4,
+                            backgroundColor: isDark ? '#2a2a2a' : '#eeeeee',
+                            '& .MuiLinearProgress-bar': {
+                                background: `linear-gradient(90deg, ${accentColor}, ${accentColor}bb)`,
+                                borderRadius: 4,
+                            },
                         }}
                     />
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                        {pct}% de acceso
+                    <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5, display: 'block', fontSize: 11 }}>
+                        {pct}% de acceso total
                     </Typography>
                 </Box>
 
-                {/* Secciones */}
-                <Box display="flex" flexDirection="column" gap={1}>
+                {/* Grid de secciones */}
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75 }}>
                     {SECCION_META.map((s) => {
                         const habilitados = s.permisos.filter(p => permisos.includes(p)).length;
-                        const total = s.permisos.length;
                         const activo = habilitados > 0;
                         return (
-                            <Box key={s.key} display="flex" alignItems="center" justifyContent="space-between">
-                                <Box display="flex" alignItems="center" gap={1}>
-                                    <Box
-                                        sx={{
-                                            width: 22, height: 22, borderRadius: 1,
-                                            backgroundColor: activo ? s.bg : (theme.palette.mode === 'dark' ? '#2a2a2a' : '#f5f5f5'),
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            color: activo ? s.color : 'text.disabled',
-                                            transition: 'all 0.2s',
-                                        }}
-                                    >
-                                        {s.icon}
-                                    </Box>
-                                    <Typography
-                                        fontSize={12}
-                                        color={activo ? 'text.primary' : 'text.disabled'}
-                                        fontWeight={activo ? 500 : 400}
-                                    >
+                            <Box
+                                key={s.key}
+                                sx={{
+                                    display: 'flex', alignItems: 'center', gap: 1,
+                                    px: 1, py: 0.75, borderRadius: 1.5,
+                                    bgcolor: activo
+                                        ? (isDark ? s.color + '1a' : s.bg)
+                                        : (isDark ? '#1e1e1e' : '#f5f5f5'),
+                                    border: '1px solid',
+                                    borderColor: activo ? s.color + '40' : 'transparent',
+                                    transition: 'all 0.2s',
+                                    minWidth: 0,
+                                }}
+                            >
+                                <Box sx={{
+                                    flexShrink: 0, width: 20, height: 20, borderRadius: 1,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: activo ? s.color : 'text.disabled',
+                                }}>
+                                    {s.icon}
+                                </Box>
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <Typography fontSize={11} fontWeight={activo ? 600 : 400} color={activo ? 'text.primary' : 'text.disabled'} noWrap>
                                         {s.label}
                                     </Typography>
-                                </Box>
-                                <Box display="flex" gap={0.4}>
-                                    {s.permisos.map(p => (
-                                        <Box
-                                            key={p}
-                                            sx={{
-                                                width: 8, height: 8, borderRadius: '50%',
-                                                backgroundColor: permisos.includes(p)
-                                                    ? s.color
-                                                    : (theme.palette.mode === 'dark' ? '#444' : '#ddd'),
-                                                transition: 'background-color 0.2s',
-                                            }}
-                                        />
-                                    ))}
+                                    <Typography fontSize={10} sx={{ color: activo ? s.color : 'text.disabled' }}>
+                                        {habilitados}/{s.permisos.length}
+                                    </Typography>
                                 </Box>
                             </Box>
                         );
@@ -323,17 +330,12 @@ function RolCard({ rol, onEditar, onEliminar }) {
             </Box>
 
             {/* Footer con acciones */}
-            <Box
-                sx={{
-                    borderTop: '1px solid',
-                    borderColor: 'divider',
-                    px: 2, py: 1,
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    gap: 0.5,
-                    backgroundColor: theme.palette.mode === 'dark' ? '#1a1a1a' : '#fafafa',
-                }}
-            >
+            <Box sx={{
+                borderTop: '1px solid', borderColor: 'divider',
+                px: 2, py: 1,
+                display: 'flex', justifyContent: 'flex-end', gap: 0.5,
+                backgroundColor: isDark ? '#141414' : '#fafafa',
+            }}>
                 <Tooltip title="Editar rol">
                     <IconButton size="small" onClick={() => onEditar(rol)}>
                         <EditIcon fontSize="small" />
@@ -354,14 +356,12 @@ export default function GestionRoles() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    // Dialog crear
     const [crearOpen, setCrearOpen] = useState(false);
     const [crearNombre, setCrearNombre] = useState('');
     const [crearPermisos, setCrearPermisos] = useState([]);
     const [crearError, setCrearError] = useState('');
     const [crearLoading, setCrearLoading] = useState(false);
 
-    // Dialog editar
     const [editarOpen, setEditarOpen] = useState(false);
     const [editarRol, setEditarRol] = useState(null);
     const [editarNombre, setEditarNombre] = useState('');
@@ -369,7 +369,6 @@ export default function GestionRoles() {
     const [editarError, setEditarError] = useState('');
     const [editarLoading, setEditarLoading] = useState(false);
 
-    // Dialog eliminar
     const [eliminarOpen, setEliminarOpen] = useState(false);
     const [eliminarRol, setEliminarRol] = useState(null);
     const [eliminarLoading, setEliminarLoading] = useState(false);
@@ -455,7 +454,14 @@ export default function GestionRoles() {
 
     return (
         <Box py={3}>
-            <Box display="flex" justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} flexDirection={{ xs: 'column', sm: 'row' }} gap={1.5} mb={3}>
+            <Box
+                display="flex"
+                justifyContent="space-between"
+                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                flexDirection={{ xs: 'column', sm: 'row' }}
+                gap={1.5}
+                mb={3}
+            >
                 <Typography variant="h5" fontWeight="bold">Gestión de roles</Typography>
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCrearError(''); setCrearOpen(true); }}>
                     Nuevo rol
@@ -466,7 +472,7 @@ export default function GestionRoles() {
 
             <Grid container spacing={2.5}>
                 {roles.map((r) => (
-                    <Grid item xs={12} sm={6} md={4} key={r.id}>
+                    <Grid item xs={12} sm={6} key={r.id}>
                         <RolCard rol={r} onEditar={abrirEditar} onEliminar={abrirEliminar} />
                     </Grid>
                 ))}
