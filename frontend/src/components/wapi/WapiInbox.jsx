@@ -1025,6 +1025,7 @@ export default function WapiInbox() {
                                 />
                             )}
                             <SeccionLista
+                                key={`resueltas-${selectedConfigId ?? 'todas'}`}
                                 titulo="Resueltas"
                                 convs={resueltasMias}
                                 convActivaId={convActiva?.id}
