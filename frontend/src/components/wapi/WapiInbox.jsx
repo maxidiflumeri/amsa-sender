@@ -337,7 +337,7 @@ export default function WapiInbox() {
 
     // Cargar configs activas
     useEffect(() => {
-        api.get('/wapi/config')
+        api.get('/wapi/config/lineas')
             .then(r => setConfigs(r.data))
             .catch(() => {});
     }, []);

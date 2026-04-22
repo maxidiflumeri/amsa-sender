@@ -15,6 +15,13 @@ export class WapiConfigController {
     return this.service.listarConfigs();
   }
 
+  /** Solo id+nombre — accesible con wapi.inbox para los tabs del inbox */
+  @Get('lineas')
+  @RequiredPermiso('wapi.inbox')
+  listarLineas() {
+    return this.service.listarLineas();
+  }
+
   @Get(':id')
   obtener(@Param('id', ParseIntPipe) id: number) {
     return this.service.obtenerConfig(id);

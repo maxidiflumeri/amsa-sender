@@ -58,6 +58,14 @@ export class WapiConfigService {
     });
   }
 
+  async listarLineas(): Promise<{ id: number; nombre: string; activo: boolean }[]> {
+    const configs = await this.prisma.waApiConfig.findMany({
+      orderBy: { creadoAt: 'asc' },
+      select: { id: true, nombre: true, activo: true },
+    });
+    return configs;
+  }
+
   /** Uso interno: obtiene config completa (con token real) por id. Fallback a primera activa. */
   async obtenerConfigCompleta(id?: number) {
     if (id) {
