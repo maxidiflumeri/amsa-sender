@@ -1,5 +1,15 @@
 # Changelog
 
+## [2026-04-22] — WapiInbox: divisores de fecha y indicador de fecha en header
+
+### Frontend — `frontend/src/components/wapi/WapiInbox.jsx`
+
+- **Divisores de fecha entre grupos de mensajes**: se inserta una línea sutil con la fecha centrada cada vez que cambia el día en el historial de conversación. Formato inteligente: "Hoy" / "Ayer" / nombre del día + fecha para la semana actual / fecha completa para más antiguo.
+- **Indicador de fecha en el header del chat**: badge compacto con ícono de calendario que muestra la fecha del último mensaje de la conversación. Solo visible en desktop. Aparece condicionalmente cuando hay mensajes cargados.
+- **Nuevas funciones de formateo**: `formatDividerDate(ts)` y `formatHeaderDate(ts)` con soporte completo de localización `es-AR`.
+
+---
+
 ## [2026-04-17] — Módulo Deudores: ficha 360°, timeline omnicanal y reportes (Fase 0 integración AMSA Gestión)
 
 ### Contexto

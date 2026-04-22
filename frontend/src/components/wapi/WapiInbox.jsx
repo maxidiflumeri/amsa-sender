@@ -26,6 +26,7 @@ import MarkChatUnreadIcon from '@mui/icons-material/MarkChatUnread';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -42,6 +43,38 @@ const formatFecha = (ts) => {
     const hoy = new Date();
     if (d.toDateString() === hoy.toDateString()) return formatHora(ts);
     return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+};
+
+const formatDividerDate = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const hoy = new Date();
+    const ayer = new Date(hoy);
+    ayer.setDate(hoy.getDate() - 1);
+    if (d.toDateString() === hoy.toDateString()) return 'Hoy';
+    if (d.toDateString() === ayer.toDateString()) return 'Ayer';
+    const diffDays = Math.floor((hoy - d) / 86400000);
+    if (diffDays < 7) {
+        return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+    if (d.getFullYear() === hoy.getFullYear()) {
+        return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' });
+    }
+    return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+const formatHeaderDate = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const hoy = new Date();
+    const ayer = new Date(hoy);
+    ayer.setDate(hoy.getDate() - 1);
+    if (d.toDateString() === hoy.toDateString()) return 'Hoy';
+    if (d.toDateString() === ayer.toDateString()) return 'Ayer';
+    if (d.getFullYear() === hoy.getFullYear()) {
+        return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+    }
+    return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 };
 
 function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums, onContextMenuConv, drafts = {}, configs = [], selectedConfigId = null }) {
@@ -975,6 +1008,16 @@ export default function WapiInbox() {
                                 </Tooltip>
                             </Box>
                         </Box>
+                        {mensajes.length > 0 && (
+                            <Tooltip title="Fecha del último mensaje">
+                                <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0.5, px: 1, py: 0.5, borderRadius: 1.5, bgcolor: 'action.hover', flexShrink: 0 }}>
+                                    <CalendarTodayIcon sx={{ fontSize: 13, color: 'text.disabled' }} />
+                                    <Typography variant="caption" sx={{ fontSize: 11, color: 'text.secondary', fontWeight: 500 }}>
+                                        {formatHeaderDate(mensajes[mensajes.length - 1]?.timestamp)}
+                                    </Typography>
+                                </Box>
+                            </Tooltip>
+                        )}
                         {convActiva.estado === 'sin_asignar' && (
                             <Tooltip title="Tomar conversación">
                                 <Button
@@ -1086,13 +1129,29 @@ export default function WapiInbox() {
                                     if (targetId && emoji) reactionMap[targetId] = emoji;
                                 }
                             });
-                            return mensajes.filter(m => m.tipo !== 'reaction').map((msg) => {
+                            const filteredMsgs = mensajes.filter(m => m.tipo !== 'reaction');
+                            const elements = [];
+                            let lastDateKey = null;
+                            filteredMsgs.forEach((msg) => {
+                                const msgDateKey = msg.timestamp ? new Date(msg.timestamp).toDateString() : null;
+                                if (msgDateKey && msgDateKey !== lastDateKey) {
+                                    elements.push(
+                                        <Box key={`divider-${msgDateKey}`} sx={{ display: 'flex', alignItems: 'center', my: 1.5 }}>
+                                            <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
+                                            <Typography variant="caption" sx={{ mx: 1.5, color: 'text.disabled', fontWeight: 500, fontSize: 11, whiteSpace: 'nowrap', userSelect: 'none' }}>
+                                                {formatDividerDate(msg.timestamp)}
+                                            </Typography>
+                                            <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
+                                        </Box>
+                                    );
+                                    lastDateKey = msgDateKey;
+                                }
                             // ── Burbuja de sistema (ficha de contacto) ──
                             if (msg.tipo === 'sistema') {
                                 const c = msg.contenido ?? {};
                                 const datos = c.datos ?? {};
                                 const tieneDatos = Object.keys(datos).length > 0;
-                                return (
+                                elements.push(
                                     <Box key={msg.id} sx={{ display: 'flex', justifyContent: 'center', my: 0.5 }}>
                                         <Paper elevation={0} sx={{
                                             px: 2, py: 1.25, maxWidth: '85%', width: '100%',
@@ -1133,7 +1192,7 @@ export default function WapiInbox() {
 
                             // ── Burbuja normal ──
                             const reaccion = reactionMap[msg.waMessageId];
-                            return (
+                            elements.push(
                                 <Box key={msg.id} sx={{ display: 'flex', justifyContent: msg.fromMe ? 'flex-end' : 'flex-start' }}>
                                     <Box sx={{ position: 'relative', maxWidth: '70%', mb: reaccion ? 1.5 : 0 }}>
                                         <Paper elevation={1} sx={{
@@ -1175,7 +1234,9 @@ export default function WapiInbox() {
                                     </Box>
                                 </Box>
                             );
-                        })})()}
+                            });
+                            return elements;
+                        })()}
                         <div ref={mensajesEndRef} />
                     </Box>
 
