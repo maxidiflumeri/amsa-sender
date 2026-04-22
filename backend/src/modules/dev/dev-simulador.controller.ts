@@ -1,10 +1,12 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { WapiWebhookService } from '../wapi/webhook/wapi-webhook.service';
+import { WapiConfigService } from '../wapi/config/wapi-config.service';
 
 interface SimularMensajeDto {
   numero: string;
   nombre?: string;
   texto: string;
+  configId?: number;
 }
 
 interface SimularDocumentoDto {
@@ -12,11 +14,13 @@ interface SimularDocumentoDto {
   nombre?: string;
   caption?: string;
   filename?: string;
+  configId?: number;
 }
 
 interface SimularAudioDto {
   numero: string;
   nombre?: string;
+  configId?: number;
 }
 
 interface SimularContactoDto {
@@ -25,6 +29,7 @@ interface SimularContactoDto {
   contactoNombre: string;
   contactoTelefono?: string;
   contactoEmpresa?: string;
+  configId?: number;
 }
 
 interface SimularReaccionDto {
@@ -32,6 +37,7 @@ interface SimularReaccionDto {
   nombre?: string;
   emoji: string;
   waMessageId: string;
+  configId?: number;
 }
 
 interface SimularBotonDto {
@@ -39,12 +45,14 @@ interface SimularBotonDto {
   nombre?: string;
   payload: string;
   textoBoton?: string;
+  configId?: number;
 }
 
 interface SimularStatusDto {
   waMessageId: string;
   status: 'delivered' | 'read';
   numero: string;
+  configId?: number;
 }
 
 function buildPayload(phoneNumberId: string, changes: object) {
@@ -64,12 +72,21 @@ function nowTs(): string {
 
 @Controller('dev/simular')
 export class DevSimuladorController {
-  constructor(private readonly webhookService: WapiWebhookService) {}
+  constructor(
+    private readonly webhookService: WapiWebhookService,
+    private readonly configService: WapiConfigService,
+  ) {}
+
+  private async getPhoneNumberId(configId?: number): Promise<string> {
+    const config = await this.configService.obtenerConfigCompleta(configId);
+    return config.phoneNumberId;
+  }
 
   /** Simula un mensaje de texto entrante */
   @Post('mensaje')
   async mensaje(@Body() dto: SimularMensajeDto) {
-    const payload = buildPayload('dev-phone-id', {
+    const phoneNumberId = await this.getPhoneNumberId(dto.configId);
+    const payload = buildPayload(phoneNumberId, {
       contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
       messages: [{ from: dto.numero, id: waId(), timestamp: nowTs(), type: 'text', text: { body: dto.texto } }],
     });
@@ -80,7 +97,8 @@ export class DevSimuladorController {
   /** Simula que el contacto presiona un botón de template */
   @Post('boton')
   async boton(@Body() dto: SimularBotonDto) {
-    const payload = buildPayload('dev-phone-id', {
+    const phoneNumberId = await this.getPhoneNumberId(dto.configId);
+    const payload = buildPayload(phoneNumberId, {
       contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
       messages: [{ from: dto.numero, id: waId(), timestamp: nowTs(), type: 'button', button: { payload: dto.payload, text: dto.textoBoton ?? dto.payload } }],
     });
@@ -91,17 +109,19 @@ export class DevSimuladorController {
   /** Simula un status update (delivered / read) */
   @Post('status')
   async status(@Body() dto: SimularStatusDto) {
-    const payload = buildPayload('dev-phone-id', {
+    const phoneNumberId = await this.getPhoneNumberId(dto.configId);
+    const payload = buildPayload(phoneNumberId, {
       statuses: [{ id: dto.waMessageId, status: dto.status, timestamp: nowTs(), recipient_id: dto.numero }],
     });
     await this.webhookService.procesarEvento(payload);
     return { ok: true, simulado: 'status', status: dto.status, waMessageId: dto.waMessageId };
   }
 
-  /** Simula una imagen entrante (el mediaUrl es un ID falso — no se podrá descargar) */
+  /** Simula una imagen entrante */
   @Post('imagen')
   async imagen(@Body() dto: SimularMensajeDto) {
-    const payload = buildPayload('dev-phone-id', {
+    const phoneNumberId = await this.getPhoneNumberId(dto.configId);
+    const payload = buildPayload(phoneNumberId, {
       contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
       messages: [{
         from: dto.numero, id: waId(), timestamp: nowTs(), type: 'image',
@@ -115,7 +135,8 @@ export class DevSimuladorController {
   /** Simula un documento entrante */
   @Post('documento')
   async documento(@Body() dto: SimularDocumentoDto) {
-    const payload = buildPayload('dev-phone-id', {
+    const phoneNumberId = await this.getPhoneNumberId(dto.configId);
+    const payload = buildPayload(phoneNumberId, {
       contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
       messages: [{
         from: dto.numero, id: waId(), timestamp: nowTs(), type: 'document',
@@ -134,7 +155,8 @@ export class DevSimuladorController {
   /** Simula un audio entrante */
   @Post('audio')
   async audio(@Body() dto: SimularAudioDto) {
-    const payload = buildPayload('dev-phone-id', {
+    const phoneNumberId = await this.getPhoneNumberId(dto.configId);
+    const payload = buildPayload(phoneNumberId, {
       contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
       messages: [{
         from: dto.numero, id: waId(), timestamp: nowTs(), type: 'audio',
@@ -148,7 +170,8 @@ export class DevSimuladorController {
   /** Simula el envío de un contacto */
   @Post('contacto')
   async contacto(@Body() dto: SimularContactoDto) {
-    const payload = buildPayload('dev-phone-id', {
+    const phoneNumberId = await this.getPhoneNumberId(dto.configId);
+    const payload = buildPayload(phoneNumberId, {
       contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
       messages: [{
         from: dto.numero, id: waId(), timestamp: nowTs(), type: 'contacts',
@@ -164,10 +187,11 @@ export class DevSimuladorController {
     return { ok: true, simulado: 'contacto', numero: dto.numero };
   }
 
-  /** Simula un sticker entrante (WebP — no visualizable en dev) */
+  /** Simula un sticker entrante */
   @Post('sticker')
   async sticker(@Body() dto: SimularAudioDto) {
-    const payload = buildPayload('dev-phone-id', {
+    const phoneNumberId = await this.getPhoneNumberId(dto.configId);
+    const payload = buildPayload(phoneNumberId, {
       contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
       messages: [{
         from: dto.numero, id: waId(), timestamp: nowTs(), type: 'sticker',
@@ -181,7 +205,8 @@ export class DevSimuladorController {
   /** Simula una reacción emoji a un mensaje */
   @Post('reaccion')
   async reaccion(@Body() dto: SimularReaccionDto) {
-    const payload = buildPayload('dev-phone-id', {
+    const phoneNumberId = await this.getPhoneNumberId(dto.configId);
+    const payload = buildPayload(phoneNumberId, {
       contacts: [{ profile: { name: dto.nombre ?? 'Usuario Test' }, wa_id: dto.numero }],
       messages: [{
         from: dto.numero, id: waId(), timestamp: nowTs(), type: 'reaction',

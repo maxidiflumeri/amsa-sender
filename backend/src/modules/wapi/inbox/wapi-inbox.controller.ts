@@ -47,8 +47,8 @@ export class WapiInboxController {
   }
 
   @Post(':id/resolver')
-  resolver(@Param('id') id: string) {
-    return this.inboxService.resolverConversacion(+id);
+  resolver(@Param('id') id: string, @Body() body: { nota?: string }, @Req() req: any) {
+    return this.inboxService.resolverConversacion(+id, req['usuario']?.sub, body?.nota);
   }
 
   @Post(':id/marcar-leido')

@@ -123,6 +123,7 @@ model Usuario {
   activo          Boolean             @default(true)
   creadoAt        DateTime
   conversaciones  WaApiConversacion[]
+  cierresWapi     WaApiCierreConversacion[]
   @@map("Usuario")
 }
 
@@ -389,6 +390,7 @@ model WaApiConversacion {
   creadoAt            DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   mensajes            WaApiMensaje[]
+  cierres             WaApiCierreConversacion[]
   @@unique([numero, configId])
   @@index([asignadoAId])
   @@index([estado])
@@ -409,6 +411,19 @@ model WaApiMensaje {
   creadoAt       DateTime          @default(now())
   @@index([conversacionId, timestamp])
   @@map("WaApiMensaje")
+}
+
+model WaApiCierreConversacion {
+  id              Int               @id @default(autoincrement())
+  conversacionId  Int
+  conversacion    WaApiConversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  usuarioId       Int?
+  usuario         Usuario?          @relation(fields: [usuarioId], references: [id])
+  nota            String?           @db.Text
+  creadoAt        DateTime          @default(now())
+
+  @@index([conversacionId])
+  @@map("WaApiCierreConversacion")
 }
 
 model WaApiBaja {

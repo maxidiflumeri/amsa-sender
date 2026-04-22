@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     Box, Typography, Paper, TextField, IconButton, Chip, Avatar, List, Badge,
     ListItemAvatar, ListItemText, ListItemButton, Divider, CircularProgress,
@@ -27,6 +27,8 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import NoteAltOutlinedIcon from '@mui/icons-material/NoteAltOutlined';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { io } from 'socket.io-client';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -282,6 +284,14 @@ export default function WapiInbox() {
     const [loadingResumen, setLoadingResumen] = useState(false);
     const [loadingSugerencia, setLoadingSugerencia] = useState(false);
 
+    // ── Notas de cierre ───────────────────────────────────────────────────────
+    const [dialogCierre, setDialogCierre] = useState(false);
+    const [notaCierre, setNotaCierre] = useState('');
+    const [resolviendoConv, setResolviendoConv] = useState(false);
+    const [panelCierresAbierto, setPanelCierresAbierto] = useState(false);
+    const [flashCierreId, setFlashCierreId] = useState(null);
+    const cierreRefs = useRef({});
+
     const mensajesEndRef = useRef(null);
     const socketRef = useRef(null);
     const convActivaRef = useRef(null);
@@ -460,6 +470,8 @@ export default function WapiInbox() {
 
     // ── Abrir conversación ─────────────────────────────────────────────────
     const abrirConv = async (conv) => {
+        setPanelCierresAbierto(false);
+        cierreRefs.current = {};
         // Guardar borrador de la conversación actual antes de cambiar
         if (convActiva && convActiva.id !== conv.id) {
             setDrafts(prev => {
@@ -517,21 +529,31 @@ export default function WapiInbox() {
         try {
             const { data } = await api.post(`/wapi/inbox/${convId}/tomar`);
             upsertConv(data);
-            if (convActiva?.id === convId) setConvActiva(data);
+            if (convActiva?.id === convId) setConvActiva(prev => ({ ...prev, ...data }));
         } catch {
             setError('Error al tomar la conversación');
         }
     };
 
     // ── Resolver conversación ──────────────────────────────────────────────
-    const resolverConv = async () => {
+    const abrirDialogCierre = () => {
+        setNotaCierre('');
+        setDialogCierre(true);
+    };
+
+    const confirmarCierre = async (nota) => {
         if (!convActiva) return;
+        setResolviendoConv(true);
         try {
-            const { data } = await api.post(`/wapi/inbox/${convActiva.id}/resolver`);
+            const { data } = await api.post(`/wapi/inbox/${convActiva.id}/resolver`, { nota: nota || undefined });
             upsertConv(data);
-            setConvActiva(data);
+            setConvActiva(prev => ({ ...prev, ...data }));
+            setDialogCierre(false);
+            setNotaCierre('');
         } catch {
             setError('Error al resolver la conversación');
+        } finally {
+            setResolviendoConv(false);
         }
     };
 
@@ -635,7 +657,7 @@ export default function WapiInbox() {
         try {
             const { data } = await api.post(`/wapi/inbox/${convActiva.id}/asignar`, { userId: asignarUserId });
             upsertConv(data);
-            setConvActiva(data);
+            setConvActiva(prev => ({ ...prev, ...data }));
             setDialogAsignar(false);
         } catch {
             setError('Error al asignar la conversación');
@@ -1018,6 +1040,20 @@ export default function WapiInbox() {
                                 </Box>
                             </Tooltip>
                         )}
+                        {(convActiva.cierres?.length > 0) && (
+                            <Tooltip title={panelCierresAbierto ? 'Ocultar notas de cierre' : 'Ver notas de cierre'}>
+                                <Box
+                                    onClick={() => setPanelCierresAbierto(v => !v)}
+                                    sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, borderRadius: 1.5, bgcolor: panelCierresAbierto ? 'warning.main' : 'action.hover', flexShrink: 0, cursor: 'pointer', transition: 'background 0.2s' }}
+                                >
+                                    <NoteAltOutlinedIcon sx={{ fontSize: 13, color: panelCierresAbierto ? 'white' : 'text.disabled' }} />
+                                    <Typography variant="caption" sx={{ fontSize: 11, fontWeight: 600, color: panelCierresAbierto ? 'white' : 'text.secondary' }}>
+                                        {convActiva.cierres.length} {convActiva.cierres.length === 1 ? 'nota' : 'notas'}
+                                    </Typography>
+                                    {panelCierresAbierto ? <ExpandLessIcon sx={{ fontSize: 13, color: 'white' }} /> : <ExpandMoreIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
+                                </Box>
+                            </Tooltip>
+                        )}
                         {convActiva.estado === 'sin_asignar' && (
                             <Tooltip title="Tomar conversación">
                                 <Button
@@ -1062,7 +1098,7 @@ export default function WapiInbox() {
                             <Tooltip title="Marcar como resuelta">
                                 <IconButton
                                     size="small"
-                                    onClick={resolverConv}
+                                    onClick={abrirDialogCierre}
                                     sx={{
                                         background: 'linear-gradient(135deg, #2e7d32 0%, #66bb6a 100%)',
                                         color: 'white',
@@ -1115,6 +1151,49 @@ export default function WapiInbox() {
                         </Tooltip>
                     </Paper>
 
+                    {/* Panel colapsable de notas de cierre */}
+                    <Collapse in={panelCierresAbierto} unmountOnExit>
+                        <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: (t) => t.palette.mode === 'dark' ? '#1e1a0e' : '#fffbeb', maxHeight: 220, overflowY: 'auto' }}>
+                            {(convActiva.cierres ?? []).slice().reverse().map((cierre, idx) => (
+                                <Box
+                                    key={cierre.id ?? idx}
+                                    onClick={() => {
+                                        const ref = cierreRefs.current[cierre.id];
+                                        if (ref) {
+                                            ref.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            setFlashCierreId(cierre.id);
+                                            setTimeout(() => setFlashCierreId(null), 1200);
+                                        }
+                                    }}
+                                    sx={{
+                                        px: 2, py: 1.25,
+                                        display: 'flex', alignItems: 'flex-start', gap: 1.5,
+                                        borderBottom: '1px solid', borderColor: 'divider',
+                                        cursor: 'pointer',
+                                        transition: 'background 0.15s',
+                                        '&:hover': { bgcolor: (t) => t.palette.mode === 'dark' ? '#2a2500' : '#fef3c7' },
+                                        '&:last-child': { borderBottom: 'none' },
+                                    }}
+                                >
+                                    <LockOutlinedIcon sx={{ fontSize: 15, color: '#d97706', mt: 0.3, flexShrink: 0 }} />
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                                            <Typography variant="caption" fontWeight={600} sx={{ color: '#d97706' }}>
+                                                {cierre.usuario?.nombre ?? 'Sistema'}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.disabled">
+                                                {new Date(cierre.creadoAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                            </Typography>
+                                        </Box>
+                                        <Typography variant="body2" sx={{ fontSize: 12, color: cierre.nota ? 'text.primary' : 'text.disabled', fontStyle: cierre.nota ? 'normal' : 'italic', mt: 0.25 }}>
+                                            {cierre.nota ?? 'Sin nota'}
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            ))}
+                        </Box>
+                    </Collapse>
+
                     {/* Mensajes */}
                     <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: (t) => t.palette.mode === 'dark' ? '#1a1a2e' : '#e5ddd5' }}>
                         {loadingMensajes ? (
@@ -1130,9 +1209,37 @@ export default function WapiInbox() {
                                 }
                             });
                             const filteredMsgs = mensajes.filter(m => m.tipo !== 'reaction');
+                            const cierres = (convActiva?.cierres ?? []).slice().sort((a, b) => new Date(a.creadoAt) - new Date(b.creadoAt));
+                            let cierreIdx = 0;
                             const elements = [];
                             let lastDateKey = null;
                             filteredMsgs.forEach((msg) => {
+                                // Insertar marcadores de cierre que ocurrieron antes de este mensaje
+                                while (cierreIdx < cierres.length && new Date(cierres[cierreIdx].creadoAt) <= new Date(msg.timestamp)) {
+                                    const c = cierres[cierreIdx++];
+                                    elements.push(
+                                        <Box
+                                            key={`cierre-${c.id}`}
+                                            ref={el => { cierreRefs.current[c.id] = el; }}
+                                            sx={{
+                                                display: 'flex', alignItems: 'center', my: 1.5, transition: 'background 0.4s',
+                                                bgcolor: flashCierreId === c.id ? (t => t.palette.mode === 'dark' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.15)') : 'transparent',
+                                                borderRadius: 2, px: 1,
+                                            }}
+                                        >
+                                            <Box sx={{ flex: 1, height: '1px', bgcolor: '#f59e0b44' }} />
+                                            <Box sx={{ mx: 1.5, display: 'flex', alignItems: 'center', gap: 0.75, bgcolor: (t) => t.palette.mode === 'dark' ? '#2a1f00' : '#fef3c7', border: '1px solid #f59e0b55', borderRadius: 2, px: 1.25, py: 0.4 }}>
+                                                <LockOutlinedIcon sx={{ fontSize: 11, color: '#d97706' }} />
+                                                <Typography variant="caption" sx={{ fontSize: 10.5, color: '#d97706', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                    Cerrado por {c.usuario?.nombre ?? 'Sistema'}
+                                                    {c.nota ? ` · "${c.nota.length > 40 ? c.nota.slice(0, 40) + '…' : c.nota}"` : ''}
+                                                </Typography>
+                                            </Box>
+                                            <Box sx={{ flex: 1, height: '1px', bgcolor: '#f59e0b44' }} />
+                                        </Box>
+                                    );
+                                }
+
                                 const msgDateKey = msg.timestamp ? new Date(msg.timestamp).toDateString() : null;
                                 if (msgDateKey && msgDateKey !== lastDateKey) {
                                     elements.push(
@@ -1235,6 +1342,31 @@ export default function WapiInbox() {
                                 </Box>
                             );
                             });
+                            // Insertar cierres que quedaron después del último mensaje
+                            while (cierreIdx < cierres.length) {
+                                const c = cierres[cierreIdx++];
+                                elements.push(
+                                    <Box
+                                        key={`cierre-${c.id}`}
+                                        ref={el => { cierreRefs.current[c.id] = el; }}
+                                        sx={{
+                                            display: 'flex', alignItems: 'center', my: 1.5, transition: 'background 0.4s',
+                                            bgcolor: flashCierreId === c.id ? (t => t.palette.mode === 'dark' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.15)') : 'transparent',
+                                            borderRadius: 2, px: 1,
+                                        }}
+                                    >
+                                        <Box sx={{ flex: 1, height: '1px', bgcolor: '#f59e0b44' }} />
+                                        <Box sx={{ mx: 1.5, display: 'flex', alignItems: 'center', gap: 0.75, bgcolor: (t) => t.palette.mode === 'dark' ? '#2a1f00' : '#fef3c7', border: '1px solid #f59e0b55', borderRadius: 2, px: 1.25, py: 0.4 }}>
+                                            <LockOutlinedIcon sx={{ fontSize: 11, color: '#d97706' }} />
+                                            <Typography variant="caption" sx={{ fontSize: 10.5, color: '#d97706', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                Cerrado por {c.usuario?.nombre ?? 'Sistema'}
+                                                {c.nota ? ` · "${c.nota.length > 40 ? c.nota.slice(0, 40) + '…' : c.nota}"` : ''}
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ flex: 1, height: '1px', bgcolor: '#f59e0b44' }} />
+                                    </Box>
+                                );
+                            }
                             return elements;
                         })()}
                         <div ref={mensajesEndRef} />
@@ -1462,6 +1594,45 @@ export default function WapiInbox() {
             )}
             </Box>
             )}
+
+            {/* Dialog cierre con nota */}
+            <Dialog open={dialogCierre} onClose={() => !resolviendoConv && setDialogCierre(false)} maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LockOutlinedIcon sx={{ color: '#d97706' }} />
+                    Cerrar conversación
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Podés dejar una nota opcional explicando el motivo del cierre.
+                    </Typography>
+                    <TextField
+                        autoFocus
+                        multiline
+                        rows={3}
+                        fullWidth
+                        placeholder='Ej: "Contactado por teléfono", "Resuelto por email"…'
+                        value={notaCierre}
+                        onChange={e => setNotaCierre(e.target.value)}
+                        inputProps={{ maxLength: 500 }}
+                        helperText={`${notaCierre.length}/500`}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDialogCierre(false)} disabled={resolviendoConv}>Cancelar</Button>
+                    <Button onClick={() => confirmarCierre()} disabled={resolviendoConv} color="inherit">
+                        Cerrar sin nota
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={() => confirmarCierre(notaCierre)}
+                        disabled={resolviendoConv || !notaCierre.trim()}
+                        sx={{ bgcolor: '#d97706', '&:hover': { bgcolor: '#b45309' } }}
+                        startIcon={resolviendoConv ? <CircularProgress size={14} color="inherit" /> : null}
+                    >
+                        Cerrar con nota
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Dialog asignar */}
             <Dialog open={dialogAsignar} onClose={() => setDialogAsignar(false)} maxWidth="xs" fullWidth>

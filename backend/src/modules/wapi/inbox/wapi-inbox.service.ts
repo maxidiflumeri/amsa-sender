@@ -265,6 +265,10 @@ export class WapiInboxService {
         mensajes: { orderBy: { timestamp: 'asc' } },
         asignadoA: { select: this.INCLUDE_USUARIO },
         config: { select: { id: true, nombre: true } },
+        cierres: {
+          orderBy: { creadoAt: 'asc' },
+          include: { usuario: { select: { id: true, nombre: true } } },
+        },
       },
     });
     return this.conVentana(conv);
@@ -286,6 +290,10 @@ export class WapiInboxService {
       include: {
         asignadoA: { select: this.INCLUDE_USUARIO },
         config: { select: { id: true, nombre: true } },
+        cierres: {
+          orderBy: { creadoAt: 'asc' },
+          include: { usuario: { select: { id: true, nombre: true } } },
+        },
       },
     });
     const result = this.conVentana(conv);
@@ -297,17 +305,44 @@ export class WapiInboxService {
     return this.asignarConversacion(id, userId);
   }
 
-  async resolverConversacion(id: number) {
-    const conv = await this.prisma.waApiConversacion.update({
+  async resolverConversacion(id: number, usuarioId?: number, nota?: string) {
+    const [conv] = await this.prisma.$transaction([
+      this.prisma.waApiConversacion.update({
+        where: { id },
+        data: { estado: 'resuelta', resolvedAt: new Date() },
+        include: {
+          asignadoA: { select: this.INCLUDE_USUARIO },
+          config: { select: { id: true, nombre: true } },
+          cierres: {
+            orderBy: { creadoAt: 'asc' },
+            include: { usuario: { select: { id: true, nombre: true } } },
+          },
+        },
+      }),
+      this.prisma.waApiCierreConversacion.create({
+        data: {
+          conversacionId: id,
+          usuarioId: usuarioId ?? null,
+          nota: nota?.trim() || null,
+        },
+      }),
+    ]);
+
+    // Volvemos a buscar para tener los cierres actualizados tras el create
+    const convFinal = await this.prisma.waApiConversacion.findUniqueOrThrow({
       where: { id },
-      data: { estado: 'resuelta', resolvedAt: new Date() },
       include: {
         asignadoA: { select: this.INCLUDE_USUARIO },
         config: { select: { id: true, nombre: true } },
+        cierres: {
+          orderBy: { creadoAt: 'asc' },
+          include: { usuario: { select: { id: true, nombre: true } } },
+        },
       },
     });
-    const result = this.conVentana(conv);
-    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', { ...result, configId: conv.configId }, 'inbox_wapi');
+
+    const result = this.conVentana(convFinal);
+    this.socketGateway.emitirEvento('wapi:conversacion_actualizada', { ...result, configId: convFinal.configId }, 'inbox_wapi');
     return result;
   }
 
@@ -318,6 +353,10 @@ export class WapiInboxService {
       include: {
         asignadoA: { select: this.INCLUDE_USUARIO },
         config: { select: { id: true, nombre: true } },
+        cierres: {
+          orderBy: { creadoAt: 'asc' },
+          include: { usuario: { select: { id: true, nombre: true } } },
+        },
       },
     });
     const result = this.conVentana(conv);
@@ -332,6 +371,10 @@ export class WapiInboxService {
       include: {
         asignadoA: { select: this.INCLUDE_USUARIO },
         config: { select: { id: true, nombre: true } },
+        cierres: {
+          orderBy: { creadoAt: 'asc' },
+          include: { usuario: { select: { id: true, nombre: true } } },
+        },
       },
     });
     const result = this.conVentana(conv);

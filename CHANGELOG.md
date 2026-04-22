@@ -1,5 +1,39 @@
 # Changelog
 
+## [2026-04-22] — WapiInbox: notas de cierre, historial multicierres y navegación desde panel
+
+### Contexto
+
+Feature solicitado para registrar observaciones al resolver una conversación. La arquitectura soporta múltiples cierres sobre el mismo número/línea ya que `WaApiConversacion` se reutiliza (se reactiva cada vez que el contacto vuelve a escribir). Cada cierre queda ligado a la conversación, al usuario que cerró y a la nota opcional. El historial de todos los cierres es visible siempre, incluso cuando la conversación está activa.
+
+### Schema — `prisma/schema.prisma`
+
+- **Nuevo modelo `WaApiCierreConversacion`**: `id`, `conversacionId` (FK a `WaApiConversacion`), `usuarioId Int?` (FK a `Usuario`, nullable para cierres sin asesor), `nota String? @db.Text`, `creadoAt DateTime @default(now())`. Índice `@@index([conversacionId])`.
+- **`WaApiConversacion`**: agregada relación inversa `cierres WaApiCierreConversacion[]`.
+- **`Usuario`**: agregada relación inversa `cierresWapi WaApiCierreConversacion[]`.
+- Schema sincronizado con `prisma db push --accept-data-loss` (no usa migraciones).
+
+### Backend — `src/modules/wapi/inbox/`
+
+#### `wapi-inbox.service.ts`
+
+- **`resolverConversacion(id, usuarioId?, nota?)`**: refactorizado a `$transaction` atómico — actualiza `WaApiConversacion` (estado→`resuelta`, `resolvedAt`) y crea el registro `WaApiCierreConversacion` en la misma transacción. La nota se limpia con `.trim()` y se guarda como `null` si está vacía.
+- **`obtenerConversacion(id)`**: ahora incluye `cierres` con `orderBy: { creadoAt: 'asc' }` y join al `usuario` (id + nombre) para mostrar quién cerró.
+
+#### `wapi-inbox.controller.ts`
+
+- **`POST :id/resolver`**: acepta `body: { nota?: string }` y propaga el `usuarioId` desde el JWT al servicio.
+
+### Frontend — `frontend/src/components/wapi/WapiInbox.jsx`
+
+- **Dialog de cierre**: al presionar "Resolver" se abre un `Dialog` con textarea para ingresar nota opcional. Dos acciones: "Cerrar sin nota" y "Cerrar con nota". Estados `dialogCierre`, `notaCierre`, `resolviendoConv`.
+- **Panel colapsable de cierres en el header**: badge ámbar "N notas" visible solo cuando hay cierres registrados. Al hacer clic despliega un `Collapse` con la lista de cierres (más reciente primero), con ícono de candado, nombre del asesor, fecha relativa y texto de la nota (truncado a 2 líneas). El click en una nota hace scroll suave al marcador correspondiente en el chat + efecto flash ámbar de 1.5 s.
+- **Marcadores de cierre en el timeline**: píldoras ámbar insertadas cronológicamente entre los mensajes. Muestran "Cerrado por [nombre] · [nota truncada]". Renderizados con `cierreRefs` para soportar el scroll desde el panel.
+- **Cierres post-último mensaje**: los cierres que ocurrieron después del último mensaje se agregan al final del timeline.
+- **Preservación de cierres al tomar/asignar conversación**: los `setConvActiva` en `tomarConv` y `asignarConversacion` ahora usan `prev => ({ ...data, cierres: prev?.cierres ?? [] })` para no perder los cierres cargados por `obtenerConversacion`.
+
+---
+
 ## [2026-04-22] — WapiInbox: divisores de fecha y indicador de fecha en header
 
 ### Frontend — `frontend/src/components/wapi/WapiInbox.jsx`
