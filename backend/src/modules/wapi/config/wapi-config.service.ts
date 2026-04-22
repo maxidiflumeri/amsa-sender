@@ -58,7 +58,7 @@ export class WapiConfigService {
     });
   }
 
-  async listarLineas(): Promise<{ id: number; nombre: string; activo: boolean }[]> {
+  async listarLineas(): Promise<{ id: number; nombre: string | null; activo: boolean }[]> {
     const configs = await this.prisma.waApiConfig.findMany({
       orderBy: { creadoAt: 'asc' },
       select: { id: true, nombre: true, activo: true },
