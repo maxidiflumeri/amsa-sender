@@ -16,8 +16,10 @@ export const NotificationProvider = ({ children }) => {
     const [conversations, setConversations] = useState([]);
     const socketRef = useRef(null);
 
+    const hasWapiInbox = user?.permisos?.includes('wapi.inbox') ?? false;
+
     const refreshCounts = useCallback(async () => {
-        if (!loggedIn) return;
+        if (!loggedIn || !hasWapiInbox) return;
         try {
             const { data } = await api.get('/wapi/inbox');
             if (!Array.isArray(data)) return;
@@ -44,10 +46,10 @@ export const NotificationProvider = ({ children }) => {
         } catch (error) {
             console.error('Error fetching notification counts:', error);
         }
-    }, [loggedIn, myUserId]);
+    }, [loggedIn, myUserId, hasWapiInbox]);
 
     useEffect(() => {
-        if (loggedIn) {
+        if (loggedIn && hasWapiInbox) {
             refreshCounts();
 
             const socket = io(import.meta.env.VITE_HOST_SOCKET);
@@ -75,7 +77,7 @@ export const NotificationProvider = ({ children }) => {
             setMyActiveCount(0);
             setConversations([]);
         }
-    }, [loggedIn, refreshCounts]);
+    }, [loggedIn, hasWapiInbox, refreshCounts]);
 
     return (
         <NotificationContext.Provider value={{ 
