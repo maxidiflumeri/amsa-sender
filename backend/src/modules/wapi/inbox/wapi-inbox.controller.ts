@@ -28,6 +28,27 @@ export class WapiInboxController {
     return this.inboxService.listarSinAsignar(configIdNum);
   }
 
+  @Get('buscar')
+  buscar(@Query('q') q?: string, @Query('configId') configId?: string, @Req() req?: any) {
+    const esAdmin = req['usuario']?.permisos?.includes('wapi.inbox.admin') ?? false;
+    const configIdNum = configId ? parseInt(configId, 10) : undefined;
+    return this.inboxService.buscar(q ?? '', req['usuario']?.sub, esAdmin, configIdNum);
+  }
+
+  @Get('resueltas')
+  listarResueltas(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('configId') configId?: string,
+    @Req() req?: any,
+  ) {
+    const esAdmin = req?.['usuario']?.permisos?.includes('wapi.inbox.admin') ?? false;
+    const configIdNum = configId ? parseInt(configId, 10) : undefined;
+    const pageNum = page ? parseInt(page, 10) : 0;
+    const limitNum = limit ? Math.min(parseInt(limit, 10) || 25, 50) : 25;
+    return this.inboxService.listarResueltas(req?.['usuario']?.sub, esAdmin, configIdNum, pageNum * limitNum, limitNum);
+  }
+
   @Get(':id')
   obtener(@Param('id') id: string) {
     return this.inboxService.obtenerConversacion(+id);

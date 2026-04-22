@@ -79,14 +79,38 @@ const formatHeaderDate = (ts) => {
     return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 };
 
-function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums, onContextMenuConv, drafts = {}, configs = [], selectedConfigId = null }) {
+function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.secondary', defaultOpen = true, typingNums, onContextMenuConv, drafts = {}, configs = [], selectedConfigId = null, onLoadMore, total, loadingMore }) {
     const [open, setOpen] = useState(defaultOpen);
-    if (!convs.length) return null;
+    const isLazy = !!onLoadMore;
+    const loadedOnceRef = useRef(false);
+    const sentinelRef = useRef(null);
+
+    useEffect(() => {
+        if (!isLazy || !sentinelRef.current) return;
+        const hasMore = convs.length < (total ?? 0);
+        const obs = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting && !loadingMore && hasMore) {
+                const nextPage = Math.floor(convs.length / 25);
+                onLoadMore(nextPage);
+            }
+        }, { threshold: 0.1 });
+        obs.observe(sentinelRef.current);
+        return () => obs.disconnect();
+    }, [isLazy, loadingMore, convs.length, total, onLoadMore]);
+
+    if (!isLazy && !convs.length) return null;
     const mostrarLinea = selectedConfigId === null && configs.length > 1;
     return (
         <>
             <Box
-                onClick={() => setOpen(o => !o)}
+                onClick={() => {
+                    const next = !open;
+                    setOpen(next);
+                    if (isLazy && next && !loadedOnceRef.current) {
+                        loadedOnceRef.current = true;
+                        onLoadMore(0);
+                    }
+                }}
                 sx={{ px: 2, py: 0.75, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none', '&:hover': { bgcolor: 'action.hover' } }}
             >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -108,16 +132,21 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                     >
                         {titulo.toUpperCase()}
                     </Typography>
-                    <Chip 
-                        label={convs.length} 
-                        size="small" 
+                    <Chip
+                        label={isLazy ? (loadedOnceRef.current ? (total ?? 0) : '…') : convs.length}
+                        size="small"
                         color={titulo.includes('sin asignar') && convs.length > 0 ? "warning" : "default"}
-                        sx={{ height: 16, fontSize: 10, fontWeight: 700 }} 
+                        sx={{ height: 16, fontSize: 10, fontWeight: 700 }}
                     />
                 </Box>
                 {open ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
             </Box>
-            <Collapse in={open}>
+            <Collapse in={open} unmountOnExit={isLazy}>
+                {isLazy && loadingMore && convs.length === 0 ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                        <CircularProgress size={18} />
+                    </Box>
+                ) : (
                 <List dense disablePadding>
                     {convs.map(conv => {
                         const isTyping = typingNums?.has(conv.numero);
@@ -232,6 +261,12 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                         );
                     })}
                 </List>
+                )}
+                {isLazy && (convs.length < (total ?? 0) || loadingMore) && (
+                    <Box ref={sentinelRef} sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                        {loadingMore && convs.length > 0 && <CircularProgress size={14} />}
+                    </Box>
+                )}
             </Collapse>
             <Divider />
         </>
@@ -284,6 +319,14 @@ export default function WapiInbox() {
     const [loadingResumen, setLoadingResumen] = useState(false);
     const [loadingSugerencia, setLoadingSugerencia] = useState(false);
 
+    // ── Resueltas paginadas ───────────────────────────────────────────────────
+    const [resueltasMias, setResueltasMias] = useState([]);
+    const [totalResueltasMias, setTotalResueltasMias] = useState(0);
+    const [loadingResueltas, setLoadingResueltas] = useState(false);
+    // ── Búsqueda server-side ──────────────────────────────────────────────────
+    const [resultadosServidor, setResultadosServidor] = useState([]);
+    const [buscandoServidor, setBuscandoServidor] = useState(false);
+
     // ── Notas de cierre ───────────────────────────────────────────────────────
     const [dialogCierre, setDialogCierre] = useState(false);
     const [notaCierre, setNotaCierre] = useState('');
@@ -311,24 +354,10 @@ export default function WapiInbox() {
 
     const misActivas       = convsFiltradas.filter(c => c.asignadoAId === myUserId && c.estado !== 'resuelta');
     const sinAsignar       = convsFiltradas.filter(c => c.estado === 'sin_asignar');
-    const misResueltas     = convsFiltradas.filter(c => c.asignadoAId === myUserId && c.estado === 'resuelta');
     const otrasActivas     = esAdmin ? convsFiltradas.filter(c => c.asignadoAId && c.asignadoAId !== myUserId && c.estado !== 'resuelta') : [];
-    const resueltasPorOtros = esAdmin ? convsFiltradas.filter(c => c.estado === 'resuelta' && c.asignadoAId !== myUserId) : [];
 
-    // ── Búsqueda por ANI / nombre ─────────────────────────────────────────
-    const terminoBusqueda = busqueda.trim().toLowerCase();
-    const resultadosBusqueda = terminoBusqueda
-        ? convsFiltradas.filter(c => {
-            if (terminoBusqueda.startsWith('#')) {
-                const idBuscado = terminoBusqueda.slice(1);
-                return idBuscado !== '' && String(c.id) === idBuscado;
-            }
-            return (
-                c.numero?.toLowerCase().includes(terminoBusqueda) ||
-                c.nombre?.toLowerCase().includes(terminoBusqueda)
-            );
-          })
-        : [];
+    // ── Búsqueda server-side ──────────────────────────────────────────────
+    const terminoBusqueda = busqueda.trim();
 
     // ── Cargar conversaciones ──────────────────────────────────────────────
     const cargarConvs = useCallback(async () => {
@@ -344,6 +373,53 @@ export default function WapiInbox() {
     }, []);
 
     useEffect(() => { cargarConvs(); }, [cargarConvs]);
+
+    // ── Cargar resueltas paginadas ─────────────────────────────────────────
+    const cargarResueltas = useCallback(async (page) => {
+        if (loadingResueltas) return;
+        setLoadingResueltas(true);
+        try {
+            const params = new URLSearchParams({ page: String(page), limit: '25' });
+            if (selectedConfigId !== null) params.set('configId', String(selectedConfigId));
+            const { data } = await api.get(`/wapi/inbox/resueltas?${params}`);
+            setResueltasMias(prev => page === 0 ? data.items : [...prev, ...data.items]);
+            setTotalResueltasMias(data.total);
+        } catch {
+            // silencioso
+        } finally {
+            setLoadingResueltas(false);
+        }
+    }, [selectedConfigId, loadingResueltas]);
+
+    // Resetear resueltas al cambiar de línea
+    useEffect(() => {
+        setResueltasMias([]);
+        setTotalResueltasMias(0);
+    }, [selectedConfigId]);
+
+    // ── Búsqueda server-side con debounce ─────────────────────────────────
+    useEffect(() => {
+        const q = busqueda.trim();
+        if (q.length < 2) {
+            setResultadosServidor([]);
+            setBuscandoServidor(false);
+            return;
+        }
+        setBuscandoServidor(true);
+        const timer = setTimeout(async () => {
+            try {
+                const params = new URLSearchParams({ q });
+                if (selectedConfigId !== null) params.set('configId', String(selectedConfigId));
+                const { data } = await api.get(`/wapi/inbox/buscar?${params}`);
+                setResultadosServidor(data.items ?? []);
+            } catch {
+                setResultadosServidor([]);
+            } finally {
+                setBuscandoServidor(false);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [busqueda, selectedConfigId]);
 
     // Cargar configs activas
     useEffect(() => {
@@ -394,16 +470,34 @@ export default function WapiInbox() {
 
     // ── Helpers para actualizar convs ──────────────────────────────────────
     const upsertConv = (conv) => {
-        setConvs(prev => {
-            const idx = prev.findIndex(c => c.id === conv.id);
-            if (idx >= 0) {
-                const updated = [...prev];
-                updated[idx] = { ...updated[idx], ...conv };
-                return updated.sort((a, b) => new Date(b.ultimoMensajeAt) - new Date(a.ultimoMensajeAt));
-            }
-            // Conv nueva: agregarla solo si me corresponde verla
-            return [conv, ...prev];
-        });
+        if (conv.estado === 'resuelta') {
+            // Sacar del listado activo
+            setConvs(prev => prev.filter(c => c.id !== conv.id));
+            // Actualizar en resueltas si ya las cargamos
+            setResueltasMias(prev => {
+                const idx = prev.findIndex(c => c.id === conv.id);
+                if (idx >= 0) {
+                    const updated = [...prev];
+                    updated[idx] = { ...updated[idx], ...conv };
+                    return updated;
+                }
+                // Prepend solo si ya hay items cargados (no auto-cargar)
+                if (prev.length > 0) return [conv, ...prev];
+                return prev;
+            });
+        } else {
+            // Sacar de resueltas si estaba (conv reactivada)
+            setResueltasMias(prev => prev.filter(c => c.id !== conv.id));
+            setConvs(prev => {
+                const idx = prev.findIndex(c => c.id === conv.id);
+                if (idx >= 0) {
+                    const updated = [...prev];
+                    updated[idx] = { ...updated[idx], ...conv };
+                    return updated.sort((a, b) => new Date(b.ultimoMensajeAt) - new Date(a.ultimoMensajeAt));
+                }
+                return [conv, ...prev];
+            });
+        }
     };
 
     // ── Socket.IO ──────────────────────────────────────────────────────────
@@ -499,6 +593,7 @@ export default function WapiInbox() {
             // Marcar como leído y resetear badge
             api.post(`/wapi/inbox/${conv.id}/marcar-leido`).catch(() => {});
             setConvs(prev => prev.map(c => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
+            setResueltasMias(prev => prev.map(c => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
         } catch {
             setError('Error cargando mensajes');
         } finally {
@@ -857,23 +952,30 @@ export default function WapiInbox() {
                 <Box sx={{ overflowY: 'auto', flex: 1 }}>
                     {loadingConvs ? (
                         <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>
-                    ) : terminoBusqueda ? (
-                        /* Modo búsqueda — reemplaza secciones */
+                    ) : terminoBusqueda.length >= 2 ? (
+                        /* Modo búsqueda server-side */
                         <>
-                            <SeccionLista
-                                titulo={`Resultados (${resultadosBusqueda.length})`}
-                                convs={resultadosBusqueda}
-                                convActivaId={convActiva?.id}
-                                onSelect={abrirConv}
-                                color="primary.main"
-                                defaultOpen={true}
-                                typingNums={typingNums}
-                                onContextMenuConv={handleContextMenuConv}
-                                drafts={drafts}
-                                configs={configs}
-                                selectedConfigId={selectedConfigId}
-                            />
-                            {!resultadosBusqueda.length && (
+                            {buscandoServidor && (
+                                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                                    <CircularProgress size={20} />
+                                </Box>
+                            )}
+                            {!buscandoServidor && (
+                                <SeccionLista
+                                    titulo={`Resultados (${resultadosServidor.length})`}
+                                    convs={resultadosServidor}
+                                    convActivaId={convActiva?.id}
+                                    onSelect={abrirConv}
+                                    color="primary.main"
+                                    defaultOpen={true}
+                                    typingNums={typingNums}
+                                    onContextMenuConv={handleContextMenuConv}
+                                    drafts={drafts}
+                                    configs={configs}
+                                    selectedConfigId={selectedConfigId}
+                                />
+                            )}
+                            {!buscandoServidor && !resultadosServidor.length && (
                                 <Box sx={{ p: 4, textAlign: 'center' }}>
                                     <Typography color="text.secondary" variant="body2">Sin resultados para "{busqueda}"</Typography>
                                 </Box>
@@ -923,8 +1025,8 @@ export default function WapiInbox() {
                                 />
                             )}
                             <SeccionLista
-                                titulo="Mis resueltas"
-                                convs={misResueltas}
+                                titulo="Resueltas"
+                                convs={resueltasMias}
                                 convActivaId={convActiva?.id}
                                 onSelect={abrirConv}
                                 color="text.disabled"
@@ -934,22 +1036,11 @@ export default function WapiInbox() {
                                 drafts={drafts}
                                 configs={configs}
                                 selectedConfigId={selectedConfigId}
+                                onLoadMore={cargarResueltas}
+                                total={totalResueltasMias}
+                                loadingMore={loadingResueltas}
                             />
-                            {esAdmin && (
-                                <SeccionLista
-                                    titulo="Resueltas por otros"
-                                    convs={resueltasPorOtros}
-                                    convActivaId={convActiva?.id}
-                                    onSelect={abrirConv}
-                                    color="text.disabled"
-                                    defaultOpen={false}
-                                    typingNums={typingNums}
-                                    onContextMenuConv={handleContextMenuConv}
-                                    configs={configs}
-                                    selectedConfigId={selectedConfigId}
-                                />
-                            )}
-                            {!misActivas.length && !sinAsignar.length && !misResueltas.length && !otrasActivas.length && !resueltasPorOtros.length && (
+                            {!misActivas.length && !sinAsignar.length && !resueltasMias.length && !otrasActivas.length && !totalResueltasMias && (
                                 <Box sx={{ p: 4, textAlign: 'center' }}>
                                     <Typography color="text.secondary">Sin conversaciones</Typography>
                                 </Box>

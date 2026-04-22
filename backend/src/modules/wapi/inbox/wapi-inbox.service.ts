@@ -231,8 +231,8 @@ export class WapiInboxService {
 
   async listarConversaciones(userId: number, esAdmin: boolean, configId?: number) {
     const where = esAdmin
-      ? (configId ? { configId } : {})
-      : { OR: [{ asignadoAId: userId }, { estado: 'sin_asignar' as const }], ...(configId ? { configId } : {}) };
+      ? { estado: { not: 'resuelta' as const }, ...(configId ? { configId } : {}) }
+      : { OR: [{ asignadoAId: userId }, { estado: 'sin_asignar' as const }], estado: { not: 'resuelta' as const }, ...(configId ? { configId } : {}) };
     const convs = await this.prisma.waApiConversacion.findMany({
       where,
       orderBy: { ultimoMensajeAt: 'desc' },
@@ -256,6 +256,68 @@ export class WapiInboxService {
       },
     });
     return convs.map(c => this.conVentana(c));
+  }
+
+  async listarResueltas(userId: number, esAdmin: boolean, configId?: number, skip = 0, take = 25) {
+    const where = {
+      estado: 'resuelta' as const,
+      ...(esAdmin ? {} : { asignadoAId: userId }),
+      ...(configId ? { configId } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.waApiConversacion.findMany({
+        where,
+        orderBy: { resolvedAt: 'desc' },
+        skip,
+        take,
+        include: {
+          mensajes: { orderBy: { timestamp: 'desc' }, take: 1 },
+          asignadoA: { select: this.INCLUDE_USUARIO },
+          config: { select: { id: true, nombre: true } },
+        },
+      }),
+      this.prisma.waApiConversacion.count({ where }),
+    ]);
+    return { items: items.map(c => this.conVentana(c)), total };
+  }
+
+  async buscar(q: string, userId: number, esAdmin: boolean, configId?: number) {
+    const term = q?.trim() ?? '';
+    if (term.length < 2) return { items: [], total: 0 };
+
+    let where: any;
+    if (term.startsWith('#')) {
+      const id = parseInt(term.slice(1), 10);
+      if (isNaN(id)) return { items: [], total: 0 };
+      where = {
+        id,
+        ...(esAdmin ? {} : { OR: [{ asignadoAId: userId }, { estado: 'sin_asignar' as const }] }),
+        ...(configId ? { configId } : {}),
+      };
+    } else {
+      where = {
+        AND: [
+          { OR: [{ numero: { contains: term } }, { nombre: { contains: term } }] },
+          ...(esAdmin ? [] : [{ OR: [{ asignadoAId: userId }, { estado: 'sin_asignar' as const }] }]),
+          ...(configId ? [{ configId }] : []),
+        ],
+      };
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.waApiConversacion.findMany({
+        where,
+        orderBy: { ultimoMensajeAt: 'desc' },
+        take: 50,
+        include: {
+          mensajes: { orderBy: { timestamp: 'desc' }, take: 1 },
+          asignadoA: { select: this.INCLUDE_USUARIO },
+          config: { select: { id: true, nombre: true } },
+        },
+      }),
+      this.prisma.waApiConversacion.count({ where }),
+    ]);
+    return { items: items.map(c => this.conVentana(c)), total };
   }
 
   async obtenerConversacion(id: number) {
