@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-    Box, Typography, Grid, IconButton, Chip, Button, Dialog,
+    Box, Typography, IconButton, Chip, Button, Dialog,
     DialogTitle, DialogContent, DialogActions, TextField, Tooltip,
     CircularProgress, Alert, Checkbox, FormControlLabel, Divider,
     LinearProgress, useTheme,
@@ -453,7 +453,7 @@ export default function GestionRoles() {
     if (loading) return <Box display="flex" justifyContent="center" mt={6}><CircularProgress /></Box>;
 
     return (
-        <Box py={3}>
+        <Box py={3} sx={{ width: '100%' }}>
             <Box
                 display="flex"
                 justifyContent="space-between"
@@ -470,18 +470,21 @@ export default function GestionRoles() {
 
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-            <Grid container spacing={2.5}>
+            <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+                gap: 2.5,
+                width: '100%',
+            }}>
                 {roles.map((r) => (
-                    <Grid item xs={12} sm={6} key={r.id}>
-                        <RolCard rol={r} onEditar={abrirEditar} onEliminar={abrirEliminar} />
-                    </Grid>
+                    <RolCard key={r.id} rol={r} onEditar={abrirEditar} onEliminar={abrirEliminar} />
                 ))}
                 {roles.length === 0 && (
-                    <Grid item xs={12}>
+                    <Box sx={{ gridColumn: '1 / -1' }}>
                         <Typography color="text.secondary" textAlign="center">No hay roles configurados</Typography>
-                    </Grid>
+                    </Box>
                 )}
-            </Grid>
+            </Box>
 
             {/* Dialog Crear */}
             <Dialog open={crearOpen} onClose={() => setCrearOpen(false)} maxWidth="sm" fullWidth>
