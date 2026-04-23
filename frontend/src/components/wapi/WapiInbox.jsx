@@ -39,12 +39,20 @@ const formatHora = (ts) => {
     return new Date(ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 };
 
-const formatFecha = (ts) => {
-    if (!ts) return '';
+const formatFechaLabel = (ts) => {
+    if (!ts) return { label: '', hora: '' };
     const d = new Date(ts);
     const hoy = new Date();
-    if (d.toDateString() === hoy.toDateString()) return formatHora(ts);
-    return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+    const ayer = new Date(hoy);
+    ayer.setDate(hoy.getDate() - 1);
+    if (d.toDateString() === hoy.toDateString()) return { label: formatHora(ts), hora: '' };
+    if (d.toDateString() === ayer.toDateString()) return { label: 'Ayer', hora: formatHora(ts) };
+    const diffDays = Math.floor((hoy - d) / 86400000);
+    if (diffDays < 7) {
+        const dia = d.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
+        return { label: dia.charAt(0).toUpperCase() + dia.slice(1), hora: formatHora(ts) };
+    }
+    return { label: d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }), hora: formatHora(ts) };
 };
 
 const formatDividerDate = (ts) => {
@@ -152,6 +160,7 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                         const isTyping = typingNums?.has(conv.numero);
                         const hasUnread = conv.unreadCount > 0;
                         const nombreLinea = conv.config?.nombre ?? `Línea ${conv.configId}`;
+                        const fechaInfo = formatFechaLabel(conv.ultimoMensajeAt);
                         return (
                         <ListItemButton
                             key={conv.id}
@@ -187,9 +196,16 @@ function SeccionLista({ titulo, convs, convActivaId, onSelect, color = 'text.sec
                                             {conv.nombre ?? conv.numero}
                                         </Typography>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-                                            <Typography variant="caption" color={hasUnread ? 'success.main' : 'text.secondary'} sx={{ fontSize: 10 }}>
-                                                {formatFecha(conv.ultimoMensajeAt)}
-                                            </Typography>
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                                <Typography variant="caption" color={hasUnread ? 'success.main' : 'text.secondary'} sx={{ fontSize: 10, lineHeight: 1.2 }}>
+                                                    {fechaInfo.label}
+                                                </Typography>
+                                                {fechaInfo.hora && (
+                                                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: 9, lineHeight: 1.2 }}>
+                                                        {fechaInfo.hora}
+                                                    </Typography>
+                                                )}
+                                            </Box>
                                             {hasUnread && (
                                                 <Box sx={{
                                                     minWidth: 18, height: 18, borderRadius: '50%',
@@ -1057,7 +1073,7 @@ export default function WapiInbox() {
             {convActiva ? (
                 <>
                     {/* Header del chat */}
-                    <Paper elevation={1} square sx={{ px: { xs: 1, sm: 2 }, py: 1.5, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Paper elevation={1} square sx={{ px: { xs: 1, sm: 2 }, py: 1.5, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, borderBottom: '1px solid', borderColor: 'divider', position: 'relative', zIndex: 2 }}>
                         {/* Botón volver — solo mobile */}
                         {isMobile && (
                             <IconButton edge="start" onClick={() => setConvActiva(null)} size="small">
@@ -1069,27 +1085,27 @@ export default function WapiInbox() {
                         </Avatar>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography fontWeight={700} noWrap>{convActiva.nombre ?? convActiva.numero}</Typography>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: { xs: 'nowrap', sm: 'wrap' }, overflow: 'hidden' }}>
                                 {typingNums.has(convActiva.numero) ? (
-                                    <Typography variant="caption" color="success.main" sx={{ fontStyle: 'italic' }}>Escribiendo...</Typography>
+                                    <Typography variant="caption" color="success.main" sx={{ fontStyle: 'italic', flexShrink: 0 }}>Escribiendo...</Typography>
                                 ) : (
                                     <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>{convActiva.numero}</Typography>
                                 )}
                                 <Chip
                                     label={{ sin_asignar: 'Sin asignar', asignada: 'Asignada', resuelta: 'Resuelta' }[convActiva.estado]}
                                     color={{ sin_asignar: 'warning', asignada: 'info', resuelta: 'default' }[convActiva.estado]}
-                                    size="small" sx={{ height: 18, fontSize: 10 }}
+                                    size="small" sx={{ height: 18, fontSize: 10, flexShrink: 0 }}
                                 />
                                 {convActiva.asignadoA && (
                                     <Chip
                                         icon={<AccountCircleIcon sx={{ fontSize: '14px !important' }} />}
                                         label={convActiva.asignadoA.nombre}
                                         size="small" color="info" variant="outlined"
-                                        sx={{ height: 18, fontSize: 10 }}
+                                        sx={{ height: 18, fontSize: 10, flexShrink: 0, maxWidth: { xs: 100, sm: 'none' } }}
                                     />
                                 )}
                                 {!convActiva.ventanaAbierta && convActiva.estado !== 'sin_asignar' && (
-                                    <Chip icon={<LockClockIcon sx={{ fontSize: '14px !important' }} />} label="Ventana cerrada" size="small" color="error" sx={{ height: 18, fontSize: 10 }} />
+                                    <Chip icon={<LockClockIcon sx={{ fontSize: '14px !important' }} />} label="Ventana cerrada" size="small" color="error" sx={{ height: 18, fontSize: 10, flexShrink: 0 }} />
                                 )}
                                 {campañaNombre && (
                                     <Tooltip title="Campaña de origen">
@@ -1098,7 +1114,7 @@ export default function WapiInbox() {
                                             size="small"
                                             color="secondary"
                                             variant="outlined"
-                                            sx={{ height: 18, fontSize: 10, maxWidth: 140 }}
+                                            sx={{ height: 18, fontSize: 10, maxWidth: 140, display: { xs: 'none', sm: 'inline-flex' } }}
                                         />
                                     </Tooltip>
                                 )}
@@ -1108,7 +1124,7 @@ export default function WapiInbox() {
                                         size="small"
                                         color="info"
                                         variant="outlined"
-                                        sx={{ height: 18, fontSize: 10 }}
+                                        sx={{ height: 18, fontSize: 10, display: { xs: 'none', sm: 'inline-flex' } }}
                                     />
                                 )}
                                 <Tooltip title="ID de contacto — clic para copiar">
@@ -1117,7 +1133,7 @@ export default function WapiInbox() {
                                         size="small"
                                         variant="outlined"
                                         onClick={() => navigator.clipboard.writeText(String(convActiva.id))}
-                                        sx={{ height: 18, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', letterSpacing: 0.5 }}
+                                        sx={{ height: 18, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace', letterSpacing: 0.5, display: { xs: 'none', sm: 'inline-flex' } }}
                                     />
                                 </Tooltip>
                             </Box>
@@ -1136,13 +1152,15 @@ export default function WapiInbox() {
                             <Tooltip title={panelCierresAbierto ? 'Ocultar notas de cierre' : 'Ver notas de cierre'}>
                                 <Box
                                     onClick={() => setPanelCierresAbierto(v => !v)}
-                                    sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, borderRadius: 1.5, bgcolor: panelCierresAbierto ? 'warning.main' : 'action.hover', flexShrink: 0, cursor: 'pointer', transition: 'background 0.2s' }}
+                                    sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: { xs: 0.5, sm: 1 }, py: 0.5, borderRadius: 1.5, bgcolor: panelCierresAbierto ? 'warning.main' : 'action.hover', flexShrink: 0, cursor: 'pointer', transition: 'background 0.2s' }}
                                 >
-                                    <NoteAltOutlinedIcon sx={{ fontSize: 13, color: panelCierresAbierto ? 'white' : 'text.disabled' }} />
-                                    <Typography variant="caption" sx={{ fontSize: 11, fontWeight: 600, color: panelCierresAbierto ? 'white' : 'text.secondary' }}>
+                                    <Badge badgeContent={convActiva.cierres.length} color="warning" sx={{ '& .MuiBadge-badge': { fontSize: 9, minWidth: 14, height: 14, display: { xs: 'flex', sm: 'none' } } }}>
+                                        <NoteAltOutlinedIcon sx={{ fontSize: 13, color: panelCierresAbierto ? 'white' : 'text.disabled' }} />
+                                    </Badge>
+                                    <Typography variant="caption" sx={{ fontSize: 11, fontWeight: 600, color: panelCierresAbierto ? 'white' : 'text.secondary', display: { xs: 'none', sm: 'block' } }}>
                                         {convActiva.cierres.length} {convActiva.cierres.length === 1 ? 'nota' : 'notas'}
                                     </Typography>
-                                    {panelCierresAbierto ? <ExpandLessIcon sx={{ fontSize: 13, color: 'white' }} /> : <ExpandMoreIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
+                                    {panelCierresAbierto ? <ExpandLessIcon sx={{ fontSize: 13, color: 'white', display: { xs: 'none', sm: 'block' } }} /> : <ExpandMoreIcon sx={{ fontSize: 13, color: 'text.disabled', display: { xs: 'none', sm: 'block' } }} />}
                                 </Box>
                             </Tooltip>
                         )}
