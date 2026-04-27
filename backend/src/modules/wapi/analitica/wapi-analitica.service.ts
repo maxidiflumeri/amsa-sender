@@ -330,19 +330,19 @@ export class WapiAnaliticaService {
     // Conversaciones globales con actividad en el período
     const todasConvs = await this.prisma.waApiConversacion.findMany({
       where: { ultimoMensajeAt: { gte: desde, lte: hasta } },
-      select: { id: true, estado: true, primeraRespuestaAt: true, resolvedAt: true, ultimoMensajeAt: true },
+      select: { id: true, estado: true, primeraRespuestaAt: true, resolvedAt: true, ultimoMensajeAt: true, creadoAt: true },
     });
 
     const totalConvs = todasConvs.length;
     const resueltas = todasConvs.filter(c => c.estado === 'resuelta').length;
 
     const tiemposPrimResp = todasConvs
-      .filter(c => c.primeraRespuestaAt && c.ultimoMensajeAt)
-      .map(c => new Date(c.primeraRespuestaAt!).getTime() - new Date(c.ultimoMensajeAt!).getTime());
+      .filter(c => c.primeraRespuestaAt)
+      .map(c => new Date(c.primeraRespuestaAt!).getTime() - new Date(c.creadoAt).getTime());
 
     const tiemposResolucion = todasConvs
-      .filter(c => c.resolvedAt && c.ultimoMensajeAt)
-      .map(c => new Date(c.resolvedAt!).getTime() - new Date(c.ultimoMensajeAt!).getTime());
+      .filter(c => c.resolvedAt)
+      .map(c => new Date(c.resolvedAt!).getTime() - new Date(c.creadoAt).getTime());
 
     const avgPrimeraRespuestaMs = tiemposPrimResp.length > 0
       ? Math.round(tiemposPrimResp.reduce((a, b) => a + b, 0) / tiemposPrimResp.length)
