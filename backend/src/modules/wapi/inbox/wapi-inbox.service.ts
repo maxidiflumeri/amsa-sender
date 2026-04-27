@@ -27,10 +27,39 @@ export class WapiInboxService {
 
   /** Llamado desde WapiWebhookService al recibir un mensaje entrante */
   async procesarMensajeEntrante(dto: MensajeEntranteDto): Promise<void> {
+    // Idempotencia: ignorar webhooks duplicados de Meta (mismo wamid)
+    if (dto.waMessageId) {
+      const dup = await this.prisma.waApiMensaje.findUnique({
+        where: { waMessageId: dto.waMessageId },
+      });
+      if (dup) {
+        this.logger.warn(`Webhook duplicado ignorado: waMessageId=${dto.waMessageId}`);
+        return;
+      }
+    }
+
     // Buscar conversación existente para decidir el estado
     const existing = await this.prisma.waApiConversacion.findUnique({
       where: { numero_configId: { numero: dto.numero, configId: dto.configId } },
     });
+
+    // Clicks de botones sobre conversaciones resueltas solo reabren si hubo un saliente nuevo
+    // posterior a la última resolución. Si no, el contacto está tocando una plantilla vieja.
+    if (existing?.estado === 'resuelta' && dto.tipo === 'button') {
+      const salientePostResolucion = existing.resolvedAt
+        ? await this.prisma.waApiMensaje.findFirst({
+            where: {
+              conversacionId: existing.id,
+              fromMe: true,
+              timestamp: { gt: existing.resolvedAt },
+            },
+          })
+        : null;
+      if (!salientePostResolucion) {
+        this.logger.log(`Botón ignorado — sin saliente posterior a resolución (${dto.numero})`);
+        return;
+      }
+    }
 
     const esNueva = !existing;
     const ventanaVencida = existing?.ventana24hAt
