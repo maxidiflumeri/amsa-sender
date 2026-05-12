@@ -9,5 +9,6 @@ import { ManualEmailController } from './manual-email.controller';
     imports: [PrismaModule, AuthModule, EmailDesuscribirModule],
     providers: [ManualEmailService],
     controllers: [ManualEmailController],
+    exports: [ManualEmailService],
 })
 export class ManualEmailModule { }
