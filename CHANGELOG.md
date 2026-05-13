@@ -1,5 +1,42 @@
 # Changelog
 
+## [2026-05-12] — Internal-api: timeline por documento + link de envíos manuales a Deudor
+
+### Contexto
+
+AMSA Gestión necesita ver un timeline unificado (emails + WhatsApp + WAPI) por deudor. Como los sistemas conviven sin id común, el match es por `documento`. Además se detectó que los emails que Gestión enviaba vía `internal/email/manual/send` quedaban con `ContactoEmail.deudorId = NULL`, por lo que nunca aparecían en el timeline aunque existiera el Deudor en Sender.
+
+### Internal-api — nueva sub-feature `timeline`
+
+- **`modules/internal-api/features/timeline/`** — DTO + controller + module.
+- **Endpoint:** `GET /api/internal/timeline/por-documento/:documento` con guard `InternalApiKeyGuard` y scope `timeline:read`.
+- Resuelve `Deudor` por `documento` (trim) y delega en `DeudoresService.obtenerTimeline()` (UNION ALL ya existente sobre `Reporte`, `ReporteEmail`, `EmailEvento`, `WaApiReporte`).
+- Si no hay match → `{ deudor: null, data: [], total: 0 }` (200 OK).
+- Registrado en `internal-api.module.ts`. La API key `gestion-dev` se actualizó en `.env` con scopes `["email:*", "timeline:read"]`.
+
+### Internal-api — fix link de envíos manuales
+
+- **`internal-api/features/email/internal-email.controller.ts`** — el endpoint `POST /internal/email/manual/send` ahora acepta opcional `deudorDocumento` en el body. Si llega, resuelve `Deudor` por documento y pasa `deudorId` al service.
+- **`email/manual-email/manual-email.service.ts`** — `enviarManual()` y `enviarADestinatario()` aceptan `deudorId` opcional y lo persisten en `ContactoEmail.deudorId` al crear el contacto del envío manual. Sin esto, los envíos quedaban huérfanos y no aparecían en el timeline ni en la ficha del deudor.
+
+### Backfill — `scripts/backfill-contactoemail-deudorid.sql`
+
+- Linkea retroactivamente `ContactoEmail.deudorId` para envíos manuales generados desde Gestión antes del fix.
+- Match cross-DB: `whatsapp_automation.ReporteEmail.id ∈ amsa-gestion.envio_email.senderReporteIds (JSON)` → toma `documento` del deudor de Gestión → resuelve `whatsapp_automation.Deudor` por documento.
+- Ejecutado en dev: 2 filas actualizadas.
+
+### Seed — `scripts/seed-timeline-mock.sql`
+
+- Seed idempotente que crea un `Deudor` mock (documento `25501071`) con campañas + reportes + eventos en los 3 canales (WhatsApp legacy, Email con OPEN/CLICK, WAPI con read receipt) para validar el timeline. Limpia por marker `MOCK_TIMELINE_*` antes de insertar.
+
+### Notas
+
+- Spec completa del feature en `amsa-gestion/docs/timeline-spec.md`.
+- Conversaciones WAPI entrantes y llamadas Neotel quedan fuera de scope (siguiente fase).
+- Tablas con `ñ` (`Campaña`, `CampañaEmail`, `WaApiCampaña`) requieren `--default-character-set=utf8mb4` desde mysql client.
+
+---
+
 ## [2026-04-22] — WapiInbox: notas de cierre, historial multicierres y navegación desde panel
 
 ### Contexto

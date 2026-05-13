@@ -115,12 +115,23 @@ export class InternalEmailController {
         if (!dto.smtpId) throw new BadRequestException('smtpId es requerido.');
         if (!dto.templateId && !dto.html) throw new BadRequestException('Se requiere templateId o html.');
 
-        this.logger.log(`📨 [internal-api/${actor.keyId}] envío manual a ${to.length} destinatario(s) (serviceUserId=${actor.serviceUserId})`);
+        let deudorId: number | undefined;
+        const documento = typeof body.deudorDocumento === 'string' ? body.deudorDocumento.trim() : '';
+        if (documento) {
+            const deudor = await this.prisma.deudor.findFirst({
+                where: { documento },
+                select: { id: true },
+            });
+            if (deudor) deudorId = deudor.id;
+        }
+
+        this.logger.log(`📨 [internal-api/${actor.keyId}] envío manual a ${to.length} destinatario(s) (serviceUserId=${actor.serviceUserId}, deudorId=${deudorId ?? 'none'})`);
 
         return this.manualEmailService.enviarManual(
             dto as any,
             actor.serviceUserId,
             archivos || [],
+            deudorId,
         );
     }
 

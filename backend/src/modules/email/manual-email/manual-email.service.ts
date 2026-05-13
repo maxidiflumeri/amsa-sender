@@ -71,8 +71,9 @@ export class ManualEmailService {
         smtp: any;
         transporter: nodemailer.Transporter;
         attachments: NmAttachment[];
+        deudorId?: number;
     }): Promise<{ ok: boolean; reporteId: number; error?: string }> {
-        const { email, toNombre, campañaId, htmlBase, subject, smtp, transporter, attachments } = params;
+        const { email, toNombre, campañaId, htmlBase, subject, smtp, transporter, attachments, deudorId } = params;
 
         const contacto = await this.prisma.contactoEmail.create({
             data: {
@@ -80,6 +81,7 @@ export class ManualEmailService {
                 nombre: toNombre || '',
                 datos: {},
                 campañaId,
+                ...(deudorId ? { deudorId } : {}),
             },
         });
 
@@ -162,6 +164,7 @@ export class ManualEmailService {
         dto: EnvioManualDto,
         userId: number,
         archivos: Express.Multer.File[] = [],
+        deudorId?: number,
     ): Promise<{
         ok: boolean;
         total: number;
@@ -223,6 +226,7 @@ export class ManualEmailService {
                 smtp,
                 transporter,
                 attachments,
+                deudorId,
             });
             reporteIds.push(result.reporteId);
             if (!result.ok) {
