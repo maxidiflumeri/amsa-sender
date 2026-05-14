@@ -512,8 +512,16 @@ export class DeudoresService {
         }
       }
 
+      const prismaCode =
+        error instanceof Prisma.PrismaClientKnownRequestError
+          ? error.code
+          : undefined;
+      const prismaMeta =
+        error instanceof Prisma.PrismaClientKnownRequestError
+          ? JSON.stringify(error.meta)
+          : undefined;
       this.logger.error(
-        `Error en upsertDesdeImport para deudor ${idDeudor}: ${error.message}`,
+        `Error en upsertDesdeImport para deudor ${idDeudor}: code=${prismaCode ?? 'N/A'} meta=${prismaMeta ?? 'N/A'} msg=${error?.message ?? 'N/A'}`,
         error?.stack,
       );
       throw new InternalServerErrorException(

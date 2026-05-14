@@ -7,6 +7,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CrearWapiCampaniaDto } from './dtos/crear-wapi-campania.dto';
 import { parseCsvWapi } from './utils/csv-parser-wapi';
 import { DeudoresService } from 'src/modules/deudores/deudores.service';
+import { mapWithConcurrency } from 'src/common/concurrency';
 
 @Injectable()
 export class WapiCampaniasService {
@@ -50,19 +51,14 @@ export class WapiCampaniasService {
     // Filtrar bajas
     const contactosFiltrados = contactosRaw.filter(c => !bajasSet.has(c.numero));
 
-    // Upsert deudores en chunks de 1000 → map globalIdx → deudorId
+    // Upsert deudores con concurrencia limitada para no saturar el pool de Prisma.
+    // Cada upsert hace ~2 queries (findUnique + update/create), así que con 25
+    // en vuelo tenemos ~50 conexiones ocupadas como peor caso.
     const deudoresMap = new Map<number, number | null>();
-    const upsertChunkSize = 1000;
-    for (let i = 0; i < contactosFiltrados.length; i += upsertChunkSize) {
-      const slice = contactosFiltrados.slice(i, i + upsertChunkSize);
-      await Promise.all(
-        slice.map(async (c, localIdx) => {
-          const globalIdx = i + localIdx;
-          const deudor = await this.deudoresService.upsertDesdeImport(c.rawRow);
-          deudoresMap.set(globalIdx, deudor?.id ?? null);
-        }),
-      );
-    }
+    await mapWithConcurrency(contactosFiltrados, 25, async (c, idx) => {
+      const deudor = await this.deudoresService.upsertDesdeImport(c.rawRow);
+      deudoresMap.set(idx, deudor?.id ?? null);
+    });
 
     // Crear contactos en bloques de 5000 con deudorId resuelto
     const createChunkSize = 5000;

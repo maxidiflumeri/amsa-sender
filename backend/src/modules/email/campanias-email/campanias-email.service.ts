@@ -6,6 +6,7 @@ import { parseCsvEmail } from 'src/modules/whatsapp/campanias/utils/csv-parser';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { DeudoresService } from 'src/modules/deudores/deudores.service';
+import { mapWithConcurrency } from 'src/common/concurrency';
 
 @Injectable()
 export class CampaniasEmailService {
@@ -96,21 +97,16 @@ export class CampaniasEmailService {
                 },
             });
 
-            // 2. Upsert deudores en chunks de 1000 → map globalIdx → deudorId
+            // 2. Upsert deudores con concurrencia limitada para no saturar el pool de Prisma.
+            // Cada upsert hace ~2 queries (findUnique + update/create); con 25 en vuelo
+            // ocupamos ~50 conexiones en el peor caso.
             const deudoresMap = new Map<number, number | null>();
-            const upsertChunkSize = 1000;
-            for (let i = 0; i < contactos.length; i += upsertChunkSize) {
-                const slice = contactos.slice(i, i + upsertChunkSize);
-                await Promise.all(
-                    slice.map(async (c, localIdx) => {
-                        const globalIdx = i + localIdx;
-                        const deudor = await this.deudoresService.upsertDesdeImport(c.rawRow, {
-                            aliasesIdDeudor: ['id_contacto'],
-                        });
-                        deudoresMap.set(globalIdx, deudor?.id ?? null);
-                    }),
-                );
-            }
+            await mapWithConcurrency(contactos, 25, async (c, idx) => {
+                const deudor = await this.deudoresService.upsertDesdeImport(c.rawRow, {
+                    aliasesIdDeudor: ['id_contacto'],
+                });
+                deudoresMap.set(idx, deudor?.id ?? null);
+            });
 
             // 3. Agregar contactos en bloques de 10.000 con deudorId resuelto
             const createChunkSize = 10000;
