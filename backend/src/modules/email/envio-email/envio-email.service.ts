@@ -1,9 +1,23 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
-import { Queue } from 'bullmq';
+import { JobsOptions, Queue } from 'bullmq';
 import * as nodemailer from 'nodemailer';
 import { insertHeaderAndFooter } from 'src/common/renderTemplate';
 import { PrismaService } from 'src/prisma/prisma.service';
+
+/**
+ * Opciones de reintento para los jobs de campaña.
+ *
+ * Sin esto BullMQ usa `attempts: 1`: cualquier error transitorio al arrancar el job
+ * (típicamente P2024 de Prisma cuando el pool de conexiones está saturado porque se
+ * lanzaron varias campañas juntas) mataba la campaña entera sin enviar un solo mail.
+ * El worker es idempotente entre reintentos: al reintentar saltea los contactos que
+ * ya tienen reporte, así que no hay riesgo de envíos duplicados.
+ */
+const OPCIONES_REINTENTO: JobsOptions = {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 15_000 },
+};
 
 @Injectable()
 export class EnvioEmailService {
@@ -69,11 +83,15 @@ export class EnvioEmailService {
         idCuentaSmtp: number;
     }) {
 
-        const job = await this.emailsEnvios.add('enviar-campania', {
-            idCampania,
-            idTemplate,
-            idCuentaSmtp,
-        });
+        const job = await this.emailsEnvios.add(
+            'enviar-campania',
+            {
+                idCampania,
+                idTemplate,
+                idCuentaSmtp,
+            },
+            OPCIONES_REINTENTO,
+        );
 
         await this.prisma.campañaEmail.update({
             where: { id: idCampania },
@@ -108,7 +126,7 @@ export class EnvioEmailService {
                 idTemplate,
                 idCuentaSmtp,
             },
-            { delay },
+            { ...OPCIONES_REINTENTO, delay },
         );
 
         await this.prisma.campañaEmail.update({

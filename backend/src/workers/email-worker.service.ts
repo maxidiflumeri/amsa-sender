@@ -75,11 +75,17 @@ export class EmailWorkerService implements OnModuleInit {
         const minMsBetweenBatches = Math.ceil((BATCH_SIZE / Math.max(1, perCampaignPerSec)) * 1000);
 
         const { idCampania, idTemplate, idCuentaSmtp } = job.data;
-        this.logger.log(`📨 Procesando campañaEmail ${idCampania}...`);
+        const esReintento = job.attemptsMade > 0;
+        this.logger.log(
+            `📨 Procesando campañaEmail ${idCampania}...` +
+            (esReintento ? ` (reintento ${job.attemptsMade + 1}/${job.opts.attempts ?? 1})` : ''),
+        );
 
+        // Los contactos NO se traen con `include`: la query anidada retiene una conexión
+        // del pool de Prisma mientras carga miles de filas y, con varias campañas en
+        // paralelo, agotaba el pool (P2024). Se piden aparte y con un select acotado.
         const campania = await this.prisma.campañaEmail.findUnique({
             where: { id: idCampania },
-            include: { contactos: true },
         });
         if (!campania) {
             this.logger.error(`❌ Campaña con ID ${idCampania} no encontrada.`);
@@ -102,8 +108,31 @@ export class EmailWorkerService implements OnModuleInit {
             return;
         }
 
-        const total = campania.contactos.length;
-        let enviados = 0;
+        const todosLosContactos = await this.prisma.contactoEmail.findMany({
+            where: { campañaId: idCampania },
+            select: { id: true, email: true, datos: true },
+            orderBy: { id: 'asc' },
+        });
+
+        // Si el job se reintenta (p. ej. tras un timeout del pool), hay que saltear lo que
+        // ya se procesó en el intento anterior para no mandar el mismo mail dos veces.
+        let contactos = todosLosContactos;
+        if (esReintento) {
+            const yaProcesados = await this.prisma.reporteEmail.findMany({
+                where: { campañaId: idCampania },
+                select: { contactoId: true },
+            });
+            const idsProcesados = new Set(yaProcesados.map((r) => r.contactoId));
+            if (idsProcesados.size > 0) {
+                contactos = todosLosContactos.filter((c) => !idsProcesados.has(c.id));
+                this.logger.warn(
+                    `🔁 Campaña ${idCampania}: se saltean ${idsProcesados.size} contactos ya procesados en el intento anterior.`,
+                );
+            }
+        }
+
+        const total = todosLosContactos.length;
+        let enviados = total - contactos.length;
 
         await this.subClient.publish('campania-estado', JSON.stringify({ campañaId: idCampania }));
         await this.prisma.campañaEmail.update({
@@ -123,8 +152,6 @@ export class EmailWorkerService implements OnModuleInit {
             maxConnections: 4,
             maxMessages: Infinity,
         });
-
-        const contactos = campania.contactos;
 
         // =============== 🚀 PRE-CARGA BATCH: desuscriptos + suprimidos ===============
         const allEmails = contactos.map((c) => c.email).filter(Boolean);
