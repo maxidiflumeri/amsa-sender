@@ -1,5 +1,45 @@
 # Changelog
 
+## [2026-08-21] — Envío manual: el asunto, los desuscriptos y el match con el timeline
+
+### Contexto
+
+Salieron de auditar la documentación de usuario de AMSA Gestión contra el código de los dos repos. Los
+tres afectan al **envío manual** —el que dispara un gestor desde la ficha de un deudor—, que quedó con
+menos garantías que el de campañas.
+
+### `manual-email.service.ts`
+
+- **El asunto del dto ahora gana sobre el del template.** Con `templateId` presente se hacía
+  `subject = renderTemplate(template.asunto, vars)` y **nunca se leía `dto.subject`**. Como Gestión
+  siempre manda `templateId`, el campo "Asunto" de su pantalla era decorativo: el gestor lo editaba,
+  veía su texto en la previsualización y al destinatario le llegaba el de la plantilla. Se sigue
+  renderizando, así que las variables resuelven igual; sin `subject`, el comportamiento no cambia.
+
+- **Se omiten los destinatarios desuscriptos.** `email-worker.service.ts` los consulta por hash desde
+  `EmailDesuscripciones` y los salta; el envío manual no los miraba, así que quien había apretado
+  "Desuscribite" seguía recibiendo los de la ficha. Ahora se precarga el set antes del loop y los
+  omitidos quedan con un `ReporteEmail` en estado **`Desuscripto`** —el mismo que usan las campañas—
+  para que aparezcan en el timeline del deudor.
+
+  La respuesta suma un campo **`omitidos: { email, motivo }[]`**. No cuentan como error: `ok` sigue
+  dependiendo solo de `errores`, y los demás destinatarios salen normalmente.
+
+### `internal-api/features/email/internal-email.controller.ts`
+
+- **`orderBy: { id: 'desc' }` al resolver el documento**, igual que
+  `internal-timeline.controller.ts`. `Deudor.documento` **no es único** —hay una fila por cartera— y
+  sin orden esta consulta caía en el id más bajo mientras el timeline leía el más alto: con documentos
+  repetidos, el mail se colgaba de un registro y se leía de otro, así que no aparecía nunca en la
+  ficha.
+
+### Verificación
+
+`nest build` OK. **No se pudo probar de punta a punta**: la base local de Sender tiene `Deudor`,
+`ReporteEmail` y `EmailEvento` en cero, así que este flujo nunca se ejercitó acá.
+
+---
+
 ## [2026-05-12] — Internal-api: timeline por documento + link de envíos manuales a Deudor
 
 ### Contexto

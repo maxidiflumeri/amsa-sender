@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EmailDesuscribirService } from 'src/modules/email/desuscribir-email/desuscribir-email.service';
 import { insertHeaderAndFooter, renderTemplate } from 'src/common/renderTemplate';
+import { hashEmail, normalizeEmail } from 'src/common/email-normalize.common';
 import { prepararHtmlConTracking_safe } from 'src/common/inyectEmailTracking';
 import { generarTrackingTok } from 'src/common/generateTrackingTok';
 import { buildAmsaHeader, injectHtmlMarker } from 'src/common/bounce.common';
@@ -187,12 +188,24 @@ export class ManualEmailService {
             if (!template) throw new NotFoundException(`Template id=${dto.templateId} no encontrado`);
             const vars = { nombre: dto.toNombre || '', ...dto.variables };
             htmlBase = renderTemplate(template.html, vars);
-            subject = renderTemplate(template.asunto, vars);
+            // El asunto del dto gana sobre el del template. Antes se descartaba en silencio: quien lo
+            // editaba desde Gestión veía su texto en la previsualización y al destinatario le llegaba
+            // el de la plantilla. Se renderiza igual, así que las variables siguen resolviendo.
+            subject = renderTemplate(dto.subject?.trim() ? dto.subject : template.asunto, vars);
         } else {
             if (!dto.html?.trim()) throw new BadRequestException('html es requerido cuando no se usa templateId');
             htmlBase = dto.html;
             subject = dto.subject;
         }
+
+        // 2.b Desuscriptos. Las campañas ya los omiten (email-worker.service.ts); el envío manual no
+        // los miraba, así que quien había apretado "Desuscribite" seguía recibiendo los de la ficha.
+        const hashesPorEmail = new Map(dto.to.map(e => [e, hashEmail(normalizeEmail(e.trim()))]));
+        const desuscriptos = await this.prisma.emailDesuscripciones.findMany({
+            where: { tenantId: TENANT_ID, emailHash: { in: [...hashesPorEmail.values()] } },
+            select: { emailHash: true },
+        });
+        const hashDesuscripto = new Set(desuscriptos.map(d => d.emailHash));
 
         // 3. Obtener campaña reservada
         const campañaId = await this.obtenerOCrearCampanaManual(userId);
@@ -215,8 +228,16 @@ export class ManualEmailService {
         // 6. Enviar a cada destinatario
         const reporteIds: number[] = [];
         const errores: { email: string; error: string }[] = [];
+        const omitidos: { email: string; motivo: string }[] = [];
 
         for (const email of dto.to) {
+            if (hashDesuscripto.has(hashesPorEmail.get(email)!)) {
+                this.logger.log(`⛔ Envío manual omitido a ${email} (desuscripto)`);
+                const reporte = await this.registrarOmitido(email, campañaId, subject, deudorId);
+                reporteIds.push(reporte.id);
+                omitidos.push({ email, motivo: 'El destinatario se dio de baja de los envíos' });
+                continue;
+            }
             const result = await this.enviarADestinatario({
                 email: email.trim(),
                 toNombre: dto.toNombre,
@@ -234,14 +255,37 @@ export class ManualEmailService {
             }
         }
 
-        const enviados = dto.to.length - errores.length;
+        const enviados = dto.to.length - errores.length - omitidos.length;
         return {
             ok: errores.length === 0,
             total: dto.to.length,
             enviados,
             reporteIds,
             ...(errores.length > 0 ? { errores } : {}),
+            ...(omitidos.length > 0 ? { omitidos } : {}),
         };
+    }
+
+    /**
+     * Deja constancia de un destinatario que no recibió el mail por estar desuscripto.
+     *
+     * Se registra con el mismo estado `Desuscripto` que usan las campañas, así aparece en el timeline
+     * del deudor: que el mail no haya salido es justamente lo que el gestor necesita ver.
+     */
+    private async registrarOmitido(email: string, campañaId: number, subject: string, deudorId?: number) {
+        const contacto = await this.prisma.contactoEmail.create({
+            data: { email, nombre: '', datos: {}, campañaId, ...(deudorId ? { deudorId } : {}) },
+        });
+        return this.prisma.reporteEmail.create({
+            data: {
+                campañaId,
+                contactoId: contacto.id,
+                estado: 'Desuscripto',
+                asunto: subject,
+                html: '',
+                creadoAt: new Date(),
+            },
+        });
     }
 
     async guardarComoTemplate(dto: GuardarTemplateDto) {

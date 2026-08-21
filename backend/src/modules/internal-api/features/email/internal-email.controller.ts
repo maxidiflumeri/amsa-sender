@@ -118,8 +118,13 @@ export class InternalEmailController {
         let deudorId: number | undefined;
         const documento = typeof body.deudorDocumento === 'string' ? body.deudorDocumento.trim() : '';
         if (documento) {
+            // `orderBy` igual al de internal-timeline.controller.ts: `Deudor.documento` no es único
+            // —hay una fila por cartera— y sin orden esta consulta caía en el id más bajo mientras el
+            // timeline leía el más alto. El mail salía colgado de un registro y se leía de otro, así
+            // que no aparecía nunca en la ficha.
             const deudor = await this.prisma.deudor.findFirst({
                 where: { documento },
+                orderBy: { id: 'desc' },
                 select: { id: true },
             });
             if (deudor) deudorId = deudor.id;
