@@ -36,12 +36,58 @@ export class SesionesService implements OnModuleInit {
         }));
     }
 
-    async conectarNuevaSesion(sessionId: string) {
-        this.logger.log(`🔌 Iniciando nueva sesión: ${sessionId}`);
-        const client = new Client({
+    /**
+     * Crea el cliente de whatsapp-web.js con la configuración común.
+     * WWEBJS_WEB_VERSION permite fijar la versión de WhatsApp Web (servida desde .wwebjs_cache)
+     * cuando una versión nueva rompe la inyección del Store y el evento 'ready' nunca llega.
+     * Si el archivo de esa versión no está en caché, se carga la versión en vivo.
+     */
+    private crearCliente(sessionId: string): Client {
+        const webVersion = process.env.WWEBJS_WEB_VERSION?.trim();
+        if (webVersion) {
+            this.logger.log(`📌 Sesión ${sessionId} usando WhatsApp Web fijado en ${webVersion}`);
+        }
+        return new Client({
             authStrategy: new LocalAuth({ clientId: sessionId, dataPath: getAuthBasePath() }),
             puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] },
+            ...(webVersion ? { webVersion, webVersionCache: { type: 'local', strict: false } } : {}),
         });
+    }
+
+    /**
+     * Si tras 'authenticated' no llega 'ready', la librería traga el error de inyección.
+     * Este watchdog deja registrado el estado de la página para poder diagnosticarlo.
+     */
+    private vigilarReady(sessionId: string, client: Client) {
+        const timeoutMs = 90_000;
+        setTimeout(async () => {
+            const sesion = this.sesiones[sessionId];
+            if (!sesion || sesion.client !== client || sesion.estado === 'conectado') return;
+            try {
+                const diagnostico = await client.pupPage?.evaluate(() => {
+                    const w = window as unknown as {
+                        Debug?: { VERSION?: string };
+                        Store?: unknown;
+                        WWebJS?: unknown;
+                        AuthStore?: { AppState?: { state?: string } };
+                    };
+                    return {
+                        version: w.Debug?.VERSION,
+                        store: typeof w.Store,
+                        wwebjs: typeof w.WWebJS,
+                        appState: w.AuthStore?.AppState?.state,
+                    };
+                });
+                this.logger.error(`⏱️ Sesión ${sessionId} autenticada pero sin 'ready' tras ${timeoutMs / 1000}s: ${JSON.stringify(diagnostico)}`);
+            } catch (err) {
+                this.logger.error(`⏱️ Sesión ${sessionId} sin 'ready' y no se pudo diagnosticar la página: ${err.message}`);
+            }
+        }, timeoutMs);
+    }
+
+    async conectarNuevaSesion(sessionId: string) {
+        this.logger.log(`🔌 Iniciando nueva sesión: ${sessionId}`);
+        const client = this.crearCliente(sessionId);
 
         this.sesiones[sessionId] = { client, estado: 'inicializando' };
 
@@ -54,6 +100,9 @@ export class SesionesService implements OnModuleInit {
 
         client.on('authenticated', async () => {
             this.logger.log(`🔐 Sesión ${sessionId} autenticada`);
+            if (this.sesiones[sessionId].estado !== 'iniciando_sesion') {
+                this.vigilarReady(sessionId, client);
+            }
             this.sesiones[sessionId].estado = 'iniciando_sesion';
             await this.redis.publish('estado-sesion', JSON.stringify({ estado: 'iniciando_sesion', qr: '', ani: '', sessionId }));
         });
@@ -82,7 +131,8 @@ export class SesionesService implements OnModuleInit {
         client.on('disconnected', async () => {
             this.logger.log(`⚠️ Sesión ${sessionId} desconectada`);
             this.sesiones[sessionId].estado = 'desconectado';
-            await this.prisma.sesion.update({ where: { sessionId }, data: { estado: 'desconectado' } });
+            // updateMany: la sesión solo existe en DB si llegó a 'ready'; update() tiraba P2025 sin capturar
+            await this.prisma.sesion.updateMany({ where: { sessionId }, data: { estado: 'desconectado' } });
             await this.redis.publish('estado-sesion', JSON.stringify({ estado: 'desconectado', qr: '', ani: '', sessionId }));
         });
 
@@ -115,10 +165,7 @@ export class SesionesService implements OnModuleInit {
 
     async reconectarSesion(sessionId: string) {
         this.logger.log(`🔁 Reintentando conexión de sesión ${sessionId}...`);
-        const client = new Client({
-            authStrategy: new LocalAuth({ clientId: sessionId, dataPath: getAuthBasePath() }),
-            puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] },
-        });
+        const client = this.crearCliente(sessionId);
 
         this.sesiones[sessionId] = { client, estado: 'reconectando' };
 
