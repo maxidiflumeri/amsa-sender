@@ -108,9 +108,9 @@ export class CampaniasController {
     }
 
     @Post(':id/reanudar')
-    async reanudarCampaña(@Param('id') id: string) {
+    async reanudarCampaña(@Param('id') id: string, @Body() body: { sessionIds?: unknown }) {
         this.logger.log(`📥 POST /${id}/reanudar - Reanudar campaña`);
-        return this.campaniasService.reanudarCampaña(+id);
+        return this.campaniasService.reanudarCampaña(+id, body?.sessionIds);
     }
 
     @Post(':id/forzar-cierre')

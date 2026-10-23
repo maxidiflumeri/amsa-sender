@@ -4,7 +4,10 @@ import { estadoCampania } from '../estados';
 // importa). Los dos backends guardan algunos estados con otro nombre que `estados.js`, que es el vocabulario de
 // pantalla: acá se traducen en un solo lugar.
 
-/** El nombre del estado en el vocabulario de `estados.js`: 'programada' es 'agendada' y 'pausa_pendiente' sigue en curso. */
+/**
+ * El nombre del estado en el vocabulario de `estados.js`: 'programada' es 'agendada' y 'pausa_pendiente' (la pausa de
+ * una agendada, pedida antes de que arrancara su envío) es una pausa más.
+ */
 export function estadoNormalizado(estado) {
     if (estado === 'programada') return 'agendada';
     if (estado === 'pausa_pendiente') return 'pausada';
@@ -13,7 +16,6 @@ export function estadoNormalizado(estado) {
 
 /** `{ label, tono, vivo }` para el StatusChip de una campaña. */
 export function chipDeEstado(estado) {
-    if (estado === 'pausa_pendiente') return { label: 'Pausando', tono: 'aviso', vivo: true };
     return estadoCampania(estadoNormalizado(estado));
 }
 

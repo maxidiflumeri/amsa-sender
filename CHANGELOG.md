@@ -1,5 +1,41 @@
 # Changelog
 
+## [2026-10-23] — Campañas de WhatsApp Web: la pausa que quedaba trabada
+
+### Contexto
+
+La campaña #513 («Hogar_7086_c1_$90_$100», del 24/04) figuraba en pausa y no se podía reanudar ni eliminar. Estaba en
+`pausa_pendiente` sin ningún job en la cola, con 49 de 85 contactos intentados. `pausarCampaña` ponía `pausa_pendiente`
+a cualquier campaña que no estuviera `procesando`, pensando en una agendada cuyo job todavía no arrancó (el worker la pasa
+a `pausada` al arrancar). Una segunda pausa sobre una ya `pausada` (doble toque, la lista y el log a la vez) caía ahí:
+si el envío ya se había detenido, ningún job la sacaba nunca; si seguía enviando, el worker no la toma como pausa (mira
+solo `pausada`) y mandaba todo. Reanudar solo aceptaba `pausada` y la lista no ofrecía acciones para ese estado.
+
+### Backend (`campanias.service.ts`)
+
+- **Pausar** una `pausada` o `pausa_pendiente` no hace nada; `pausa_pendiente` queda solo para una `programada`; una
+  `pendiente`, `finalizada` o `error` responde 400.
+- **Reanudar** acepta `pausada` y `pausa_pendiente`. Si la campaña tiene un job que todavía no arrancó (`delayed` o
+  `waiting`), le devuelve el estado (`programada` o `procesando`) en vez de encolar otro, que la mandaría dos veces.
+- **Elegir la línea al reanudar**: una línea que se vuelve a conectar queda con otro id de sesión, y la campaña seguía
+  apuntando a la vieja (pasó con la #630 el mismo día, y había que corregirla en la base). Reanudar se queda solo con las
+  sesiones conectadas (según la tabla `Sesion`); si no queda ninguna responde 400 con `codigo: 'SIN_SESIONES_CONECTADAS'`
+  sin encolar nada. Acepta `sessionIds` en el cuerpo para seguir con otras, y las guarda en la campaña.
+- `campanias.service.spec.ts`: era un placeholder que fallaba; ahora 18 pruebas de pausa y reanudación.
+
+### Frontend
+
+- `pausa_pendiente` se muestra «En pausa» (antes «Pausando», con el punto que late) y tiene las acciones de una pausada:
+  Reanudar y Eliminar.
+- `DialogoElegirSesiones`: si al reanudar el backend responde `SIN_SESIONES_CONECTADAS`, se abre para elegir con qué
+  sesiones seguir; se actualiza solo si una sesión se conecta o se cae con el diálogo abierto.
+
+### Deploy
+
+Eliminar ya funciona con el frontend solo (el backend actual solo bloquea eliminar una `procesando`). Reanudar una
+`pausa_pendiente` y elegir la línea necesitan el backend nuevo, que se despliega a mano con el procedimiento de siempre:
+sin campañas enviando, colas vacías.
+
 ## [2026-10-23] — Sender v2: de la misma familia que Gestión, pensado para el celular y como app instalada
 
 ### Contexto

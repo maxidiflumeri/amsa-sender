@@ -1,3 +1,4 @@
+import DialogoElegirSesiones from './campanias/waweb/DialogoElegirSesiones';
 import ListaCampanias from './campanias/waweb/ListaCampanias';
 import SubirCampaña from './SubirCampaña';
 import EnviarMensajesModal from './EnviarMensajes';
@@ -26,6 +27,7 @@ export default function VerCampañas() {
             unidad={UNIDAD}
             SubirDialogo={SubirCampaña}
             EnviarDialogo={EnviarMensajesModal}
+            ElegirSesionesDialogo={DialogoElegirSesiones}
             cargarContactos={cargarContactos}
             campoContacto="numero"
             etiquetaContacto="Número"

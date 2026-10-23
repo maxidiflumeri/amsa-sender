@@ -224,8 +224,21 @@ export class CampaniasService {
             throw new NotFoundException('Campaña no encontrada');
         }
 
+        // Pausar dos veces no cambia nada. Antes la segunda pausa la pasaba a 'pausa_pendiente': si el envío ya se había
+        // detenido nadie la sacaba de ahí (solo un job que arranca la convierte en 'pausada') y quedaba trabada; si
+        // seguía enviando, el worker no la tomaba como pausa y mandaba todo igual.
+        if (campaña.estado === 'pausada' || campaña.estado === 'pausa_pendiente') {
+            this.logger.log(`ℹ️ Campaña ${id} ya estaba en pausa (${campaña.estado})`);
+            return { message: 'La campaña ya estaba en pausa' };
+        }
+
+        // 'pausa_pendiente' es solo para una agendada: su job todavía no arrancó y la pasa a 'pausada' cuando arranca.
         const nuevoEstado =
-            campaña.estado === 'procesando' ? 'pausada' : 'pausa_pendiente';
+            campaña.estado === 'procesando' ? 'pausada' : campaña.estado === 'programada' ? 'pausa_pendiente' : null;
+        if (!nuevoEstado) {
+            this.logger.warn(`⚠️ No se puede pausar campaña ${id} - Estado actual: ${campaña.estado}`);
+            throw new BadRequestException('La campaña no está enviando: no hay nada que pausar.');
+        }
 
         await this.prisma.campaña.update({
             where: { id },
@@ -236,16 +249,35 @@ export class CampaniasService {
         return { message: `Campaña marcada como ${nuevoEstado} correctamente` };
     }
 
-    async reanudarCampaña(id: number) {
-        this.logger.log(`▶️ Solicitando reanudación de campaña ${id}`);
+    /**
+     * Reanuda una campaña en pausa. `sessionIdsElegidas` reemplaza las sesiones con las que salió: una línea que se
+     * desconecta vuelve con otro id de sesión, y sin esto la campaña no se podía seguir enviando.
+     */
+    async reanudarCampaña(id: number, sessionIdsElegidas?: unknown) {
+        if (sessionIdsElegidas !== undefined
+            && (!Array.isArray(sessionIdsElegidas) || !sessionIdsElegidas.every((s) => typeof s === 'string' && s))) {
+            throw new BadRequestException('sessionIds tiene que ser una lista de sesiones');
+        }
+        const elegidas = (sessionIdsElegidas as string[] | undefined) ?? [];
+        this.logger.log(`▶️ Solicitando reanudación de campaña ${id}${elegidas.length ? ` con sesiones ${JSON.stringify(elegidas)}` : ''}`);
         const campaña = await this.prisma.campaña.findUnique({ where: { id } });
 
-        if (!campaña || campaña.estado !== 'pausada') {
+        if (!campaña || !['pausada', 'pausa_pendiente'].includes(campaña.estado)) {
             this.logger.warn(`⚠️ No se puede reanudar campaña ${id} - Estado actual: ${campaña?.estado}`);
             throw new BadRequestException('Campaña no válida o no pausada');
         }
 
-        const sessionIds = JSON.parse(campaña.sesiones || '[]');
+        // Si la pausa llegó antes de que arrancara su job (agendada, o esperando turno en la cola), ese job sigue ahí:
+        // alcanza con devolverle el estado. Encolar otro mandaría la campaña dos veces.
+        const enCola = await this.jobSinArrancar(id);
+        if (enCola) {
+            const estado = enCola === 'delayed' ? 'programada' : 'procesando';
+            await this.prisma.campaña.update({ where: { id }, data: { estado, pausada: false } });
+            this.logger.log(`✅ Campaña ${id} reanudada: su job seguía en la cola (${enCola}), vuelve a ${estado}`);
+            return { ok: true };
+        }
+
+        const sessionIds: string[] = elegidas.length ? elegidas : JSON.parse(campaña.sesiones || '[]');
         const config = campaña.config;
 
         if (!sessionIds.length || !config) {
@@ -253,15 +285,43 @@ export class CampaniasService {
             throw new BadRequestException('Faltan datos para reanudar la campaña');
         }
 
-        await this.colaEnvios.add('enviar', { sessionIds, campaña: id, config });
+        // Con sesiones caídas el envío falla contacto por contacto y los deja como fallidos: se sigue solo con las
+        // conectadas y, si no queda ninguna, se le pide al usuario que elija con cuál.
+        const conectadas = await this.prisma.sesion.findMany({
+            where: { sessionId: { in: sessionIds }, estado: 'conectado' },
+            select: { sessionId: true },
+        });
+        const usar = sessionIds.filter((s) => conectadas.some((c) => c.sessionId === s));
+        if (!usar.length) {
+            this.logger.warn(`⚠️ Campaña ${id} sin sesiones conectadas para reanudar: ${JSON.stringify(sessionIds)}`);
+            throw new BadRequestException({
+                message: 'La línea con la que salió esta campaña ya no está conectada. Elegí con cuál seguir.',
+                codigo: 'SIN_SESIONES_CONECTADAS',
+            });
+        }
+
+        await this.colaEnvios.add('enviar', { sessionIds: usar, campaña: id, config });
 
         await this.prisma.campaña.update({
             where: { id },
-            data: { estado: 'procesando', pausada: false },
+            data: { estado: 'procesando', pausada: false, sesiones: JSON.stringify(usar) },
         });
 
-        this.logger.log(`✅ Campaña ${id} reanudada`);
+        this.logger.log(`✅ Campaña ${id} reanudada con ${usar.length} sesión(es)`);
         return { ok: true };
+    }
+
+    /** Si la campaña tiene un job que todavía no arrancó: 'delayed' (agendado) o 'waiting' (esperando turno). */
+    private async jobSinArrancar(id: number): Promise<'delayed' | 'waiting' | null> {
+        try {
+            for (const tipo of ['delayed', 'waiting'] as const) {
+                const jobs = await this.colaEnvios.getJobs([tipo]);
+                if (jobs.some((j) => Number(j?.data?.campaña) === id)) return tipo;
+            }
+        } catch (e) {
+            this.logger.warn(`⚠️ No se pudo revisar la cola para la campaña ${id}: ${e.message}`);
+        }
+        return null;
     }
 
     async forzarCierre(id: number, nuevoEstado: 'finalizada' | 'error') {

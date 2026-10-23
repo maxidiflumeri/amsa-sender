@@ -21,7 +21,7 @@ import useCampaniasEnVivo from './useCampaniasEnVivo';
 // confirmaciones, tiempo real) es común, así que no se puede desalinear entre los dos.
 
 const ESTADOS_CON_LOG = ['procesando', 'pausada', 'pausa_pendiente', 'error', 'finalizada'];
-const ESTADOS_ELIMINABLES = ['pendiente', 'programada', 'pausada', 'finalizada', 'error'];
+const ESTADOS_ELIMINABLES = ['pendiente', 'programada', 'pausada', 'pausa_pendiente', 'finalizada', 'error'];
 
 const VACIOS = {
     'en-curso': { title: 'No hay campañas en curso', description: 'Las que estén enviando o en pausa aparecen acá.' },
@@ -50,13 +50,15 @@ function ordenar(lista, pestania) {
  * @param {{singular: string, plural: string}} props.unidad Lo que se envía: mail o mensaje.
  * @param {React.ComponentType<any>} props.SubirDialogo
  * @param {React.ComponentType<any>} props.EnviarDialogo
+ * @param {React.ComponentType<any>} [props.ElegirSesionesDialogo] Para reanudar cuando la línea de la campaña ya no
+ *   está conectada (WhatsApp Web).
  * @param {(c: any) => Promise<any[]>|any[]} props.cargarContactos
  * @param {'email'|'numero'} props.campoContacto
  * @param {string} props.etiquetaContacto
  */
 export default function ListaCampanias({
     ruta, subtitulo, urlLista, normalizar, apiBase, eventoProgreso, tipoLog, puedePausar, unidad,
-    SubirDialogo, EnviarDialogo, cargarContactos, campoContacto, etiquetaContacto,
+    SubirDialogo, EnviarDialogo, ElegirSesionesDialogo, cargarContactos, campoContacto, etiquetaContacto,
 }) {
     const feedback = useFeedback();
     const [params, setParams] = useSearchParams();
@@ -72,6 +74,7 @@ export default function ListaCampanias({
     const [menu, setMenu] = useState(null); // { anchor, c }
     const [modalNueva, setModalNueva] = useState(false);
     const [envio, setEnvio] = useState(null); // { c, agendar }
+    const [reanudarCon, setReanudarCon] = useState(null); // la campaña a la que hay que elegirle sesiones
     const [log, setLog] = useState(null); // { id, nombre }
     const [confirmar, setConfirmar] = useState(null); // { tipo, c }
     const [estadoFinal, setEstadoFinal] = useState('finalizada');
@@ -170,14 +173,18 @@ export default function ListaCampanias({
         }
     };
 
-    const reanudar = async (c) => {
+    const reanudar = async (c, sessionIds) => {
         marcarOcupado(c.id, true);
         try {
-            await api.post(`${apiBase}/${c.id}/reanudar`);
+            await api.post(`${apiBase}/${c.id}/reanudar`, sessionIds ? { sessionIds } : undefined);
             feedback.exito(`Se reanudó «${c.nombre}».`);
+            setReanudarCon(null);
             await cargar({ silent: true });
         } catch (e) {
-            feedback.error(mensajeDeError(e, 'No se pudo reanudar la campaña.'));
+            // Si la línea con la que salió ya no está conectada, se elige con cuál seguir.
+            const sinSesiones = e.response?.data?.codigo === 'SIN_SESIONES_CONECTADAS';
+            if (sinSesiones && ElegirSesionesDialogo) setReanudarCon(c);
+            if (!sinSesiones || !ElegirSesionesDialogo || sessionIds) feedback.error(mensajeDeError(e, 'No se pudo reanudar la campaña.'));
         } finally {
             marcarOcupado(c.id, false);
         }
@@ -261,7 +268,6 @@ export default function ListaCampanias({
                     ? { texto: 'Forzar cierre', icono: Ban, color: 'error', clave: 'cierre', onClick: () => pedir('cierre', c) }
                     : { texto: 'Ver log', icono: Terminal, clave: 'log', onClick: () => setLog({ id: c.id, nombre: c.nombre }) };
             case 'pausa_pendiente':
-                return { texto: 'Ver log', icono: Terminal, clave: 'log', onClick: () => setLog({ id: c.id, nombre: c.nombre }) };
             case 'pausada':
                 return puedePausar
                     ? { texto: 'Reanudar', icono: Play, onClick: () => reanudar(c) }
@@ -495,6 +501,15 @@ export default function ListaCampanias({
                         irAPestania(agendado ? 'agendadas' : 'en-curso');
                         cargar({ silent: true });
                     }}
+                />
+            )}
+
+            {ElegirSesionesDialogo && (
+                <ElegirSesionesDialogo
+                    open={!!reanudarCon}
+                    campania={reanudarCon}
+                    onClose={() => setReanudarCon(null)}
+                    onReanudar={(sessionIds) => reanudar(reanudarCon, sessionIds)}
                 />
             )}
 
