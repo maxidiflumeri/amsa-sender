@@ -80,8 +80,16 @@ function useAvance(c, canal) {
     const [consultado, setConsultado] = useState(false);
     const subir = (n) => setHechos((h) => (typeof n === 'number' && (h === null || n > h) ? n : h));
 
+    const esWaweb = canal === 'WhatsApp Web';
+
     useEffect(() => {
         let vivo = true;
+        // WhatsApp Web ya trae cuántos se intentaron (sus reportes) en la lista de campañas en curso.
+        if (esWaweb) {
+            subir(c._count?.reportes ?? null);
+            setConsultado(true);
+            return () => { vivo = false; };
+        }
         const pedir = canal === 'Email'
             ? api.get(`/email/reportes/campanias/${c.id}/engagement`, { params: { sizeOpen: 1, sizeClick: 1, sizeBounce: 1 } }).then((r) => r.data?.resumen?.enviados)
             : pedirAvance(c.id).then((a) => a.procesados);
@@ -90,12 +98,21 @@ function useAvance(c, canal) {
             .catch(() => { /* sin permiso o sin datos: queda lo que llegue por el socket */ })
             .finally(() => { if (vivo) setConsultado(true); });
         return () => { vivo = false; };
-    }, [c.id, canal]);
+    }, [c.id, canal, esWaweb, c._count?.reportes]);
 
     useSalaSocket('join_campaña', enviando ? c.id : null);
     // Los ids se repiten entre canales, pero el evento de email es otro (`progreso_mail`) y la sala es la de este id.
     useEventoSocket(enviando ? (canal === 'Email' ? 'progreso_mail' : 'progreso') : null, (d) => {
         if (Number(d?.campañaId) !== c.id) return;
+        if (esWaweb) {
+            // El worker de WhatsApp Web cuenta desde cero al reanudar (su total es lo que faltaba): lo hecho es el total
+            // de la campaña menos lo que todavía le falta a este envío.
+            const totalCampania = c._count?.contactos;
+            if (typeof totalCampania === 'number' && typeof d.total === 'number' && typeof d.enviados === 'number') {
+                subir(totalCampania - (d.total - d.enviados));
+            }
+            return;
+        }
         subir(d.enviados);
         if (typeof d.total === 'number' && d.total > 0) setTotalEvento(d.total);
     });
@@ -105,12 +122,12 @@ function useAvance(c, canal) {
 }
 
 function FilaCampania({ c, canal }) {
-    const enPausa = c.estado === 'pausada';
+    const enPausa = c.estado === 'pausada' || c.estado === 'pausa_pendiente';
     const { hechos, total, pct, consultado } = useAvance(c, canal);
     return (
         <Box sx={{ py: 1.5, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
-                <StatusChip label={canal} tono={canal === 'Email' ? 'info' : 'acento'} />
+                <StatusChip label={canal} tono={canal === 'Email' ? 'info' : canal === 'WhatsApp Web' ? 'neutro' : 'acento'} />
                 <Typography sx={{ flex: 1, minWidth: 120, fontWeight: 600, fontSize: 14 }} noWrap>{c.nombre}</Typography>
                 <StatusChip label={enPausa ? 'En pausa' : 'Enviando'} tono={enPausa ? 'aviso' : 'ok'} vivo={!enPausa} />
             </Box>
@@ -141,9 +158,11 @@ export default function Inicio() {
     const verInbox = hasPermiso('wapi.inbox');
     const verCampaniasWapi = hasPermiso('wapi.campanias');
     const verCampaniasEmail = hasPermiso('email.campanias');
-    const verCampanias = verCampaniasWapi || verCampaniasEmail;
+    const verCampaniasWaweb = hasPermiso('whatsapp.campanias');
+    const verCampanias = verCampaniasWapi || verCampaniasEmail || verCampaniasWaweb;
     const { unreadCount, unassignedCount, myActiveCount, conversations, cargado } = useNotifications();
-    const { wapi, email, cargando: cargandoCampanias, error: errorCampanias, recargar } = useCampaniasEnCurso();
+    const { wapi, email, waweb, cargando: cargandoCampanias, error: errorCampanias, recargar } = useCampaniasEnCurso();
+    const todas = [...wapi, ...email, ...waweb];
     const primerNombre = (nombre || '').trim().split(/\s+/)[0];
 
     const esperan = useMemo(() => {
@@ -154,8 +173,8 @@ export default function Inicio() {
             .slice(0, 6);
     }, [conversations, user]);
 
-    const enviando = wapi.filter((c) => c.estado === 'procesando').length + email.filter((c) => c.estado === 'procesando').length;
-    const enPausa = wapi.length + email.length - enviando;
+    const enviando = todas.filter((c) => c.estado === 'procesando').length;
+    const enPausa = todas.length - enviando;
     const masVieja = esperan[0]?.ultimoMensajeAt;
 
     const linea = [fechaLarga()];
@@ -201,7 +220,7 @@ export default function Inicio() {
                             </>
                         )}
                         {verCampanias && (
-                            <KpiTile titulo="Campañas en curso" valor={wapi.length + email.length} cargando={cargandoCampanias} leyenda={enPausa > 0 ? `${enviando} enviando, ${enPausa} en pausa` : `${enviando} enviando`} to={verCampaniasWapi ? '/wapi/live' : '/email/campanias'} />
+                            <KpiTile titulo="Campañas en curso" valor={todas.length} cargando={cargandoCampanias} leyenda={enPausa > 0 ? `${enviando} enviando, ${enPausa} en pausa` : `${enviando} enviando`} to={verCampaniasWapi ? '/wapi/live' : verCampaniasEmail ? '/email/campanias' : '/campanias'} />
                         )}
                     </Box>
                 )}
@@ -210,16 +229,17 @@ export default function Inicio() {
                     {verCampanias && (
                         <SectionCard
                             title="Campañas en curso"
-                            action={<Button component={RouterLink} to={verCampaniasWapi ? '/wapi/campanias' : '/email/campanias'} size="small" sx={{ minHeight: 36 }}>Ver todas</Button>}
+                            action={<Button component={RouterLink} to={verCampaniasWapi ? '/wapi/campanias' : verCampaniasEmail ? '/email/campanias' : '/campanias'} size="small" sx={{ minHeight: 36 }}>Ver todas</Button>}
                         >
                             {errorCampanias ? (
                                 <Alert severity="error" variant="outlined" action={<Button color="inherit" size="small" onClick={recargar}>Reintentar</Button>}>No se pudieron cargar las campañas.</Alert>
-                            ) : wapi.length + email.length === 0 ? (
+                            ) : todas.length === 0 ? (
                                 <EmptyState compact title="No hay campañas enviando" description="Cuando arranque una, vas a ver acá su avance." />
                             ) : (
                                 <Box sx={{ mt: -1.5 }}>
                                     {wapi.map((c) => <FilaCampania key={`w-${c.id}`} c={c} canal="WhatsApp API" />)}
                                     {email.map((c) => <FilaCampania key={`e-${c.id}`} c={c} canal="Email" />)}
+                                    {waweb.map((c) => <FilaCampania key={`ww-${c.id}`} c={c} canal="WhatsApp Web" />)}
                                 </Box>
                             )}
                         </SectionCard>

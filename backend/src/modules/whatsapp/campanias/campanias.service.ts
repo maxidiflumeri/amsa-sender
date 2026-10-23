@@ -71,6 +71,25 @@ export class CampaniasService {
         });
     }
 
+    /**
+     * Las campañas que están enviando o en pausa, livianas: sin contactos, con cuántos tiene y cuántos ya se intentaron
+     * (los reportes). Las pide el Inicio cada minuto; `obtenerCampañas` trae todas con todos sus contactos.
+     */
+    async obtenerCampañasEnCurso() {
+        return this.prisma.campaña.findMany({
+            where: { archivada: false, estado: { in: ['procesando', 'pausada', 'pausa_pendiente'] } },
+            select: {
+                id: true,
+                nombre: true,
+                estado: true,
+                createdAt: true,
+                enviadoAt: true,
+                _count: { select: { contactos: true, reportes: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+    }
+
     async obtenerCampañaPorId(id: number) {
         this.logger.log(`🔍 Buscando campaña por ID: ${id}`);
         return this.prisma.campaña.findUnique({ where: { id } });

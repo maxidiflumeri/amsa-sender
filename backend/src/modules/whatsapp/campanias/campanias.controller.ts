@@ -60,6 +60,12 @@ export class CampaniasController {
         return this.campaniasService.obtenerCampañas();
     }
 
+    // Antes de `:id`, si no Nest lo toma como un id. Con un backend viejo, esta ruta cae en `:id` y falla barato.
+    @Get('en-curso')
+    async obtenerCampañasEnCurso() {
+        return this.campaniasService.obtenerCampañasEnCurso();
+    }
+
     @Get(':id')
     async obtenerCampañaPorId(@Param('id') id: string) {
         this.logger.log(`📥 GET /${id} - Buscar campaña por ID`);
