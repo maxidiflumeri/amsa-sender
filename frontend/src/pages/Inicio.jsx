@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, LinearProgress, Paper, Stack, Typography } from '@mui/material';
 import { MessagesSquare, Plus, Radio, Smartphone } from 'lucide-react';
 import { Link as RouterLink } from 'react-router-dom';
+import api from '../api/axios';
+import { pedirAvance, porcentaje } from '../components/campanias/wapi/datos';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { useEventoSocket, useSalaSocket } from '../context/SocketContext';
 import useCampaniasEnCurso from '../hooks/useCampaniasEnCurso';
 import { usePwa } from '../pwa';
 import { AvatarUsuario, EmptyState, KpiTile, PageContainer, SectionCard, StatusChip } from '../components/ui';
@@ -66,8 +69,44 @@ function AvisoInstalar() {
     );
 }
 
+/**
+ * El avance de una campaña: la base sale de la base de datos (lo ya enviado) y el socket lo va subiendo mientras envía.
+ * Antes la barra era indeterminada y se veía "cargando" para siempre. Solo sube: un evento viejo no lo hace retroceder.
+ */
+function useAvance(c, canal) {
+    const enviando = c.estado === 'procesando';
+    const [hechos, setHechos] = useState(null);
+    const [totalEvento, setTotalEvento] = useState(null);
+    const [consultado, setConsultado] = useState(false);
+    const subir = (n) => setHechos((h) => (typeof n === 'number' && (h === null || n > h) ? n : h));
+
+    useEffect(() => {
+        let vivo = true;
+        const pedir = canal === 'Email'
+            ? api.get(`/email/reportes/campanias/${c.id}/engagement`, { params: { sizeOpen: 1, sizeClick: 1, sizeBounce: 1 } }).then((r) => r.data?.resumen?.enviados)
+            : pedirAvance(c.id).then((a) => a.procesados);
+        pedir
+            .then((n) => { if (vivo) subir(n); })
+            .catch(() => { /* sin permiso o sin datos: queda lo que llegue por el socket */ })
+            .finally(() => { if (vivo) setConsultado(true); });
+        return () => { vivo = false; };
+    }, [c.id, canal]);
+
+    useSalaSocket('join_campaña', enviando ? c.id : null);
+    // Los ids se repiten entre canales, pero el evento de email es otro (`progreso_mail`) y la sala es la de este id.
+    useEventoSocket(enviando ? (canal === 'Email' ? 'progreso_mail' : 'progreso') : null, (d) => {
+        if (Number(d?.campañaId) !== c.id) return;
+        subir(d.enviados);
+        if (typeof d.total === 'number' && d.total > 0) setTotalEvento(d.total);
+    });
+
+    const total = totalEvento ?? c._count?.contactos ?? null;
+    return { hechos, total, pct: porcentaje(hechos, total), consultado };
+}
+
 function FilaCampania({ c, canal }) {
     const enPausa = c.estado === 'pausada';
+    const { hechos, total, pct, consultado } = useAvance(c, canal);
     return (
         <Box sx={{ py: 1.5, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
@@ -75,7 +114,24 @@ function FilaCampania({ c, canal }) {
                 <Typography sx={{ flex: 1, minWidth: 120, fontWeight: 600, fontSize: 14 }} noWrap>{c.nombre}</Typography>
                 <StatusChip label={enPausa ? 'En pausa' : 'Enviando'} tono={enPausa ? 'aviso' : 'ok'} vivo={!enPausa} />
             </Box>
-            {!enPausa && <LinearProgress aria-label={`Avance de ${c.nombre}`} sx={{ height: 6, borderRadius: 99 }} />}
+            {pct !== null ? (
+                <>
+                    <LinearProgress
+                        variant="determinate"
+                        value={pct}
+                        color={enPausa ? 'warning' : 'primary'}
+                        aria-label={`Avance de ${c.nombre}: ${pct} %`}
+                        sx={{ height: 6, borderRadius: 99 }}
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {`${hechos.toLocaleString('es-AR')} de ${total.toLocaleString('es-AR')} · ${pct} %`}
+                    </Typography>
+                </>
+            ) : (
+                <Typography variant="caption" color="text.secondary">
+                    {consultado ? 'Avance: —' : 'Calculando el avance…'}
+                </Typography>
+            )}
         </Box>
     );
 }
