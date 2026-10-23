@@ -21,7 +21,17 @@ solo `pausada`) y mandaba todo. Reanudar solo aceptaba `pausada` y la lista no o
   apuntando a la vieja (pasó con la #630 el mismo día, y había que corregirla en la base). Reanudar se queda solo con las
   sesiones conectadas (según la tabla `Sesion`); si no queda ninguna responde 400 con `codigo: 'SIN_SESIONES_CONECTADAS'`
   sin encolar nada. Acepta `sessionIds` en el cuerpo para seguir con otras, y las guarda en la campaña.
-- `campanias.service.spec.ts`: era un placeholder que fallaba; ahora 18 pruebas de pausa y reanudación.
+- `campanias.service.spec.ts`: era un placeholder que fallaba; ahora 20 pruebas de pausa y reanudación.
+
+### Reanudar dejaba la campaña "enviando" sin job (WhatsApp API y WhatsApp Web)
+
+Al reanudar las campañas después del deploy de las 16:20, la #707 de WhatsApp API quedó en `procesando` sin job: 45 de
+73, sin enviar nada. En los logs, a las 16:22:05 el worker toma su job ("28 pendientes de 73") y en el mismo milisegundo
+corta con "Campaña 707 pausada". Los dos `reanudar` encolaban el job **antes** de sacar la campaña de la pausa en la base;
+con el worker libre, el job arranca antes que ese `update`, ve `pausada` y termina sin enviar. Ahora primero se actualiza
+el estado y después se encola; si encolar falla, la campaña vuelve a la pausa. La #704 no se vio afectada porque su job
+quedó esperando detrás del de la #707. `wapi-campanias.service.spec.ts` (nuevo) y dos pruebas más en el de WhatsApp Web.
+La #707 se recupera pausándola y reanudándola con el backend nuevo.
 
 ### Frontend
 

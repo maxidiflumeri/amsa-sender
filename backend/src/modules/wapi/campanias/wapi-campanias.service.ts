@@ -188,15 +188,29 @@ export class WapiCampaniasService {
       throw new Error(`No se puede reanudar una campaña en estado "${campaña.estado}"`);
     }
 
-    const job = await this.wapiQueue.add(
-      'enviar-campania',
-      { campañaId: id },
-      { removeOnComplete: true, removeOnFail: false },
-    );
+    // Primero el estado y después el job: con el worker libre, el job arranca en milisegundos y, si todavía la ve
+    // pausada, termina sin enviar y la campaña queda "procesando" sin job (le pasó a la #707 el 23/10).
+    await this.prisma.waApiCampaña.update({
+      where: { id },
+      data: { pausada: false, estado: 'procesando' },
+    });
 
+    let job: Job;
+    try {
+      job = await this.wapiQueue.add(
+        'enviar-campania',
+        { campañaId: id },
+        { removeOnComplete: true, removeOnFail: false },
+      );
+    } catch (e) {
+      await this.prisma.waApiCampaña.update({ where: { id }, data: { pausada: true, estado: 'pausada' } });
+      throw e;
+    }
+
+    this.logger.log(`Campaña ${id} reanudada. Job: ${job.id}`);
     return this.prisma.waApiCampaña.update({
       where: { id },
-      data: { pausada: false, estado: 'procesando', jobId: job.id as string },
+      data: { jobId: job.id as string },
     });
   }
 

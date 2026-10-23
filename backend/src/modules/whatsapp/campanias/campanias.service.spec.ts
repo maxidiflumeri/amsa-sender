@@ -61,6 +61,22 @@ describe('CampaniasService.reanudarCampaña', () => {
         });
     });
 
+    it('marca la campaña como enviando antes de encolar (si no, el worker la ve pausada y corta)', async () => {
+        const { service, prisma, cola } = armar({ campaña: pausada({ sesiones: '["s-1"]' }), sesiones: [{ sessionId: 's-1' }] });
+        await service.reanudarCampaña(513);
+        expect(prisma.campaña.update.mock.invocationCallOrder[0]).toBeLessThan(cola.add.mock.invocationCallOrder[0]);
+    });
+
+    it('si no se puede encolar, la devuelve a la pausa con sus sesiones', async () => {
+        const { service, prisma, cola } = armar({ campaña: pausada({ sesiones: '["s-1"]', pausada: true }), sesiones: [{ sessionId: 's-1' }] });
+        cola.add.mockRejectedValueOnce(new Error('Redis caído'));
+        await expect(service.reanudarCampaña(513)).rejects.toThrow('Redis caído');
+        expect(prisma.campaña.update).toHaveBeenLastCalledWith({
+            where: { id: 513 },
+            data: { estado: 'pausada', pausada: true, sesiones: '["s-1"]' },
+        });
+    });
+
     it('sin ninguna sesión conectada pide elegir con cuál seguir y no encola', async () => {
         const { service, cola } = armar({ campaña: pausada(), sesiones: [] });
         const error = await service.reanudarCampaña(513).catch((e) => e);

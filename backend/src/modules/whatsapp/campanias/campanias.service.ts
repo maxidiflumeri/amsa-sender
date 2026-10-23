@@ -300,12 +300,21 @@ export class CampaniasService {
             });
         }
 
-        await this.colaEnvios.add('enviar', { sessionIds: usar, campaña: id, config });
-
+        // Primero el estado y después el job: si el worker toma el job mientras la campaña todavía figura pausada, corta
+        // en el primer contacto y la deja "procesando" sin job.
         await this.prisma.campaña.update({
             where: { id },
             data: { estado: 'procesando', pausada: false, sesiones: JSON.stringify(usar) },
         });
+        try {
+            await this.colaEnvios.add('enviar', { sessionIds: usar, campaña: id, config });
+        } catch (e) {
+            await this.prisma.campaña.update({
+                where: { id },
+                data: { estado: 'pausada', pausada: campaña.pausada, sesiones: campaña.sesiones },
+            });
+            throw e;
+        }
 
         this.logger.log(`✅ Campaña ${id} reanudada con ${usar.length} sesión(es)`);
         return { ok: true };
