@@ -161,7 +161,9 @@ export class WapiReportesService {
       { header: 'Nombre', key: 'nombre', width: 25 },
       { header: 'Email', key: 'email', width: 30 },
       { header: 'Asignadas', key: 'asignadas', width: 12 },
-      { header: 'Resueltas', key: 'resueltas', width: 12 },
+      // Cada cierre cuenta, en la fecha en que se hizo (ver `resumirCierres` en la analítica).
+      { header: 'Cerradas', key: 'resueltas', width: 12 },
+      { header: 'Conversaciones distintas cerradas', key: 'conversacionesCerradas', width: 30 },
       { header: 'Activas', key: 'activas', width: 12 },
       { header: 'Mensajes enviados', key: 'mensajesEnviados', width: 18 },
       { header: 'Avg 1ra respuesta', key: 'avgPrimResp', width: 20 },
@@ -185,6 +187,7 @@ export class WapiReportesService {
         email: a.email,
         asignadas: a.asignadas,
         resueltas: a.resueltas,
+        conversacionesCerradas: a.conversacionesCerradas,
         activas: a.activas,
         mensajesEnviados: a.mensajesEnviados,
         avgPrimResp: msToLegible(a.avgPrimeraRespuestaMs),

@@ -118,6 +118,27 @@ en [docs/sender-v2-guia-ui.md](docs/sender-v2-guia-ui.md).
   cada campaña.
 - `backend/.env.example` (nuevo, con las variables `VAPID_*`).
 
+### Productividad de los agentes: cuenta cierres, y queda fija
+
+Pedido de las usuarias: "en Sender la productividad da la mitad que en S1, y el número no queda fijo: va variando según
+el día en que saco el reporte".
+
+- **Causa**: las "resueltas" de un agente eran las conversaciones que **hoy** tiene asignadas, con el **último
+  mensaje** en el rango y que **hoy** están resueltas. Si el cliente contestaba después del cierre ("gracias"), la
+  conversación se reabría y su último mensaje se corría: el cierre desaparecía del día en que se hizo. Una conversación
+  cerrada dos veces contaba una, y si se reasignaba el cierre pasaba a otro agente.
+- **Medido en prod** (01/10 al 22/10): Ana Paula Godoy 362 contra 771 cierres reales, Joaquín Barros 375 contra 710,
+  Laura Siri 252 contra 486, Tati De Antoni 166 contra 536. La mitad o menos, como decían.
+- **Ahora** (`wapi-analitica.service.ts`, `resumirCierres`): se cuentan los cierres de `WaApiCierreConversacion`
+  (una fila por cada vez que alguien resuelve, con quién y cuándo, que no cambia después), en el día de Argentina en
+  que se hicieron. Lo que cerró un agente que ya no está activo sigue contando. Mismo cambio en el detalle del agente,
+  la evolución diaria (que además usaba días UTC), el Excel de agentes (columnas "Cerradas" y "Conversaciones distintas
+  cerradas") y el análisis con IA del equipo.
+- En pantalla, "Resueltas" pasa a **"Cerradas"** con cuántas conversaciones distintas fueron; el ranking se ordena por
+  cierres y ya no muestra un % sobre las asignadas (con cierres puede pasar del 100 %).
+- Los cierres se registran desde el 22/04/2026: un rango anterior da 0.
+- Tests: `wapi-analitica.service.spec.ts` (4).
+
 ### Después de la auditoría (agente auditor: no pasaba; todo lo de abajo corregido)
 
 - **Redirección abierta en el Login**: `?volver=/%09/otro-sitio` pasaba el filtro (el navegador descarta el tab y queda

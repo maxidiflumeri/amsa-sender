@@ -9,7 +9,7 @@ import {
 import api from '../../../api/axios';
 import { BloqueEstado, DataTableResponsive, EmptyState, SectionCard, StatusChip } from '../../ui';
 import { estadoConversacion } from '../../analitica/estados';
-import { aDiaLocal, diaLocalHaceDias, fmtDiaCorto, fmtDuracion, fmtFecha, fmtNumero, porcentaje } from '../../analitica/formato';
+import { aDiaLocal, diaLocalHaceDias, fmtDiaCorto, fmtDuracion, fmtFecha, fmtNumero } from '../../analitica/formato';
 import { useGraficos } from '../../analitica/graficos';
 import GrillaKpi from '../../analitica/GrillaKpi';
 import PanelAnalisisIA from './PanelAnalisisIA';
@@ -127,7 +127,7 @@ function DetalleAgente({ agente, rango, onVolver }) {
                     max={6}
                     items={[
                         { titulo: 'Asignadas', valor: fmtNumero(m.asignadas) },
-                        { titulo: 'Resueltas', valor: fmtNumero(m.resueltas) },
+                        { titulo: 'Cerradas', valor: fmtNumero(m.resueltas), leyenda: m.conversacionesCerradas != null ? `en ${fmtNumero(m.conversacionesCerradas)} conversaciones` : undefined },
                         { titulo: 'Activas', valor: fmtNumero(m.activas) },
                         { titulo: 'Mensajes enviados', valor: fmtNumero(m.mensajesEnviados) },
                         { titulo: '1ª respuesta', valor: fmtDuracion(m.avgPrimeraRespuestaMs), leyenda: 'promedio' },
@@ -234,7 +234,8 @@ export default function MetricasAgentes() {
     const abrirAgente = (a) => setParams((p) => { const s = new URLSearchParams(p); s.set('a', String(a.id)); return s; });
     const cerrarAgente = () => setParams((p) => { const s = new URLSearchParams(p); s.delete('a'); return s; });
 
-    const ranking = useMemo(() => (datos ? [...datos.agentes].sort((a, b) => b.asignadas - a.asignadas) : []), [datos]);
+    // La productividad es lo que cada uno cerró: el ranking va por cierres.
+    const ranking = useMemo(() => (datos ? [...datos.agentes].sort((a, b) => b.resueltas - a.resueltas || b.asignadas - a.asignadas) : []), [datos]);
 
     const agenteAbierto = agenteId && datos ? datos.agentes.find((a) => String(a.id) === agenteId) : null;
     if (agenteAbierto) return <DetalleAgente agente={agenteAbierto} rango={aplicado} onVolver={cerrarAgente} />;
@@ -276,9 +277,10 @@ export default function MetricasAgentes() {
                             items={[
                                 { titulo: 'Conversaciones', valor: fmtNumero(datos.global.totalConvs) },
                                 {
-                                    titulo: 'Resueltas',
+                                    // Cada cierre cuenta, en el día en que se hizo: no cambia si después la conversación se reabre.
+                                    titulo: 'Cerradas',
                                     valor: fmtNumero(datos.global.resueltas),
-                                    leyenda: datos.global.totalConvs > 0 ? `${porcentaje(datos.global.resueltas, datos.global.totalConvs, 0)}% del total` : undefined,
+                                    leyenda: datos.global.conversacionesCerradas != null ? `en ${fmtNumero(datos.global.conversacionesCerradas)} conversaciones` : undefined,
                                 },
                                 { titulo: '1ª respuesta', valor: fmtDuracion(datos.global.avgPrimeraRespuestaMs), leyenda: 'promedio' },
                                 { titulo: 'Resolución', valor: fmtDuracion(datos.global.avgResolucionMs), leyenda: 'promedio' },
@@ -287,7 +289,7 @@ export default function MetricasAgentes() {
                     </Box>
 
                     {datos.agentes.length > 0 && (
-                        <SectionCard title="Comparativa por agente" subtitle="Conversaciones asignadas y resueltas.">
+                        <SectionCard title="Comparativa por agente" subtitle="Conversaciones asignadas y cierres de cada agente.">
                             <Box sx={{ height: 260 }}>
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={datos.agentes} margin={{ top: 5, right: 8, bottom: 5, left: 0 }}>
@@ -297,7 +299,7 @@ export default function MetricasAgentes() {
                                         <RTooltip {...g.tooltip} />
                                         <Legend wrapperStyle={{ fontSize: 12 }} />
                                         <Bar dataKey="asignadas" name="Asignadas" fill={g.info} radius={[4, 4, 0, 0]} />
-                                        <Bar dataKey="resueltas" name="Resueltas" fill={g.success} radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="resueltas" name="Cerradas" fill={g.success} radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </Box>
@@ -315,7 +317,7 @@ export default function MetricasAgentes() {
                                         <RTooltip {...g.tooltip} labelFormatter={fmtDiaCorto} />
                                         <Legend wrapperStyle={{ fontSize: 12 }} />
                                         <Line type="monotone" dataKey="convs" name="Conversaciones" stroke={g.info} strokeWidth={2} dot={false} />
-                                        <Line type="monotone" dataKey="resueltas" name="Resueltas" stroke={g.success} strokeWidth={2} dot={false} />
+                                        <Line type="monotone" dataKey="resueltas" name="Cerradas" stroke={g.success} strokeWidth={2} dot={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </Box>
@@ -328,18 +330,14 @@ export default function MetricasAgentes() {
                         </SectionCard>
                     )}
 
-                    <SectionCard title="Ranking de agentes" noPadding>
+                    <SectionCard title="Ranking de agentes" subtitle="Cerradas: cada cierre cuenta, en el día en que se hizo, como en S1. Si una conversación se reabre y se vuelve a cerrar, suma dos; Conversaciones dice cuántas distintas fueron." noPadding>
                         <DataTableResponsive
                             ariaLabel="Ranking de agentes"
                             columns={[
                                 { key: 'nombre', label: 'Agente', primary: true },
                                 { key: 'asignadas', label: 'Asignadas', align: 'right', render: (a) => fmtNumero(a.asignadas) },
-                                {
-                                    key: 'resueltas',
-                                    label: 'Resueltas',
-                                    align: 'right',
-                                    render: (a) => `${fmtNumero(a.resueltas)}${a.asignadas > 0 ? ` (${porcentaje(a.resueltas, a.asignadas, 0)}%)` : ''}`,
-                                },
+                                { key: 'resueltas', label: 'Cerradas', align: 'right', render: (a) => fmtNumero(a.resueltas) },
+                                { key: 'conversacionesCerradas', label: 'Conversaciones', align: 'right', render: (a) => fmtNumero(a.conversacionesCerradas ?? 0), hideBelow: 'lg' },
                                 { key: 'activas', label: 'Activas', align: 'right', render: (a) => fmtNumero(a.activas) },
                                 { key: 'avgPrimeraRespuestaMs', label: '1ª respuesta', align: 'right', render: (a) => fmtDuracion(a.avgPrimeraRespuestaMs), hideBelow: 'lg' },
                                 { key: 'avgResolucionMs', label: 'Resolución', align: 'right', render: (a) => fmtDuracion(a.avgResolucionMs), hideBelow: 'lg' },
