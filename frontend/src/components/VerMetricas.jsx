@@ -1,153 +1,105 @@
-import React, { useState, useEffect } from 'react';
-import {
-    Box,
-    Typography,
-    Paper,
-    TextField,
-    Autocomplete,
-    ToggleButton,
-    ToggleButtonGroup
-} from '@mui/material';
-import { useTheme } from '@mui/material/styles';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { useEffect, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
+import { Box, Button, LinearProgress, Typography } from '@mui/material';
+import { FileText, MessageSquareText } from 'lucide-react';
 import api from '../api/axios';
-import BarChartIcon from '@mui/icons-material/BarChart';
-
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
+import { useAuth } from '../context/AuthContext';
+import { BloqueEstado, EmptyState, PageHeader, SectionCard } from './ui';
+import { migasDe } from './layout/navConfig';
+import { SelectorCampaniaWeb, useCampaniaElegida, useCampaniasWeb } from './analitica/campaniasWeb';
+import GrillaKpi from './analitica/GrillaKpi';
+import { fmtNumero, fmtPct, porcentaje } from './analitica/formato';
 
 export default function VerMetricas() {
-    const theme = useTheme();
-    const [campanias, setCampanias] = useState([]);
-    const [campaniaSeleccionada, setCampaniaSeleccionada] = useState(null);
+    const { hasPermiso } = useAuth();
+    const { campanias, estado: estadoLista, recargar } = useCampaniasWeb();
+    const { campania, campaniaId, elegir } = useCampaniaElegida(campanias);
     const [metricas, setMetricas] = useState(null);
-    const [tipoGrafico, setTipoGrafico] = useState('torta');
+    const [estado, setEstado] = useState('inicial');
+    const [reintento, setReintento] = useState(0);
 
     useEffect(() => {
-        api.get('/whatsapp/reportes/campanias-con-reportes')
-            .then(res => setCampanias(res.data))
-            .catch(err => console.error('Error cargando campañas', err));
-    }, []);
-
-    useEffect(() => {
-        if (campaniaSeleccionada?.id) {
-            api.get(`/whatsapp/mensajes/campania/${campaniaSeleccionada.id}/metricas`)
-                .then(res => setMetricas(res.data))
-                .catch(err => console.error('Error cargando métricas', err));
+        setMetricas(null);
+        if (!campania?.id) {
+            setEstado('inicial');
+            return undefined;
         }
-    }, [campaniaSeleccionada]);
+        // Al cambiar de campaña se vacía y se muestra la carga: antes quedaban los números de la anterior.
+        let vigente = true;
+        setEstado('cargando');
+        api.get(`/whatsapp/mensajes/campania/${campania.id}/metricas`)
+            .then((res) => {
+                if (!vigente) return;
+                setMetricas(res.data);
+                setEstado('ok');
+            })
+            .catch(() => {
+                if (vigente) setEstado('error');
+            });
+        return () => {
+            vigente = false;
+        };
+    }, [campania?.id, reintento]);
 
-    const data = metricas ? [
-        { name: 'Enviados', value: metricas.enviados },
-        { name: 'Contactos que respondieron', value: metricas.contactosRespondieron },
-        { name: 'Total mensajes recibidos', value: metricas.totalRespuestas }
-    ] : [];
+    const enviados = Number(metricas?.enviados ?? 0);
+    const respondieron = Number(metricas?.contactosRespondieron ?? 0);
+    // El backend manda el porcentaje; si faltara se calcula, así nunca se rompe con null.
+    const pctRespuesta = metricas?.porcentajeRespondieron != null ? Number(metricas.porcentajeRespondieron) : porcentaje(respondieron, enviados, 2);
 
-    const renderChart = () => {
-        if (tipoGrafico === 'torta') {
-            return (
-                <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                        <Pie
-                            data={data}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={100}
-                            labelLine={false}
-                            label={({ name }) => name}
-                        >
-                            {data.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                        </Pie>
-                        <Tooltip />
-                        <Legend />
-                    </PieChart>
-                </ResponsiveContainer>
-            );
-        } else {
-            return (
-                <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={data}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="value" fill="#8884d8" />
-                    </BarChart>
-                </ResponsiveContainer>
-            );
-        }
-    };
+    const vinculo = campaniaId ? `?campania=${campaniaId}` : '';
 
     return (
-        <Box py={3}>
-            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BarChartIcon color="primary" />
-                Métricas de Campaña
-            </Typography>
-
-            <Autocomplete
-                options={campanias}
-                getOptionLabel={(option) => option.nombre}
-                value={campaniaSeleccionada}
-                onChange={(_, newValue) => setCampaniaSeleccionada(newValue)}
-                renderInput={(params) => (
-                    <TextField
-                        {...params}
-                        label="Buscar campaña"
-                        placeholder="Ej: Campaña verano"
-                        sx={{ mb: 3, minWidth: 240 }}
-                    />
+        <Box>
+            <PageHeader
+                title="Métricas de WhatsApp Web"
+                subtitle="Cuánta gente respondió a cada campaña."
+                breadcrumbs={migasDe('/metricas')}
+                actions={hasPermiso('whatsapp.reportes') && (
+                    <Button component={RouterLink} to={`/reportes${vinculo}`} variant="outlined" startIcon={<FileText size={18} strokeWidth={1.75} aria-hidden />}>
+                        Ver reportes de envío
+                    </Button>
                 )}
-                isOptionEqualToValue={(option, value) => option.id === value.id}
             />
 
-            <ToggleButtonGroup
-                color="primary"
-                value={tipoGrafico}
-                exclusive
-                onChange={(_, newValue) => newValue && setTipoGrafico(newValue)}
-                sx={{ mb: 2 }}
-            >
-                <ToggleButton value="torta">Gráfico de torta</ToggleButton>
-                <ToggleButton value="barras">Gráfico de barras</ToggleButton>
-            </ToggleButtonGroup>
+            <Box sx={{ mb: 3 }}>
+                <SelectorCampaniaWeb campanias={campanias} estado={estadoLista} onReintentar={recargar} value={campania} onChange={elegir} />
+            </Box>
 
-            {metricas ? (
-                <Paper
-                    elevation={3}
-                    sx={{
-                        p: 3,
-                        borderRadius: 3,
-                        backgroundColor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#fefefe',
-                        boxShadow: theme.palette.mode === 'dark' ? 3 : 6,
-                        mt: 2
-                    }}
-                >
-                    <Typography variant="body1" gutterBottom>
-                        <strong>Mensajes enviados:</strong> {metricas.enviados}
-                    </Typography>
-                    <Typography variant="body1" gutterBottom color="success.main">
-                        <strong>Contactos que respondieron:</strong> {metricas.contactosRespondieron}
-                    </Typography>
-                    <Typography variant="body1" gutterBottom color="warning.main">
-                        <strong>Mensajes recibidos:</strong> {metricas.totalRespuestas}
-                    </Typography>
-                    <Typography variant="body1" gutterBottom>
-                        <strong>% de respuesta:</strong> <span style={{ color: '#1976d2', fontWeight: 600 }}>
-                            {metricas.porcentajeRespondieron.toFixed(2)}%
-                        </span>
-                    </Typography>
+            {estado === 'inicial' && estadoLista !== 'error' && (
+                <EmptyState
+                    icon={MessageSquareText}
+                    title="Elegí una campaña"
+                    description="Buscá la campaña arriba para ver cuántos contactos respondieron."
+                />
+            )}
+            {estado === 'cargando' && <BloqueEstado estado="cargando" mensaje="Cargando métricas…" />}
+            {estado === 'error' && (
+                <BloqueEstado estado="error" mensaje="No se pudieron cargar las métricas de la campaña." onReintentar={() => setReintento((n) => n + 1)} />
+            )}
 
-                    {renderChart()}
-                </Paper>
-            ) : (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                    Seleccioná una campaña para ver las métricas.
-                </Typography>
+            {estado === 'ok' && metricas && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <GrillaKpi
+                        max={4}
+                        items={[
+                            { titulo: 'Mensajes enviados', valor: fmtNumero(enviados) },
+                            { titulo: 'Contactos que respondieron', valor: fmtNumero(respondieron) },
+                            { titulo: 'Porcentaje de respuesta', valor: fmtPct(pctRespuesta, 2) },
+                            { titulo: 'Mensajes recibidos', valor: fmtNumero(metricas.totalRespuestas), leyenda: 'contando todas las respuestas' },
+                        ]}
+                    />
+                    <SectionCard title="Respondieron sobre enviados" subtitle={`${fmtNumero(respondieron)} de ${fmtNumero(enviados)} contactos`}>
+                        <LinearProgress
+                            variant="determinate"
+                            value={Math.min(100, Math.max(0, pctRespuesta))}
+                            aria-label="Porcentaje de contactos que respondieron"
+                            sx={{ height: 14, borderRadius: 7, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 7, bgcolor: 'success.main' } }}
+                        />
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                            {fmtPct(pctRespuesta, 2)} de los contactos a los que se les envió respondió al menos una vez.
+                        </Typography>
+                    </SectionCard>
+                </Box>
             )}
         </Box>
     );

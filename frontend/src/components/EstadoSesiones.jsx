@@ -1,357 +1,227 @@
-import { useEffect, useState } from 'react';
-import {
-    Card,
-    CardContent,
-    Typography,
-    Grid,
-    Box,
-    Button,
-    CircularProgress,
-    Snackbar,
-    useTheme,
-    useMediaQuery,
-    IconButton,
-    LinearProgress,
-    Skeleton,
-} from '@mui/material';
-import MuiAlert from '@mui/material/Alert';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import api from '../api/axios';
-import { io } from 'socket.io-client';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
+import { useCallback, useEffect, useState } from 'react';
+import { Box, Button, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Paper, Skeleton, Tooltip, Typography } from '@mui/material';
+import { Eraser, MoreVertical, Plus, Smartphone, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import DashboardIcon from '@mui/icons-material/Dashboard';
+import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
+import { mensajeDeError, useFeedback } from '../context/FeedbackContext';
+import { useAlReanudar, useEventoSocket } from '../context/SocketContext';
+import { migasDe } from './layout/navConfig';
+import { BloqueEstado, ConfirmDialog, EmptyState, PageContainer, PageHeader, StatusChip } from './ui';
+import { pluralizar } from './campanias/waweb/formatos';
+
+// Las sesiones de WhatsApp Web: una tarjeta por número conectado. "Conectar sesión" está siempre a mano; limpiar
+// todas, que es lo único destructivo de la pantalla, queda en el menú "Más" y pide escribir "limpiar".
+
+const ESTADOS = {
+    conectado: { label: 'Conectada', tono: 'ok', vivo: true },
+    desconectado: { label: 'Desconectada', tono: 'aviso' },
+    reconectando: { label: 'Reconectando', tono: 'aviso', vivo: true },
+    inicializando: { label: 'Iniciando', tono: 'info' },
+    'esperando escaneo': { label: 'Esperando el escaneo', tono: 'info' },
+    iniciando_sesion: { label: 'Conectando', tono: 'info', vivo: true },
+};
+
+function EsqueletoTarjeta() {
+    return (
+        <Paper variant="outlined" sx={{ borderRadius: '14px', p: 2 }}>
+            <Skeleton width={110} height={24} />
+            <Skeleton width="60%" height={30} />
+            <Skeleton width="80%" />
+        </Paper>
+    );
+}
 
 export default function EstadoSesiones() {
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-    const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-    const [sesiones, setSesiones] = useState([]);
-    const [loading, setLoading] = useState(false);        // solo para "Limpiar Sesiones"
-    const [loadingList, setLoadingList] = useState(true); // para carga/refresco de la lista
-    const [feedback, setFeedback] = useState({ open: false, type: 'success', message: '' });
-    const [sesionAEliminar, setSesionAEliminar] = useState(null);
-    const [confirmarLimpiar, setConfirmarLimpiar] = useState(false);
     const navigate = useNavigate();
+    const feedback = useFeedback();
+    const { hasPermiso } = useAuth();
+    const puedeVer = hasPermiso('whatsapp.sesiones');
+    const puedeConectar = hasPermiso('whatsapp.conectar');
 
-    const cargarSesiones = async () => {
+    const [sesiones, setSesiones] = useState([]);
+    const [cargando, setCargando] = useState(puedeVer);
+    const [errorCarga, setErrorCarga] = useState(false);
+    const [menu, setMenu] = useState(null);
+    const [aEliminar, setAEliminar] = useState(null);
+    const [limpiando, setLimpiando] = useState(false);
+    const [confirmarLimpiar, setConfirmarLimpiar] = useState(false);
+    const [trabajando, setTrabajando] = useState(false);
+
+    const cargar = useCallback(async ({ silent = false } = {}) => {
+        if (!puedeVer) return;
+        if (!silent) {
+            setCargando(true);
+            setErrorCarga(false);
+        }
         try {
-            setLoadingList(true);
             const res = await api.get('/whatsapp/sesiones/status');
-            setSesiones(res.data || []);
-        } catch (e) {
-            setFeedback({ open: true, type: 'error', message: 'No se pudieron cargar las sesiones' });
+            setSesiones(res.data ?? []);
+        } catch {
+            // Una recarga silenciosa que falla deja lo que ya se ve; solo la carga a la vista muestra el error.
+            if (!silent) setErrorCarga(true);
         } finally {
-            setLoadingList(false);
+            if (!silent) setCargando(false);
+        }
+    }, [puedeVer]);
+
+    useEffect(() => {
+        cargar();
+    }, [cargar]);
+
+    // El QR de otra persona que está conectando una sesión no cambia esta lista; todo lo demás sí.
+    useEventoSocket('estado_sesion', ({ estado }) => {
+        if (estado !== 'qr') cargar({ silent: true });
+    });
+    useAlReanudar(() => cargar({ silent: true }));
+
+    const eliminar = async () => {
+        setTrabajando(true);
+        try {
+            await api.delete(`/whatsapp/sesiones/${aEliminar.id}`);
+            feedback.exito('Sesión eliminada.');
+            setAEliminar(null);
+            await cargar({ silent: true });
+        } catch (error) {
+            feedback.error(mensajeDeError(error, 'No se pudo eliminar la sesión.'));
+        } finally {
+            setTrabajando(false);
         }
     };
 
-    useEffect(() => {
-        cargarSesiones();
-    }, []);
-
-    useEffect(() => {
-        const socket = io(import.meta.env.VITE_HOST_SOCKET); // cambiar si tenés otro host
-        const onEstado = ({ estado }) => {
-            // ante cambios relevantes, refrescamos
-            if (estado === 'desconectado' || estado === 'conectado') {
-                cargarSesiones();
-            }
-        };
-        socket.on('estado_sesion', onEstado);
-        return () => socket.disconnect();
-    }, []);
-
-    const getColor = (estado) => {
-        return estado === 'conectado' ? 'green' : estado === 'desconectado' ? 'gray' : 'orange';
-    };
-
-    const limpiarSesiones = async () => {
-        setLoading(true);
+    const limpiar = async () => {
+        setLimpiando(true);
         try {
             await api.delete('/whatsapp/sesiones/clear');
-            await cargarSesiones();
-            setFeedback({ open: true, type: 'success', message: 'Sesiones limpiadas correctamente' });
-        } catch (err) {
-            setFeedback({ open: true, type: 'error', message: 'Error al limpiar sesiones' });
+            feedback.exito('Se limpiaron todas las sesiones.');
+            setConfirmarLimpiar(false);
+            await cargar({ silent: true });
+        } catch (error) {
+            feedback.error(mensajeDeError(error, 'No se pudieron limpiar las sesiones.'));
         } finally {
-            setLoading(false);
+            setLimpiando(false);
         }
     };
 
-    // Render de Skeleton Cards
-    const SkeletonCard = () => (
-        <Card
-            variant="outlined"
-            sx={{
-                p: 2,
-                borderRadius: 2,
-                boxShadow: 1,
-                background: theme.palette.mode === 'light'
-                    ? 'linear-gradient(to right, #f0f4f8, #e8f0fe)'
-                    : '#2c2c2c',
-            }}
-        >
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Skeleton variant="circular" width={100} height={12} sx={{ mr: 2 }} />
-                <Box sx={{ flex: 1 }}>
-                    <Skeleton variant="text" width="100%" height={24} />
-                    <Skeleton variant="text" width="100%" height={20} />
-                    <Skeleton variant="text" width="100%" height={20} />
-                </Box>
-            </Box>
-        </Card>
-    );
+    const irAConectar = () => navigate('/conectar');
 
     return (
-        <Box
-            sx={{
-                maxWidth: '1400px',
-                mx: 'auto',
-                px: { xs: 2, md: 3, lg: 4 },
-                py: 3
-            }}
-        >
-            {/* Header y botón */}
-            <Box
-                display="flex"
-                flexDirection={{ xs: 'column', sm: 'row' }}
-                justifyContent="space-between"
-                alignItems={{ xs: 'flex-start', sm: 'center' }}
-                gap={2}
-                mb={1}
-            >
-                <Box display="flex" alignItems="center">
-                    <DashboardIcon sx={{ fontSize: 32 }} />
-                    <Typography ml={1} variant="h5" fontWeight="bold">Sesiones activas</Typography>
-                </Box>
-                <Button
-                    sx={{
-                        borderRadius: 2,
-                        fontFamily: commonFont,
-                        textTransform: 'none',
-                        fontSize: '0.9rem',
-                        transition: 'all 0.3s ease',
-                        '&:hover': {
-                            backgroundColor: theme.palette.error.dark,
-                            transform: 'scale(1.03)',
-                            boxShadow: 4,
-                        },
-                    }}
-                    variant="contained"
-                    color="error"
-                    onClick={() => setConfirmarLimpiar(true)}
-                    disabled={loading || loadingList}
-                >
-                    {loading ? <CircularProgress size={20} /> : 'Limpiar Sesiones'}
-                </Button>
-            </Box>
-
-            {/* LinearProgress cuando se está cargando la lista */}
-            {loadingList && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
-
-            {/* Tarjetas */}
-            <Grid sx={{ mt: 2}} container spacing={2}>
-                {/* Skeletons */}
-                {loadingList &&
-                    Array.from({ length: 6 }).map((_, i) => (
-                        <Grid item xs={12} sm={6} md={4} key={`sk-${i}`}>
-                            <SkeletonCard />
-                        </Grid>
-                    ))
-                }
-
-                {/* Empty state (sólo si NO está cargando y NO hay sesiones) */}
-                {!loadingList && sesiones.length === 0 && !loading && (
-                    <Box
-                        minHeight="25vh"
-                        textAlign="center"
-                        display="flex"
-                        flexDirection="column"
-                        alignItems="center"
-                        justifyContent="center"
-                        sx={{
-                            border: '2px dashed',
-                            borderColor: theme.palette.mode === 'dark' ? '#555' : '#ccc',
-                            borderRadius: 4,
-                            py: 5,
-                            px: 3,
-                            backgroundColor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#f9f9f9',
-                            color: theme.palette.text.secondary,
-                            mx: 'auto',
-                            width: '100%',
-                            mt: 1
-                        }}
-                    >
-                        <img
-                            src="https://cdn-icons-png.flaticon.com/512/4076/4076500.png"
-                            alt="Sin sesiones"
-                            width={100}
-                            style={{ marginBottom: 16, opacity: 0.6 }}
-                        />
-                        <Typography variant="h6" gutterBottom>
-                            No hay ninguna sesión conectada
-                        </Typography>
-                        <Typography variant="body2">
-                            Conectá una sesión para comenzar a gestionar tus campañas de WhatsApp.
-                        </Typography>
-                        <Button
-                            variant="contained"
-                            onClick={() => navigate('/conectar')}
-                            sx={{
-                                mt: 3,
-                                px: 4,
-                                py: 1.3,
-                                borderRadius: 2,
-                                fontFamily: commonFont,
-                                textTransform: 'none',
-                                fontSize: '0.9rem',
-                                backgroundColor: '#075E54',
-                                transition: 'all 0.3s ease',
-                                '&:hover': {
-                                    backgroundColor: '#0b7b65',
-                                    transform: 'scale(1.03)',
-                                    boxShadow: 4,
-                                },
-                            }}
-                        >
-                            Conectar sesión
-                        </Button>
-                    </Box>
+        <PageContainer>
+            <PageHeader
+                title="Sesiones"
+                subtitle="Los números de WhatsApp conectados para enviar campañas."
+                breadcrumbs={migasDe('/sesiones')}
+                actions={(
+                    <>
+                        {puedeVer && (
+                            <Tooltip title="Más acciones">
+                                <span>
+                                    <IconButton
+                                        aria-label="Más acciones"
+                                        aria-haspopup="menu"
+                                        disabled={sesiones.length === 0}
+                                        onClick={(e) => setMenu(e.currentTarget)}
+                                        sx={{ width: 44, height: 44, border: 1, borderColor: 'divider', borderRadius: '10px' }}
+                                    >
+                                        <MoreVertical size={20} strokeWidth={1.75} aria-hidden />
+                                    </IconButton>
+                                </span>
+                            </Tooltip>
+                        )}
+                        {puedeConectar && (
+                            <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={irAConectar}>
+                                Conectar sesión
+                            </Button>
+                        )}
+                    </>
                 )}
+            />
 
-                {/* Cards reales */}
-                {!loadingList && sesiones.map((s) => (
-                    <Grid item xs={12} sm={6} md={4} key={s.id}>
-                        <Card
-                            variant="outlined"
-                            sx={{
-                                position: 'relative',
-                                p: 2,
-                                borderRadius: 2,
-                                boxShadow: 1,
-                                transition: 'box-shadow 0.3s ease',
-                                background: theme.palette.mode === 'light'
-                                    ? 'linear-gradient(to right, #f0f4f8, #e8f0fe)'
-                                    : '#2c2c2c',
-                                color: theme.palette.text.primary,
-                                '&:hover': { boxShadow: 6 },
-                            }}
-                        >
-                            {/* Botón eliminar */}
-                            <IconButton
-                                size="small"
-                                onClick={() => setSesionAEliminar(s)}
-                                disabled={loadingList}
-                                sx={{
-                                    position: 'absolute',
-                                    top: 6,
-                                    right: 6,
-                                    color: theme.palette.error.main,
-                                    zIndex: 1,
-                                }}
-                            >
-                                <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
+            {!puedeVer && (
+                <EmptyState
+                    icon={Smartphone}
+                    title="No tenés permiso para ver las sesiones"
+                    description="Podés conectar una sesión nueva; para ver o eliminar las existentes pedí el permiso de Sesiones."
+                />
+            )}
 
-                            {/* Estado */}
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                <Box
-                                    sx={{
-                                        width: 12,
-                                        height: 12,
-                                        borderRadius: '50%',
-                                        bgcolor: getColor(s.estado),
-                                        mr: 2,
-                                    }}
-                                />
-                                <CardContent sx={{ pl: 0, pt: 0, pr: 3 }}>
-                                    <Typography variant="subtitle1" noWrap>{`Id: ${s.id}`}</Typography>
-                                    <Typography variant="subtitle2" noWrap>{`Ani: ${s.ani}`}</Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        Estado: {s.estado}
+            {puedeVer && errorCarga && <BloqueEstado estado="error" mensaje="No se pudieron cargar las sesiones." onReintentar={() => cargar()} />}
+
+            {puedeVer && !errorCarga && (cargando || sesiones.length > 0) && (
+                <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0, display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+                    {cargando && Array.from({ length: 3 }).map((_, i) => <Box component="li" key={`esq-${i}`}><EsqueletoTarjeta /></Box>)}
+                    {!cargando && sesiones.map((s) => {
+                        const estado = ESTADOS[s.estado] ?? { label: s.estado ?? '—', tono: 'neutro' };
+                        return (
+                            <Box component="li" key={s.id}>
+                                <Paper variant="outlined" sx={{ borderRadius: '14px', p: 2, height: '100%' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                                        <StatusChip label={estado.label} tono={estado.tono} vivo={estado.vivo} />
+                                        <Tooltip title="Eliminar sesión">
+                                            <IconButton
+                                                aria-label={`Eliminar la sesión ${s.ani || s.id}`}
+                                                onClick={() => setAEliminar(s)}
+                                                sx={{ width: 44, height: 44, mt: -0.75, mr: -0.75, color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+                                            >
+                                                <Trash2 size={18} strokeWidth={1.75} aria-hidden />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Box>
+                                    <Typography sx={{ fontSize: 18, fontWeight: 650, mt: 0.5 }}>{s.ani || 'Sin número todavía'}</Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25, overflowWrap: 'anywhere' }}>
+                                        ID: {s.id}
                                     </Typography>
-                                </CardContent>
+                                </Paper>
                             </Box>
-                        </Card>
-                    </Grid>
-                ))}
-            </Grid>
+                        );
+                    })}
+                </Box>
+            )}
 
-            {/* Modal de confirmación */}
-            <Dialog open={!!sesionAEliminar} onClose={() => setSesionAEliminar(null)}>
-                <DialogTitle>¿Eliminar esta sesión?</DialogTitle>
-                <DialogContent>
-                    <Typography variant="body2">
-                        ¿Estás seguro de que querés eliminar la sesión{' '}
-                        <strong>{sesionAEliminar?.id}</strong>? Esta acción no se puede deshacer.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setSesionAEliminar(null)}>Cancelar</Button>
-                    <Button
-                        onClick={async () => {
-                            try {
-                                await api.delete(`/whatsapp/sesiones/${sesionAEliminar.id}`);
-                                setFeedback({ open: true, type: 'success', message: 'Sesión eliminada exitosamente' });
-                                await cargarSesiones();
-                            } catch (error) {
-                                setFeedback({ open: true, type: 'error', message: 'Error al eliminar sesión' });
-                            } finally {
-                                setSesionAEliminar(null);
-                            }
-                        }}
-                        color="error"
-                        variant="contained"
-                    >
-                        Eliminar
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            {puedeVer && !cargando && !errorCarga && sesiones.length === 0 && (
+                <EmptyState
+                    icon={Smartphone}
+                    title="No hay ninguna sesión conectada"
+                    description="Conectá un número de WhatsApp para poder enviar campañas desde Sender."
+                    action={puedeConectar ? { label: 'Conectar sesión', onClick: irAConectar } : undefined}
+                />
+            )}
 
-            <Dialog open={confirmarLimpiar} onClose={() => setConfirmarLimpiar(false)}>
-                <DialogTitle>¿Limpiar todas las sesiones?</DialogTitle>
-                <DialogContent>
-                    <Typography variant="body2">
-                        Esta acción eliminará todas las sesiones activas y en memoria. ¿Deseás continuar?
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setConfirmarLimpiar(false)}>Cancelar</Button>
-                    <Button
-                        onClick={async () => {
-                            setConfirmarLimpiar(false);
-                            await limpiarSesiones();
-                        }}
-                        color="error"
-                        variant="contained"
-                    >
-                        Confirmar
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Feedback */}
-            <Snackbar
-                open={feedback.open}
-                autoHideDuration={3000}
-                onClose={() => setFeedback({ ...feedback, open: false })}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <MuiAlert
-                    elevation={6}
-                    variant="filled"
-                    severity={feedback.type}
-                    onClose={() => setFeedback({ ...feedback, open: false })}
-                    icon={<CheckCircleIcon fontSize="inherit" />}
+            <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
+                <MenuItem
+                    sx={{ minHeight: 44, color: 'error.main' }}
+                    onClick={() => {
+                        setMenu(null);
+                        setConfirmarLimpiar(true);
+                    }}
                 >
-                    {feedback.message}
-                </MuiAlert>
-            </Snackbar>
-        </Box>
+                    <ListItemIcon sx={{ color: 'inherit' }}><Eraser size={18} strokeWidth={1.75} aria-hidden /></ListItemIcon>
+                    <ListItemText>Limpiar sesiones</ListItemText>
+                </MenuItem>
+            </Menu>
+
+            <ConfirmDialog
+                open={!!aEliminar}
+                titulo="¿Eliminar la sesión?"
+                mensaje={`Se va a eliminar la sesión de ${aEliminar?.ani || aEliminar?.id}. Para volver a usar ese número hay que escanear el código QR de nuevo, y las campañas que estén enviando por esta sesión dejan de enviar por ella.`}
+                confirmarTexto="Eliminar"
+                peligro
+                cargando={trabajando}
+                onConfirmar={eliminar}
+                onCancelar={() => setAEliminar(null)}
+            />
+
+            <ConfirmDialog
+                open={confirmarLimpiar}
+                titulo="¿Limpiar todas las sesiones?"
+                mensaje={`Se van a eliminar ${pluralizar(sesiones.length, 'sesión', 'sesiones')}, conectadas o no, con todo lo que tienen guardado. Para volver a enviar hay que conectar cada número de nuevo con su código QR, y las campañas que estén enviando se quedan sin sesión.`}
+                confirmarTexto="Limpiar sesiones"
+                peligro
+                textoATipear="limpiar"
+                cargando={limpiando}
+                onConfirmar={limpiar}
+                onCancelar={() => setConfirmarLimpiar(false)}
+            />
+        </PageContainer>
     );
 }

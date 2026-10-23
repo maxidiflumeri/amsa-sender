@@ -1,362 +1,192 @@
-import React, { useEffect, useState } from 'react';
-import {
-    Typography,
-    Paper,
-    Box,
-    IconButton,
-    Button,
-    Tooltip,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    Snackbar,
-    Alert,
-    TextField,
-    InputAdornment,
-    Card,
-    CardContent,
-    CardActions,
-    Pagination,
-    MenuItem,
-    Select,
-    FormControl,
-    InputLabel,
-    LinearProgress,
-    Skeleton
-} from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import SearchIcon from '@mui/icons-material/Search';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Box, Button, InputAdornment, Paper, TextField, Typography } from '@mui/material';
+import { Eye, FileText, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
+import { mensajeDeError, useFeedback } from '../context/FeedbackContext';
+import { migasDe } from './layout/navConfig';
+import { BloqueEstado, ConfirmDialog, EmptyState, PageContainer, PageHeader, WaBurbuja, formatoWhatsApp } from './ui';
+import MenuMas from './plantillas/MenuMas';
 import TemplateModal from './TemplateModal';
 import PreviewTemplateReal from './PreviewTemplateReal';
-import ArticleIcon from '@mui/icons-material/Article';
 
-export default function VerTemplates() {
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-    const [templates, setTemplates] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [openDialog, setOpenDialog] = useState(false);
-    const [selectedTemplate, setSelectedTemplate] = useState(null);
-    const [previewOpen, setPreviewOpen] = useState(false);
-    const [selectedTemplateId, setSelectedTemplateId] = useState(null);
-    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-    const [templateAEliminar, setTemplateAEliminar] = useState(null);
-    const [snackbarOpen, setSnackbarOpen] = useState(false);
-    const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
-    const [busqueda, setBusqueda] = useState('');
-    const [expandedTemplateId, setExpandedTemplateId] = useState(null);
-    const [paginaActual, setPaginaActual] = useState(1);
-    const [templatesPorPagina, setTemplatesPorPagina] = useState(3);
+const LINEAS_RESUMEN = 6;
 
-    const cargarTemplates = async () => {
-        try {
-            const res = await api.get('/whatsapp/templates');
-            setTemplates(res.data);
-        } catch (err) {
-            console.error('Error al cargar templates', err);
-        } finally {            
-            setLoading(false);
-        }
-    };
-
-    const confirmarEliminarTemplate = (template) => {
-        setTemplateAEliminar(template);
-        setConfirmDialogOpen(true);
-    };
-
-    const eliminarTemplate = async () => {
-        try {
-            await api.delete(`/whatsapp/templates/${templateAEliminar.id}`);
-            setTemplateAEliminar(null);
-            setConfirmDialogOpen(false);
-            setMensaje({ tipo: 'success', texto: 'Template eliminado correctamente' });
-            setSnackbarOpen(true);
-            await cargarTemplates();
-        } catch (err) {
-            console.error('Error al eliminar template', err);
-        }
-    };
-
-    useEffect(() => {
-        cargarTemplates();
-    }, []);
-
-    const templatesFiltrados = templates.filter(t =>
-        t.nombre.toLowerCase().includes(busqueda.toLowerCase())
-    );
-
-    const totalPaginas = Math.ceil(templatesFiltrados.length / templatesPorPagina);
-    const templatesPaginados = templatesFiltrados.slice(
-        (paginaActual - 1) * templatesPorPagina,
-        paginaActual * templatesPorPagina
-    );
-
-    const handleExpandClick = (id) => {
-        setExpandedTemplateId(prev => (prev === id ? null : id));
-    };
-
-    const shouldShowExpand = (text) => {
-        const lineCount = text?.split('\n').length || 0;
-        return lineCount > 3;
-    };
-
-    const SkeletonCard = () => (
-        <Card variant="outlined" sx={{ borderRadius: 3, boxShadow: 3 }}>
-            <CardContent>
-                <Skeleton variant="text" width="40%" height={28} />
-                <Skeleton variant="text" width="90%" />
-                <Skeleton variant="text" width="85%" />
-                <Skeleton variant="text" width="80%" />
-            </CardContent>
-            <CardActions sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', px: 2, pb: 2 }}>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Skeleton variant="circular" width={36} height={36} />
-                    <Skeleton variant="circular" width={36} height={36} />
-                    <Skeleton variant="circular" width={36} height={36} />
-                </Box>
-                <Skeleton variant="rounded" width={100} height={32} />
-            </CardActions>
-        </Card>
-    );
+/** Una plantilla de WhatsApp Web: la burbuja como la ve el deudor, con "Ver más" si es larga. */
+function TarjetaPlantilla({ plantilla, onEditar, onPreview, onEliminar }) {
+    const [expandida, setExpandida] = useState(false);
+    const lineas = plantilla.contenido?.split('\n') ?? [];
+    const larga = lineas.length > LINEAS_RESUMEN;
+    const texto = larga && !expandida ? `${lineas.slice(0, LINEAS_RESUMEN).join('\n')}…` : plantilla.contenido;
 
     return (
-        <Box
-            sx={{
-                py: 3
-            }}
-        >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Box display="flex" alignItems="center">
-                    <ArticleIcon sx={{ fontSize: 32 }} />
-                    <Typography ml={1} variant="h5" fontWeight="bold">
-                        Templates de WhatsApp
-                    </Typography>
+        <Paper variant="outlined" sx={{ borderRadius: '14px', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+            <Box sx={{ p: 2, flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Typography sx={{ fontWeight: 650, fontSize: 15, overflowWrap: 'anywhere' }}>{plantilla.nombre}</Typography>
+                <Box sx={{ bgcolor: 'action.hover', borderRadius: 2, p: 1.5, display: 'flex', flexDirection: 'column' }}>
+                    <WaBurbuja direccion="saliente" sx={{ maxWidth: '100%', alignSelf: 'flex-start' }}>{formatoWhatsApp(texto)}</WaBurbuja>
                 </Box>
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => {
-                        setSelectedTemplate(null);
-                        setOpenDialog(true);
-                    }}
-                    sx={{
-                        borderRadius: 2,
-                        fontFamily: commonFont,
-                        textTransform: 'none',
-                        fontSize: '0.9rem',
-                        backgroundColor: '#075E54',
-                        transition: 'all 0.3s ease',
-                        '&:hover': {
-                            backgroundColor: '#0b7b65',
-                            transform: 'scale(1.03)',
-                            boxShadow: 4,
-                        },
-                    }}
-                >
-                    Crear nuevo
-                </Button>
+                {larga && (
+                    <Button size="small" onClick={() => setExpandida((v) => !v)} sx={{ alignSelf: 'flex-start', minHeight: { xs: 44, sm: 30 } }}>
+                        {expandida ? 'Ver menos' : 'Ver más'}
+                    </Button>
+                )}
             </Box>
-
-            <Box sx={{ mb: 2 }}>
-                <TextField
-                    fullWidth
-                    variant="outlined"
-                    placeholder="Buscar template por nombre..."
-                    value={busqueda}
-                    onChange={(e) => setBusqueda(e.target.value)}
-                    InputProps={{
-                        startAdornment: (
-                            <InputAdornment position="start">
-                                <SearchIcon color="action" />
-                            </InputAdornment>
-                        ),
-                    }}
+            <Box sx={{ borderTop: 1, borderColor: 'divider', px: 1.5, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                <Button size="small" variant="outlined" startIcon={<Pencil size={16} strokeWidth={1.75} aria-hidden />} onClick={onEditar} sx={{ minHeight: { xs: 44, sm: 32 } }}>
+                    Editar
+                </Button>
+                <MenuMas
+                    etiqueta={`Más acciones de ${plantilla.nombre}`}
+                    items={[
+                        { label: 'Ver con datos reales', icono: Eye, onClick: onPreview },
+                        { label: 'Eliminar', icono: Trash2, onClick: onEliminar, peligro: true },
+                    ]}
                 />
             </Box>
+        </Paper>
+    );
+}
 
-            {loading ? (
-                <>
-                    <Box sx={{ mb: 2 }}>
-                        <LinearProgress />
-                    </Box>
+export default function VerTemplates() {
+    const feedback = useFeedback();
+    const [params, setParams] = useSearchParams();
+    const busqueda = params.get('q') ?? '';
 
-                    <Box
-                        sx={{
-                            display: 'grid',
-                            gap: 2
-                        }}
-                    >
-                        {Array.from({ length: templatesPorPagina }).map((_, i) => (
-                            <SkeletonCard key={`sk-${i}`} />
-                        ))}
-                    </Box>
-                </>
-            ) : templatesFiltrados.length === 0 ? (
+    const [plantillas, setPlantillas] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState(null);
+    const [editando, setEditando] = useState(null);
+    const [modalAbierto, setModalAbierto] = useState(false);
+    const [previewId, setPreviewId] = useState(null);
+    const [aEliminar, setAEliminar] = useState(null);
+    const [eliminando, setEliminando] = useState(false);
 
-                <Typography sx={{ p: 2 }}>No hay templates que coincidan.</Typography>
-            ) : (
-                <>
-                    <Box sx={{ display: 'grid', gap: 2 }}>
-                        {templatesPaginados.map((template) => {
-                            const isExpanded = expandedTemplateId === template.id;
-                            const showExpand = shouldShowExpand(template.contenido);
-                            const contenidoVisible = showExpand && !isExpanded
-                                ? template.contenido.split('\n').slice(0, 3).join('\n') + '...'
-                                : template.contenido;
+    const cargar = useCallback(async () => {
+        setCargando(true);
+        setErrorCarga(null);
+        try {
+            const res = await api.get('/whatsapp/templates');
+            setPlantillas(Array.isArray(res.data) ? res.data : []);
+        } catch (err) {
+            setErrorCarga(mensajeDeError(err, 'No se pudieron cargar las plantillas.'));
+        } finally {
+            setCargando(false);
+        }
+    }, []);
 
-                            return (
-                                <Card key={template.id} variant="outlined" sx={{ borderRadius: 3, boxShadow: 3 }}>
-                                    <CardContent>
-                                        <Typography variant="h6">{template.nombre}</Typography>
-                                        <Typography
-                                            variant="body2"
-                                            sx={{ whiteSpace: 'pre-line', mt: 1, fontSize: '0.95rem' }}
-                                        >
-                                            {contenidoVisible}
-                                        </Typography>
-                                    </CardContent>
-                                    <CardActions sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', px: 2, pb: 2 }}>
-                                        <Box sx={{ display: 'flex', gap: 1, order: 2 }}>
-                                            <Tooltip title="Previsualizar con datos reales">
-                                                <IconButton onClick={() => {
-                                                    setSelectedTemplateId(template.id);
-                                                    setPreviewOpen(true);
-                                                }}>
-                                                    <VisibilityIcon />
-                                                </IconButton>
-                                            </Tooltip>
-                                            <Tooltip title="Editar">
-                                                <IconButton color="info" onClick={() => {
-                                                    setSelectedTemplate(template);
-                                                    setOpenDialog(true);
-                                                }}>
-                                                    <EditIcon />
-                                                </IconButton>
-                                            </Tooltip>
-                                            <Tooltip title="Eliminar">
-                                                <IconButton color="error" onClick={() => confirmarEliminarTemplate(template)}>
-                                                    <DeleteIcon />
-                                                </IconButton>
-                                            </Tooltip>
-                                        </Box>
-                                        <Box sx={{ order: 1 }}>
-                                            {showExpand && (
-                                                <Button
-                                                    onClick={() => handleExpandClick(template.id)}
-                                                    endIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                                    size="small"
-                                                    sx={{ textTransform: 'none' }}
-                                                >
-                                                    {isExpanded ? 'Ver menos' : 'Ver más'}
-                                                </Button>
-                                            )}
-                                        </Box>
-                                    </CardActions>
-                                </Card>
-                            );
-                        })}
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 4, flexWrap: 'wrap', gap: 2 }}>
-                        <Typography variant="body2" sx={{ ml: 1 }}>
-                            Mostrando {(paginaActual - 1) * templatesPorPagina + 1}-{Math.min(paginaActual * templatesPorPagina, templatesFiltrados.length)} de {templatesFiltrados.length} templates
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-                            <FormControl variant="outlined" size="small">
-                                <InputLabel>Por página</InputLabel>
-                                <Select
-                                    label="Por página"
-                                    value={templatesPorPagina}
-                                    onChange={(e) => {
-                                        setTemplatesPorPagina(Number(e.target.value));
-                                        setPaginaActual(1);
-                                    }}
-                                >
-                                    {[3, 5, 10, 20].map(num => (
-                                        <MenuItem key={num} value={num}>{num}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                            <Pagination
-                                count={totalPaginas}
-                                page={paginaActual}
-                                onChange={(e, page) => setPaginaActual(page)}
-                                color="primary"
-                            />
-                        </Box>
-                    </Box>
-                </>
+    useEffect(() => { cargar(); }, [cargar]);
+
+    const visibles = useMemo(() => {
+        const q = busqueda.trim().toLowerCase();
+        return q ? plantillas.filter((t) => t.nombre?.toLowerCase().includes(q)) : plantillas;
+    }, [plantillas, busqueda]);
+
+    const cambiarBusqueda = (valor) => {
+        const nuevo = new URLSearchParams(params);
+        if (valor) nuevo.set('q', valor);
+        else nuevo.delete('q');
+        setParams(nuevo, { replace: true });
+    };
+
+    const abrirNueva = () => {
+        setEditando(null);
+        setModalAbierto(true);
+    };
+
+    // Si falla, tira: el modal se queda abierto y muestra el error (antes se cerraba como si hubiera guardado).
+    const guardar = async (data) => {
+        if (editando) {
+            await api.put(`/whatsapp/templates/${editando.id}`, data);
+            feedback.exito('Plantilla actualizada.');
+        } else {
+            await api.post('/whatsapp/templates', data);
+            feedback.exito('Plantilla creada.');
+        }
+        await cargar();
+    };
+
+    const eliminar = async () => {
+        setEliminando(true);
+        try {
+            await api.delete(`/whatsapp/templates/${aEliminar.id}`);
+            feedback.exito(`Se eliminó la plantilla «${aEliminar.nombre}».`);
+            setAEliminar(null);
+            await cargar();
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo eliminar la plantilla.'));
+        } finally {
+            setEliminando(false);
+        }
+    };
+
+    return (
+        <PageContainer>
+            <PageHeader
+                title="Plantillas de WhatsApp Web"
+                subtitle="Los mensajes que se mandan desde las sesiones de WhatsApp Web, con variables que se completan con los datos de cada contacto."
+                breadcrumbs={migasDe('/templates')}
+                actions={
+                    <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={abrirNueva}>
+                        Nueva plantilla
+                    </Button>
+                }
+            />
+
+            <TextField
+                size="small"
+                fullWidth
+                placeholder="Buscar por nombre"
+                value={busqueda}
+                onChange={(e) => cambiarBusqueda(e.target.value)}
+                inputProps={{ 'aria-label': 'Buscar plantillas por nombre' }}
+                InputProps={{ startAdornment: <InputAdornment position="start"><Search size={18} strokeWidth={1.75} aria-hidden /></InputAdornment> }}
+                sx={{ mb: 2.5, maxWidth: { sm: 400 } }}
+            />
+
+            {errorCarga && <BloqueEstado estado="error" mensaje={errorCarga} onReintentar={cargar} />}
+            {cargando && !errorCarga && <BloqueEstado estado="cargando" mensaje="Cargando plantillas…" />}
+
+            {!cargando && !errorCarga && visibles.length === 0 && (
+                <EmptyState
+                    icon={FileText}
+                    title={busqueda ? 'No hay plantillas con ese nombre' : 'Todavía no hay plantillas'}
+                    description={busqueda ? 'Probá con otra búsqueda.' : 'Creá la primera para usarla en tus campañas de WhatsApp Web.'}
+                    action={busqueda ? undefined : { label: 'Nueva plantilla', onClick: abrirNueva }}
+                />
             )}
 
-            <TemplateModal
-                open={openDialog}
-                onClose={() => setOpenDialog(false)}
-                templateToEdit={selectedTemplate}
-                onSave={async (data) => {
-                    try {
-                        if (selectedTemplate) {
-                            await api.put(`/whatsapp/templates/${selectedTemplate.id}`, data);
-                            setMensaje({ tipo: 'success', texto: 'Template actualizado correctamente' });
-                        } else {
-                            await api.post('/whatsapp/templates', data);
-                            setMensaje({ tipo: 'success', texto: 'Template creado correctamente' });
-                        }
-                        await cargarTemplates();
-                        setSnackbarOpen(true);
-                    } catch (err) {
-                        console.error('Error al guardar template', err);
-                    }
-                }}
+            {!cargando && !errorCarga && visibles.length > 0 && (
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>
+                    {visibles.map((t) => (
+                        <TarjetaPlantilla
+                            key={t.id}
+                            plantilla={t}
+                            onEditar={() => {
+                                setEditando(t);
+                                setModalAbierto(true);
+                            }}
+                            onPreview={() => setPreviewId(t.id)}
+                            onEliminar={() => setAEliminar(t)}
+                        />
+                    ))}
+                </Box>
+            )}
+
+            <TemplateModal open={modalAbierto} onClose={() => setModalAbierto(false)} templateToEdit={editando} onSave={guardar} />
+
+            <PreviewTemplateReal open={previewId !== null} onClose={() => setPreviewId(null)} templateId={previewId} />
+
+            <ConfirmDialog
+                open={!!aEliminar}
+                peligro
+                cargando={eliminando}
+                titulo="¿Eliminar la plantilla?"
+                mensaje={<>Se va a eliminar <strong>{aEliminar?.nombre}</strong>. No se puede deshacer.</>}
+                confirmarTexto="Eliminar"
+                onConfirmar={eliminar}
+                onCancelar={() => setAEliminar(null)}
             />
-
-            <PreviewTemplateReal
-                open={previewOpen}
-                onClose={() => setPreviewOpen(false)}
-                templateId={selectedTemplateId}
-            />
-
-            <Dialog open={confirmDialogOpen} onClose={() => setConfirmDialogOpen(false)}>
-                <DialogTitle>¿Eliminar template?</DialogTitle>
-                <DialogContent>
-                    <Typography>
-                        ¿Estás seguro de que querés eliminar el template{' '}
-                        <strong>{templateAEliminar?.nombre}</strong>?<br />
-                        Esta acción no se puede deshacer.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setConfirmDialogOpen(false)}>Cancelar</Button>
-                    <Button
-                        onClick={eliminarTemplate}
-                        color="error"
-                        variant="contained"
-                        sx={{ textTransform: 'none' }}
-                    >
-                        Eliminar
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            <Snackbar
-                open={snackbarOpen}
-                autoHideDuration={6000}
-                onClose={() => setSnackbarOpen(false)}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert
-                    elevation={6}
-                    variant="filled"
-                    severity={mensaje.tipo}
-                    onClose={() => setSnackbarOpen(false)}
-                >
-                    {mensaje.texto}
-                </Alert>
-            </Snackbar>
-        </Box>
+        </PageContainer>
     );
 }

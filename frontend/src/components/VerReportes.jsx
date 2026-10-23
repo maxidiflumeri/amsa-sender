@@ -1,462 +1,292 @@
-import { useEffect, useState, useMemo } from 'react';
-import {
-    Paper,
-    Typography,
-    Table,
-    TableHead,
-    TableRow,
-    TableCell,
-    TableBody,
-    Chip,
-    TablePagination,
-    Box,
-    Button,
-    TextField,
-    Autocomplete,
-    useMediaQuery,
-    Tabs,
-    Tab,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    IconButton,
-    LinearProgress,
-    Skeleton
-} from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
+import { Box, Button, InputAdornment, Tab, TablePagination, Tabs, TextField } from '@mui/material';
+import { BarChart3, Download, History, Search, MessageSquareText } from 'lucide-react';
 import api from '../api/axios';
-import ChatIcon from '@mui/icons-material/Chat';
-import CloseIcon from '@mui/icons-material/Close';
-import InputAdornment from '@mui/material/InputAdornment';
-import SearchIcon from '@mui/icons-material/Search';
+import { useAuth } from '../context/AuthContext';
+import { BloqueEstado, DataTableResponsive, EmptyState, PageHeader, ResponsiveDialog, SectionCard, StatusChip, WaBurbuja, formatoWhatsApp } from './ui';
+import { migasDe } from './layout/navConfig';
+import { SelectorCampaniaWeb, useCampaniaElegida, useCampaniasWeb } from './analitica/campaniasWeb';
+import useTabUrl from './analitica/useTabUrl';
+import { fmtFecha } from './analitica/formato';
+import { descargarCsv } from '../utils/descargar';
+
+const PESTANIAS = ['reportes', 'mensajes'];
+
+const ESTADOS_ENVIO = {
+    enviado: { label: 'Enviado', tono: 'ok' },
+    fallido: { label: 'Fallido', tono: 'error' },
+    pendiente: { label: 'Pendiente', tono: 'neutro' },
+};
+
+function ChipEnvio({ estado }) {
+    const e = ESTADOS_ENVIO[estado] ?? { label: estado ?? '—', tono: 'neutro' };
+    return <StatusChip label={e.label} tono={e.tono} />;
+}
 
 export default function VerReportes() {
-    const theme = useTheme();
-    const isMobile = useMediaQuery('(max-width:768px)');
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-    const [campañas, setCampañas] = useState([]);
-    const [campañaSeleccionada, setCampañaSeleccionada] = useState(null);
+    const { hasPermiso } = useAuth();
+    const { campanias, estado: estadoLista, recargar } = useCampaniasWeb();
+    const { campania, campaniaId, elegir } = useCampaniaElegida(campanias);
+    const [tab, setTab] = useTabUrl(PESTANIAS);
+    const [params, setParams] = useSearchParams();
+    const busqueda = params.get('q') ?? '';
+
     const [reportes, setReportes] = useState([]);
     const [mensajes, setMensajes] = useState([]);
-    const [tab, setTab] = useState(0);
+    const [estadoReportes, setEstadoReportes] = useState('inicial');
+    const [estadoMensajes, setEstadoMensajes] = useState('inicial');
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
-    const [modalAbierto, setModalAbierto] = useState(false);
-    const [mensajesContacto, setMensajesContacto] = useState([]);
-    const [numeroActual, setNumeroActual] = useState(null);
-    const [busquedaNumero, setBusquedaNumero] = useState('');
-    const [loadingReportes, setLoadingReportes] = useState(false);
-    const [loadingMensajes, setLoadingMensajes] = useState(false);
 
+    // La conversación con un número, en un diálogo.
+    const [conv, setConv] = useState({ abierta: false, numero: null, mensajes: [], estado: 'cargando' });
 
-    useEffect(() => {
-        api.get('/whatsapp/reportes/campanias-con-reportes')
-            .then(res => setCampañas(res.data))
-            .catch(err => console.error('Error cargando campañas', err));
+    const cargarReportes = useCallback((id) => {
+        setEstadoReportes('cargando');
+        return api.get(`/whatsapp/reportes?campañaId=${id}`)
+            .then((res) => {
+                setReportes(res.data);
+                setEstadoReportes('ok');
+            })
+            .catch(() => setEstadoReportes('error'));
+    }, []);
+
+    const cargarMensajes = useCallback((id) => {
+        setEstadoMensajes('cargando');
+        return api.get(`/whatsapp/mensajes?campañaId=${id}`)
+            .then((res) => {
+                setMensajes(res.data);
+                setEstadoMensajes('ok');
+            })
+            .catch(() => setEstadoMensajes('error'));
     }, []);
 
     useEffect(() => {
-        if (!campañaSeleccionada) {
+        setPage(0);
+        if (!campania?.id) {
             setReportes([]);
             setMensajes([]);
-            setLoadingReportes(false);
-            setLoadingMensajes(false);
+            setEstadoReportes('inicial');
+            setEstadoMensajes('inicial');
             return;
         }
+        cargarReportes(campania.id);
+        cargarMensajes(campania.id);
+    }, [campania?.id, cargarReportes, cargarMensajes]);
 
-        setLoadingReportes(true);
-        api.get(`/whatsapp/reportes?campañaId=${campañaSeleccionada.id}`)
-            .then(res => setReportes(res.data))
-            .catch(err => console.error('Error cargando reportes', err))
-            .finally(() => setLoadingReportes(false));
+    const cambiarBusqueda = (valor) => {
+        setPage(0);
+        setParams((previos) => {
+            const sig = new URLSearchParams(previos);
+            if (valor) sig.set('q', valor);
+            else sig.delete('q');
+            return sig;
+        }, { replace: true });
+    };
 
-        setLoadingMensajes(true);
-        api.get(`/whatsapp/mensajes?campañaId=${campañaSeleccionada.id}`)
-            .then(res => setMensajes(res.data))
-            .catch(err => console.error('Error cargando reportes', err))
-            .finally(() => setLoadingMensajes(false));
-    }, [campañaSeleccionada]);
+    const cambiarTab = (v) => {
+        setPage(0);
+        setTab(v);
+    };
 
-    const abrirModalMensajes = async (numero) => {
+    const abrirConversacion = async (numero) => {
+        setConv({ abierta: true, numero, mensajes: [], estado: 'cargando' });
         try {
-            const res = await api.get('/whatsapp/mensajes/por-campania', {
-                params: {
-                    campaniaId: campañaSeleccionada.id,
-                    numero,
-                },
-            });
-
-            setMensajesContacto(res.data);
-            setNumeroActual(numero);
-            setModalAbierto(true);
-        } catch (error) {
-            console.error('Error al obtener mensajes del contacto:', error);
+            const res = await api.get('/whatsapp/mensajes/por-campania', { params: { campaniaId: campania.id, numero } });
+            setConv({ abierta: true, numero, mensajes: res.data, estado: 'ok' });
+        } catch {
+            setConv({ abierta: true, numero, mensajes: [], estado: 'error' });
         }
     };
 
-    const handleCloseModal = () => setModalAbierto(false);
+    const enReportes = tab === 0;
+    const fuente = enReportes ? reportes : mensajes;
+    const estadoActual = enReportes ? estadoReportes : estadoMensajes;
 
-    const datosFiltrados = useMemo(() => {
-        const fuente = tab === 0 ? reportes : mensajes;
-        return fuente.filter((item) =>
-            item.numero.toLowerCase().includes(busquedaNumero.toLowerCase())
+    const filtrados = useMemo(() => {
+        const q = busqueda.trim().toLowerCase();
+        return q ? fuente.filter((item) => String(item.numero ?? '').toLowerCase().includes(q)) : fuente;
+    }, [fuente, busqueda]);
+    const visibles = filtrados.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((r, i) => ({ ...r, _k: `${page}-${i}` }));
+
+    const exportarReportes = () => {
+        // Las columnas de "datos" son las que traía cada fila del Excel original: se juntan todas las claves.
+        const claves = [...new Set(reportes.flatMap((r) => (r.datos ? Object.keys(r.datos) : [])))];
+        descargarCsv(
+            `reporte_campaña_${campania?.id}_${campania?.nombre ?? ''}`,
+            [
+                { key: 'numero', label: 'Número' },
+                { key: 'mensaje', label: 'Mensaje' },
+                { key: 'estado', label: 'Estado' },
+                { key: 'campania', label: 'Campaña', valor: (r) => r.campaña?.nombre ?? '' },
+                { key: 'aniEnvio', label: 'Línea móvil de origen' },
+                { key: 'enviadoAt', label: 'Fecha de envío', valor: (r) => (r.enviadoAt ? fmtFecha(r.enviadoAt) : '') },
+                ...claves.map((k) => ({ key: `datos.${k}`, label: k, valor: (r) => r.datos?.[k] ?? '' })),
+            ],
+            reportes,
         );
-    }, [reportes, mensajes, tab, busquedaNumero]);
-
-    const datosPaginados = datosFiltrados.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
-
-    const getEstadoChip = (estado) => {
-        switch (estado) {
-            case 'enviado': return <Chip label="Enviado" color="success" />;
-            case 'fallido': return <Chip label="Fallido" color="error" />;
-            case 'pendiente': return <Chip label="Pendiente" color="default" />;
-            default: return <Chip label={estado} />;
-        }
     };
 
-    const exportarCSV = () => {
-        if (!reportes.length) return;
-
-        // 1. Reunir todas las claves únicas del campo "datos"
-        const clavesDatos = new Set();
-        reportes.forEach(r => {
-            if (r.datos) {
-                Object.keys(r.datos).forEach(k => clavesDatos.add(k));
-            }
-        });
-        const columnasDatos = Array.from(clavesDatos);
-
-        // 2. Armar encabezados
-        const headers = [
-            'Número',
-            'Mensaje',
-            'Estado',
-            'Campaña',
-            'Línea Móvil Origen',
-            'Fecha de Envío',
-            ...columnasDatos
-        ];
-
-        // 3. Armar filas
-        const filas = reportes.map(r => {
-            const base = [
-                r.numero,
-                r.mensaje,
-                r.estado,
-                r.campaña?.nombre || '',
-                r.aniEnvio || '',
-                r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : ''
-            ];
-            const extras = columnasDatos.map(k => r.datos?.[k] ?? '');
-            return [...base, ...extras];
-        });
-
-        const escapeCSV = (valor) =>
-            `"${String(valor).replace(/\r?\n/g, '\\n').replace(/"/g, '""')}"`;
-
-        const contenidoCSV = [
-            headers.map(escapeCSV).join(','),
-            ...filas.map(fila => fila.map(escapeCSV).join(','))
-        ].join('\r\n');
-
-        const blob = new Blob(["\uFEFF" + contenidoCSV], {
-            type: 'text/csv;charset=utf-8;'
-        });
-
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', `reporte_campaña_${campañaSeleccionada?.id}_${campañaSeleccionada?.nombre}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    const exportarMensajes = () => {
+        descargarCsv(
+            `mensajes_campaña_${campania?.id}_${campania?.nombre ?? ''}`,
+            [
+                { key: 'tipo', label: 'Tipo', valor: (m) => (m.fromMe ? 'Enviado' : 'Recibido') },
+                { key: 'numero', label: 'Número' },
+                { key: 'mensaje', label: 'Mensaje' },
+                { key: 'fecha', label: 'Fecha', valor: (m) => fmtFecha(m.fecha) },
+            ],
+            mensajes,
+        );
     };
 
-    const exportarMensajesCSV = () => {
-        const escapeCSV = (valor) => `"${String(valor).replace(/\r?\n/g, '\\n').replace(/"/g, '""')}"`;
-        if (!mensajes.length) return;
+    const datosDe = (r) => (r.datos ? (
+        <Box sx={{ bgcolor: 'action.hover', borderRadius: 2, px: 1.5, py: 1, fontSize: 13, fontFamily: 'monospace', maxHeight: 120, overflowY: 'auto' }}>
+            {Object.entries(r.datos).map(([clave, val]) => (
+                <div key={clave}><strong>{clave}:</strong> {String(val)}</div>
+            ))}
+        </Box>
+    ) : '—');
 
-        const headers = ['Tipo', 'Número', 'Mensaje', 'Fecha'];
-        const filas = mensajes.map(m => [
-            m.fromMe ? 'Enviado' : 'Recibido',
-            m.numero,
-            m.mensaje,
-            new Date(m.fecha).toLocaleString()
-        ]);
+    const columnasReportes = [
+        { key: 'numero', label: 'Número', primary: true },
+        { key: 'estado', label: 'Estado', secondary: true, render: (r) => <ChipEnvio estado={r.estado} /> },
+        { key: 'mensaje', label: 'Mensaje', render: (r) => r.mensaje || '—' },
+        { key: 'enviadoAt', label: 'Fecha', render: (r) => (r.enviadoAt ? fmtFecha(r.enviadoAt) : '—') },
+        { key: 'datos', label: 'Datos', render: datosDe },
+    ];
 
-        const contenidoCSV = [
-            headers.map(escapeCSV).join(','),
-            ...filas.map(f => f.map(escapeCSV).join(','))
-        ].join('\r\n');
+    const columnasMensajes = [
+        { key: 'numero', label: 'Número', primary: true },
+        { key: 'tipo', label: 'Tipo', secondary: true, render: (m) => <StatusChip label={m.fromMe ? 'Enviado' : 'Recibido'} tono={m.fromMe ? 'acento' : 'info'} /> },
+        { key: 'mensaje', label: 'Mensaje', render: (m) => m.mensaje || '—' },
+        { key: 'fecha', label: 'Fecha', render: (m) => fmtFecha(m.fecha) },
+    ];
 
-        const blob = new Blob(["\uFEFF" + contenidoCSV], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', `mensajes_campaña_${campañaSeleccionada?.id}_${campañaSeleccionada?.nombre}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const SkeletonRowReportes = () => (
-        <TableRow>
-            <TableCell><Skeleton variant="text" width="80%" /></TableCell>
-            <TableCell><Skeleton variant="text" width="95%" /></TableCell>
-            <TableCell><Skeleton variant="rounded" width={90} height={28} /></TableCell>
-            <TableCell><Skeleton variant="text" width="70%" /></TableCell>
-            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
-            <TableCell><Skeleton variant="rounded" width="100%" height={36} /></TableCell>
-            <TableCell align="center"><Skeleton variant="circular" width={32} height={32} /></TableCell>
-        </TableRow>
-    );
-
-    const SkeletonRowMensajes = () => (
-        <TableRow>
-            <TableCell><Skeleton variant="rounded" width={90} height={28} /></TableCell>
-            <TableCell><Skeleton variant="text" width="80%" /></TableCell>
-            <TableCell><Skeleton variant="text" width="95%" /></TableCell>
-            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
-        </TableRow>
-    );
+    const sinCampania = !campania;
+    const vinculo = campaniaId ? `?campania=${campaniaId}` : '';
 
     return (
-        <Box sx={{ py: 3 }}>
-            <Paper elevation={1} sx={{ width: '100%', overflowX: 'auto', maxWidth: 'none', p: isMobile ? 1 : 3, boxShadow: 'none' }}>
-                <Typography variant="h6">Reportes de Envío</Typography>
-                <Box display="flex" flexDirection={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'flex-start' : 'center'} gap={2}>
-                    <Tabs value={tab} onChange={(_, newValue) => setTab(newValue)} textColor="primary" indicatorColor="primary" sx={{ mb: 2 }}>
-                        <Tab label="Reportes" />
-                        <Tab label="Mensajes" />
-                    </Tabs>
+        <Box>
+            <PageHeader
+                title="Reportes de WhatsApp Web"
+                subtitle="Qué se envió en cada campaña y cómo respondió la gente."
+                breadcrumbs={migasDe('/reportes')}
+                actions={
+                    <>
+                        {hasPermiso('whatsapp.metricas') && (
+                            <Button component={RouterLink} to={`/metricas${vinculo}`} variant="outlined" startIcon={<BarChart3 size={18} strokeWidth={1.75} aria-hidden />}>
+                                Ver métricas
+                            </Button>
+                        )}
+                        <Button
+                            variant="contained"
+                            startIcon={<Download size={18} strokeWidth={1.75} aria-hidden />}
+                            onClick={enReportes ? exportarReportes : exportarMensajes}
+                            // Cada pestaña se exporta según SUS datos (antes "Mensajes" se habilitaba con `reportes.length`).
+                            disabled={sinCampania || fuente.length === 0}
+                        >
+                            {enReportes ? 'Exportar reporte a CSV' : 'Exportar mensajes a CSV'}
+                        </Button>
+                    </>
+                }
+            />
 
-                    {tab === 0 && <Button
-                        variant="contained"
-                        onClick={exportarCSV}
-                        disabled={reportes.length === 0}
-                        sx={{
-                            borderRadius: 2,
-                            fontFamily: commonFont,
-                            textTransform: 'none',
-                            fontSize: '0.9rem',
-                            backgroundColor: '#075E54',
-                            transition: 'all 0.3s ease',
-                            '&:hover': {
-                                backgroundColor: '#0b7b65',
-                                transform: 'scale(1.03)',
-                                boxShadow: 4,
-                            },
-                        }}
-                    >
-                        Exportar reporte a CSV
-                    </Button>
-                    }
-
-                    {tab === 1 && <Button
-                        variant="contained"
-                        onClick={exportarMensajesCSV}
-                        disabled={reportes.length === 0}
-                        sx={{
-                            borderRadius: 2,
-                            fontFamily: commonFont,
-                            textTransform: 'none',
-                            fontSize: '0.9rem',
-                            backgroundColor: '#075E54',
-                            transition: 'all 0.3s ease',
-                            '&:hover': {
-                                backgroundColor: '#0b7b65',
-                                transform: 'scale(1.03)',
-                                boxShadow: 4,
-                            },
-                        }}
-                    >
-                        Exportar mensajes a CSV
-                    </Button>
-                    }
-
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, mb: 2 }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <SelectorCampaniaWeb campanias={campanias} estado={estadoLista} onReintentar={recargar} value={campania} onChange={elegir} />
                 </Box>
+                <TextField
+                    label="Buscar número"
+                    value={busqueda}
+                    onChange={(e) => cambiarBusqueda(e.target.value)}
+                    disabled={sinCampania}
+                    slotProps={{
+                        input: { startAdornment: <InputAdornment position="start"><Search size={18} strokeWidth={1.75} aria-hidden /></InputAdornment> },
+                    }}
+                    sx={{ width: { xs: '100%', md: 280 } }}
+                />
+            </Box>
 
-                <Autocomplete
-                    options={campañas}
-                    getOptionLabel={(option) => option.nombre}
-                    value={campañaSeleccionada}
-                    onChange={(_, newValue) => setCampañaSeleccionada(newValue)}
-                    renderInput={(params) => (
-                        <TextField
-                            {...params}
-                            label="Buscar campaña"
-                            placeholder="Ej: Campaña verano"
-                            sx={{ mb: 3, minWidth: isMobile ? '100%' : 300 }}
+            {sinCampania ? (
+                estadoLista !== 'error' && (
+                    <SectionCard>
+                        <EmptyState
+                            compact
+                            icon={MessageSquareText}
+                            title="Elegí una campaña"
+                            description="Buscala arriba para ver sus envíos y los mensajes que se intercambiaron."
+                        />
+                    </SectionCard>
+                )
+            ) : (
+                <SectionCard noPadding>
+                    <Tabs value={tab} onChange={(_, v) => cambiarTab(v)} aria-label="Secciones del reporte" sx={{ px: { xs: 1, sm: 2 }, borderBottom: 1, borderColor: 'divider', '& .MuiTab-root': { minHeight: 48 } }}>
+                        <Tab label={`Envíos (${reportes.length})`} />
+                        <Tab label={`Mensajes (${mensajes.length})`} />
+                    </Tabs>
+                    {estadoActual === 'error' ? (
+                        <Box sx={{ p: 2 }}>
+                            <BloqueEstado
+                                estado="error"
+                                mensaje={enReportes ? 'No se pudieron cargar los envíos.' : 'No se pudieron cargar los mensajes.'}
+                                onReintentar={() => (enReportes ? cargarReportes(campania.id) : cargarMensajes(campania.id))}
+                            />
+                        </Box>
+                    ) : (
+                        <DataTableResponsive
+                            ariaLabel={enReportes ? 'Envíos de la campaña' : 'Mensajes de la campaña'}
+                            columns={enReportes ? columnasReportes : columnasMensajes}
+                            rows={visibles}
+                            rowKey={(r) => r._k}
+                            loading={estadoActual === 'cargando'}
+                            skeletonRows={Math.min(rowsPerPage, 6)}
+                            acciones={enReportes ? (r) => (
+                                <Button size="small" startIcon={<History size={16} strokeWidth={1.75} aria-hidden />} onClick={() => abrirConversacion(r.numero)}>
+                                    Ver conversación
+                                </Button>
+                            ) : undefined}
+                            empty={<EmptyState compact title={busqueda ? 'Sin coincidencias' : 'Sin datos'} description={busqueda ? 'Ningún número coincide con la búsqueda.' : 'Esta campaña todavía no tiene registros acá.'} />}
                         />
                     )}
-                    isOptionEqualToValue={(option, value) => option.id === value.id}
-                />
-
-                <Box sx={{ mb: 3 }}>
-                    <TextField
-                        label="Buscar número"
-                        variant="outlined"
-                        size="small"
-                        value={busquedaNumero}
-                        onChange={(e) => setBusquedaNumero(e.target.value)}
-                        InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon />
-                                </InputAdornment>
-                            ),
-                        }}
-                        sx={{ width: { xs: '100%', sm: 250 } }}
+                    <TablePagination
+                        component="div"
+                        count={filtrados.length}
+                        page={page}
+                        onPageChange={(_, p) => setPage(p)}
+                        rowsPerPage={rowsPerPage}
+                        onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+                        rowsPerPageOptions={[5, 10, 25, 50, 100]}
+                        labelRowsPerPage="Filas por página"
+                        labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
                     />
-                </Box>
+                </SectionCard>
+            )}
 
-                {tab === 0 && (
-                    <>
-                        {loadingReportes && <Box sx={{ mb: 1 }}><LinearProgress /></Box>}
-
-                        <Table size={isMobile ? 'small' : 'medium'}>
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>Número</TableCell>
-                                    <TableCell>Mensaje</TableCell>
-                                    <TableCell>Estado</TableCell>
-                                    <TableCell>Campaña</TableCell>
-                                    <TableCell>Fecha</TableCell>
-                                    <TableCell>Datos</TableCell>
-                                    <TableCell>Historial</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {loadingReportes ? (
-                                    Array.from({ length: Math.min(rowsPerPage, 6) }).map((_, i) => (
-                                        <SkeletonRowReportes key={`sk-r-${i}`} />
-                                    ))
-                                ) : (
-                                    datosPaginados.map((r, i) => (
-                                        <TableRow key={i}>
-                                            <TableCell>{r.numero}</TableCell>
-                                            <TableCell>{r.mensaje}</TableCell>
-                                            <TableCell>{getEstadoChip(r.estado)}</TableCell>
-                                            <TableCell>{r.campaña?.nombre || '–'}</TableCell>
-                                            <TableCell>{r.enviadoAt ? new Date(r.enviadoAt).toLocaleString() : '–'}</TableCell>
-                                            <TableCell>
-                                                {r.datos ? (
-                                                    <Box sx={{ backgroundColor: theme.palette.mode === 'dark' ? '#263238' : '#f5f5f5', borderRadius: 2, px: 2, py: 1, fontSize: '0.85rem', fontFamily: 'monospace', maxHeight: 120, overflowY: 'auto' }}>
-                                                        {Object.entries(r.datos).map(([key, val]) => (
-                                                            <div key={key}><strong>{key}:</strong> {String(val)}</div>
-                                                        ))}
-                                                    </Box>
-                                                ) : '–'}
-                                            </TableCell>
-                                            <TableCell>
-                                                <IconButton onClick={() => abrirModalMensajes(r.numero)}>
-                                                    <ChatIcon />
-                                                </IconButton>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </>
+            <ResponsiveDialog
+                open={conv.abierta}
+                onClose={() => setConv((c) => ({ ...c, abierta: false }))}
+                title={`Conversación con ${conv.numero ?? ''}`}
+                cerrarConFondo
+                maxWidth="sm"
+                contentSx={{ bgcolor: 'whatsapp.fondo' }}
+            >
+                {conv.estado === 'cargando' && <BloqueEstado estado="cargando" mensaje="Cargando la conversación…" />}
+                {conv.estado === 'error' && (
+                    <BloqueEstado estado="error" mensaje="No se pudo cargar la conversación." onReintentar={() => abrirConversacion(conv.numero)} />
                 )}
-
-                {tab === 1 && (
-                    <>
-                        {loadingMensajes && <Box sx={{ mb: 1 }}><LinearProgress /></Box>}
-
-                        <Table size={isMobile ? 'small' : 'medium'}>
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>Tipo</TableCell>
-                                    <TableCell>Número</TableCell>
-                                    <TableCell>Mensaje</TableCell>
-                                    <TableCell>Fecha</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {loadingMensajes ? (
-                                    Array.from({ length: Math.min(rowsPerPage, 6) }).map((_, i) => (
-                                        <SkeletonRowMensajes key={`sk-m-${i}`} />
-                                    ))
-                                ) : (
-                                    datosPaginados.map((m, i) => (
-                                        <TableRow key={i}>
-                                            <TableCell>
-                                                <Chip
-                                                    label={m.fromMe ? 'Enviado' : 'Recibido'}
-                                                    color={m.fromMe ? 'primary' : 'secondary'}
-                                                    size="small"
-                                                />
-                                            </TableCell>
-                                            <TableCell>{m.numero}</TableCell>
-                                            <TableCell>{m.mensaje}</TableCell>
-                                            <TableCell>{new Date(m.fecha).toLocaleString()}</TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </>
-                )}
-
-                <TablePagination
-                    component="div"
-                    count={datosFiltrados.length}
-                    page={page}
-                    onPageChange={(_, newPage) => setPage(newPage)}
-                    rowsPerPage={rowsPerPage}
-                    onRowsPerPageChange={e => setRowsPerPage(parseInt(e.target.value, 10))}
-                    rowsPerPageOptions={[5, 10, 25, 50, 100]}
-                    labelRowsPerPage="Filas por página"
-                />
-            </Paper>
-
-            <Dialog open={modalAbierto} onClose={handleCloseModal} maxWidth="sm" fullWidth>
-                <DialogTitle>
-                    Conversación con {numeroActual}
-                    <IconButton onClick={handleCloseModal} sx={{ position: 'absolute', right: 8, top: 8 }}>
-                        <CloseIcon />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent dividers>
-                    <Box display="flex" flexDirection="column" gap={2}>
-                        {mensajesContacto.map((m, i) => (
-                            <Box
-                                key={i}
-                                sx={{
-                                    display: 'flex',
-                                    justifyContent: m.fromMe ? 'flex-end' : 'flex-start'
-                                }}
-                            >
-                                <Box
-                                    sx={{
-                                        backgroundColor: m.fromMe
-                                            ? theme.palette.mode === 'dark' ? '#005c4b' : '#dcf8c6'
-                                            : theme.palette.mode === 'dark' ? '#2a2f32' : '#fff',
-                                        color: m.fromMe
-                                            ? theme.palette.mode === 'dark' ? '#fff' : '#000'
-                                            : theme.palette.mode === 'dark' ? '#e9edef' : '#000',
-                                        borderRadius: '16px',
-                                        px: 2,
-                                        py: 1.5,
-                                        maxWidth: '75%',
-                                        boxShadow: 3,
-                                        fontSize: '1rem',
-                                        fontFamily: commonFont,
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-word',
-                                        position: 'relative'
-                                    }}
-                                >
-                                    <Typography variant="body2">{m.mensaje}</Typography>
-                                    <Box sx={{ fontSize: '0.75rem', color: theme.palette.mode === 'dark' ? '#ccd' : '#555', textAlign: 'right', mt: 1 }}>
-                                        {new Date(m.fecha).toLocaleString()}
-                                    </Box>
-                                </Box>
-                            </Box>
+                {conv.estado === 'ok' && conv.mensajes.length === 0 && <EmptyState compact title="Sin mensajes" description="No hay mensajes con este número en la campaña." />}
+                {conv.estado === 'ok' && conv.mensajes.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        {conv.mensajes.map((m, i) => (
+                            <WaBurbuja key={i} direccion={m.fromMe ? 'saliente' : 'entrante'} hora={fmtFecha(m.fecha)}>
+                                {formatoWhatsApp(m.mensaje)}
+                            </WaBurbuja>
                         ))}
                     </Box>
-                </DialogContent>
-            </Dialog>
+                )}
+            </ResponsiveDialog>
         </Box>
     );
 }

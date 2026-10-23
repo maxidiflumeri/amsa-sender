@@ -6,6 +6,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { WapiConfigService } from '../config/wapi-config.service';
 import { SocketGateway } from 'src/websocket/socket.gateway';
 import { BedrockService } from 'src/modules/ai/bedrock.service';
+import { PushService } from 'src/modules/push/push.service';
 import { MensajeEntranteDto } from './dtos/mensaje-entrante.dto';
 
 const META_API_VERSION = 'v20.0';
@@ -20,6 +21,7 @@ export class WapiInboxService {
     private readonly configService: WapiConfigService,
     private readonly socketGateway: SocketGateway,
     private readonly gemini: BedrockService,
+    private readonly pushService: PushService,
   ) {}
 
   private readonly MENSAJE_BIENVENIDA_DEFAULT =
@@ -118,6 +120,9 @@ export class WapiInboxService {
     );
 
     this.logger.log(`Mensaje entrante guardado — conv ${conv.id} (${dto.numero})`);
+
+    // Push a los asesores (fire-and-forget: nunca demora ni rompe el webhook)
+    void this.pushService.notificarMensajeWapiEntrante(conv, { tipo: dto.tipo, contenido: dto.contenido });
 
     // Ficha de contacto: misma lógica que bienvenida (nueva, ventana vencida o botón INBOX)
     // NO se muestra si el gestor marcó resuelta y el cliente escribe dentro de las 24hs

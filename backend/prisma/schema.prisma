@@ -124,6 +124,7 @@ model Usuario {
   creadoAt        DateTime
   conversaciones  WaApiConversacion[]
   cierresWapi     WaApiCierreConversacion[]
+  pushSuscripciones PushSuscripcion[]
   @@map("Usuario")
 }
 
@@ -449,6 +450,22 @@ model WaApiRespuestaRapida {
 
   @@index([activo])
   @@map("WaApiRespuestaRapida")
+}
+
+/// Suscripción Web Push (PWA) de un navegador/dispositivo de un usuario.
+model PushSuscripcion {
+  id        Int      @id @default(autoincrement())
+  endpoint  String   @unique @db.VarChar(700)
+  p256dh    String   @db.VarChar(255)
+  auth      String   @db.VarChar(255)
+  usuarioId Int
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  userAgent String?  @db.VarChar(255)
+  creadoAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([usuarioId])
+  @@map("PushSuscripcion")
 }
 
 enum TipoTareaProgramada {

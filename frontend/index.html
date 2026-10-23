@@ -3,15 +3,43 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/png" sizes="256x256" href="/favicon-tight-256x256.png" />    
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>AMSA Sender</title>
+  <meta name="description" content="AMSA Sender: campañas de WhatsApp y email, y la bandeja de conversaciones." />
+
+  <!-- Color de la barra del navegador: el de la barra superior de la app, no el verde de marca -->
+  <meta name="theme-color" content="#EDF1F5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#070B14" media="(prefers-color-scheme: dark)" />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Sender" />
+
+  <!-- Anti-parpadeo: pinta el fondo del tema elegido antes de que cargue React -->
+  <script>
+    (function () {
+      try {
+        // Las páginas públicas (las ve el deudor) van siempre en claro.
+        if (location.pathname.indexOf('/mailing/') === 0) return;
+        var modo = localStorage.getItem('themeMode');
+        var oscuro = modo === 'dark' ||
+          (modo !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var el = document.documentElement;
+        el.style.colorScheme = oscuro ? 'dark' : 'light';
+        el.style.backgroundColor = oscuro ? '#0B1020' : '#F8FAFC';
+      } catch (e) { /* sin acceso a localStorage: queda el fondo por defecto */ }
+    })();
+  </script>
 </head>
 
 <body>
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
-  <script src="https://editor.unlayer.com/embed.js"></script>
 </body>
 
 </html>

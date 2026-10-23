@@ -1,245 +1,123 @@
-import React, { useState, useEffect } from 'react';
-import {
-    Box,
-    Typography,
-    Button,
-    Select,
-    MenuItem,
-    FormControl,
-    InputLabel,
-    TextField,
-    Alert,
-    Skeleton,
-    Grid,
-    TablePagination,
-    useTheme,
-    Divider,
-} from '@mui/material';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import ClearIcon from '@mui/icons-material/Clear';
+import { useCallback, useEffect, useState } from 'react';
+import { Box, Button, CircularProgress, MenuItem, Skeleton, Stack, TextField, Typography } from '@mui/material';
+import { Eraser, History } from 'lucide-react';
 import api from '../../api/axios';
+import { mensajeDeError } from '../../context/FeedbackContext';
+import { BloqueEstado, EmptyState, SectionCard } from '../ui';
 import TimelineEntry from './TimelineEntry';
+import { finDelDia, inicioDelDia } from './comunes';
+
+const TAMANIO = 30;
 
 export default function TimelineDeudor({ deudorId }) {
-    const theme = useTheme();
-
     const [entries, setEntries] = useState([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(0);
-    const [size, setSize] = useState(30);
     const [canal, setCanal] = useState('');
     const [desde, setDesde] = useState('');
     const [hasta, setHasta] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const cargarTimeline = async () => {
+    // `page` 0 reemplaza la lista; las siguientes se agregan al final ("Cargar más").
+    const cargar = useCallback(async (pagina) => {
         if (!deudorId) {
             setError('ID de deudor inválido');
             setLoading(false);
             return;
         }
-
         setLoading(true);
         setError(null);
-
         try {
-            const params = {
-                page,
-                size,
-            };
-
+            const params = { page: pagina, size: TAMANIO };
             if (canal) params.canal = canal;
-            if (desde) params.desde = new Date(desde).toISOString();
-            if (hasta) params.hasta = new Date(hasta).toISOString();
-
+            // Días completos en hora local: un "hasta" de hoy incluye hoy y un "desde" arranca a las 00:00 de ese día.
+            if (desde) params.desde = inicioDelDia(desde);
+            if (hasta) params.hasta = finDelDia(hasta);
             const res = await api.get(`/deudores/${deudorId}/timeline`, { params });
-
-            setEntries(res.data.data || []);
+            const nuevas = res.data.data || [];
+            setEntries((prev) => (pagina === 0 ? nuevas : [...prev, ...nuevas]));
             setTotal(res.data.total || 0);
+            setPage(pagina);
         } catch (err) {
-            setError(err.response?.data?.message || 'Error al cargar el timeline');
+            setError(mensajeDeError(err, 'No se pudo cargar el historial.'));
         } finally {
             setLoading(false);
         }
-    };
+    }, [deudorId, canal, desde, hasta]);
 
     useEffect(() => {
-        cargarTimeline();
-    }, [deudorId, page, size, canal, desde, hasta]);
+        cargar(0);
+    }, [cargar]);
 
-    const handleLimpiarFiltros = () => {
+    const hayFiltros = Boolean(canal || desde || hasta);
+    const limpiar = () => {
         setCanal('');
         setDesde('');
         setHasta('');
-        setPage(0);
     };
-
-    const handleChangePage = (event, newPage) => {
-        setPage(newPage);
-    };
-
-    const handleChangeRowsPerPage = (event) => {
-        setSize(parseInt(event.target.value, 10));
-        setPage(0);
-    };
+    const primeraCarga = loading && entries.length === 0;
+    const quedan = entries.length < total;
 
     return (
-        <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-                <FilterListIcon sx={{ color: theme.palette.primary.main }} />
-                <Typography variant="h6" sx={{ color: theme.palette.text.primary }}>
-                    Historial de interacciones
-                </Typography>
+        <SectionCard title="Historial de interacciones" subtitle={total > 0 ? `${total.toLocaleString('es-AR')} en total` : undefined}>
+            <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(auto-fit, minmax(160px, 1fr))' }, alignItems: 'start', mb: 2 }}>
+                <TextField select size="small" label="Canal" value={canal} onChange={(e) => setCanal(e.target.value)}>
+                    <MenuItem value="">Todos</MenuItem>
+                    <MenuItem value="wapi">WhatsApp API</MenuItem>
+                    <MenuItem value="whatsapp">WhatsApp Web</MenuItem>
+                    <MenuItem value="email">Email</MenuItem>
+                </TextField>
+                <TextField size="small" type="date" label="Desde" value={desde} onChange={(e) => setDesde(e.target.value)} slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: hasta || undefined } }} />
+                <TextField size="small" type="date" label="Hasta" value={hasta} onChange={(e) => setHasta(e.target.value)} slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: desde || undefined } }} />
+                <Button
+                    variant="outlined"
+                    color="inherit"
+                    onClick={limpiar}
+                    disabled={!hayFiltros}
+                    startIcon={<Eraser size={18} strokeWidth={1.75} aria-hidden />}
+                    sx={{ minHeight: { xs: 44, sm: 40 } }}
+                >
+                    Limpiar filtros
+                </Button>
             </Box>
 
-            <Divider sx={{ mb: 3, borderColor: theme.palette.mode === 'light' ? '#e0e0e0' : '#333' }} />
-
-            {/* Filtros */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-                <Grid item xs={12} sm={6} md={3}>
-                    <FormControl fullWidth size="small">
-                        <InputLabel id="canal-label">Canal</InputLabel>
-                        <Select
-                            labelId="canal-label"
-                            value={canal}
-                            label="Canal"
-                            onChange={(e) => {
-                                setCanal(e.target.value);
-                                setPage(0);
-                            }}
-                            sx={{
-                                bgcolor: theme.palette.background.paper,
-                                color: theme.palette.text.primary,
-                            }}
-                        >
-                            <MenuItem value="">Todos</MenuItem>
-                            <MenuItem value="whatsapp">WhatsApp Web</MenuItem>
-                            <MenuItem value="wapi">WhatsApp Meta</MenuItem>
-                            <MenuItem value="email">Email</MenuItem>
-                        </Select>
-                    </FormControl>
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                        label="Desde"
-                        type="date"
-                        size="small"
-                        fullWidth
-                        value={desde}
-                        onChange={(e) => {
-                            setDesde(e.target.value);
-                            setPage(0);
-                        }}
-                        InputLabelProps={{ shrink: true }}
-                        sx={{
-                            bgcolor: theme.palette.background.paper,
-                            color: theme.palette.text.primary,
-                        }}
-                    />
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                        label="Hasta"
-                        type="date"
-                        size="small"
-                        fullWidth
-                        value={hasta}
-                        onChange={(e) => {
-                            setHasta(e.target.value);
-                            setPage(0);
-                        }}
-                        InputLabelProps={{ shrink: true }}
-                        sx={{
-                            bgcolor: theme.palette.background.paper,
-                            color: theme.palette.text.primary,
-                        }}
-                    />
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                    <Button
-                        variant="outlined"
-                        startIcon={<ClearIcon />}
-                        onClick={handleLimpiarFiltros}
-                        fullWidth
-                        sx={{ height: '40px' }}
-                    >
-                        Limpiar filtros
-                    </Button>
-                </Grid>
-            </Grid>
-
-            {/* Estados */}
-            {error && (
-                <Alert severity="error" sx={{ mb: 3 }}>
-                    {error}
-                </Alert>
-            )}
-
-            {/* Loading */}
-            {loading && (
-                <Box>
-                    {[1, 2, 3, 4, 5].map((i) => (
-                        <Skeleton
-                            key={i}
-                            variant="rectangular"
-                            height={100}
-                            sx={{ mb: 2, borderRadius: 1 }}
-                        />
-                    ))}
-                </Box>
-            )}
-
-            {/* Sin resultados */}
-            {!loading && entries.length === 0 && (
-                <Alert severity="info" sx={{ mb: 3 }}>
-                    Sin interacciones registradas para este deudor.
-                </Alert>
-            )}
-
-            {/* Entradas */}
-            {!loading && entries.length > 0 && (
-                <Box>
-                    {entries.map((entry) => (
-                        <TimelineEntry key={entry.id} entry={entry} />
-                    ))}
-
-                    {/* Paginación */}
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            mt: 2,
-                        }}
-                    >
-                        <TablePagination
-                            component="div"
-                            count={total}
-                            page={page}
-                            onPageChange={handleChangePage}
-                            rowsPerPage={size}
-                            onRowsPerPageChange={handleChangeRowsPerPage}
-                            rowsPerPageOptions={[10, 30, 50, 100]}
-                            labelRowsPerPage="Filas por página:"
-                            labelDisplayedRows={({ from, to, count }) =>
-                                `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
-                            }
-                            sx={{
-                                color: theme.palette.text.primary,
-                                '.MuiTablePagination-select': {
-                                    color: theme.palette.text.primary,
-                                },
-                                '.MuiTablePagination-selectIcon': {
-                                    color: theme.palette.text.primary,
-                                },
-                            }}
-                        />
+            {/* Un solo estado a la vez: cargando, error, vacío o la lista. */}
+            {primeraCarga ? (
+                <Stack spacing={1.5}>
+                    {[1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={96} />)}
+                </Stack>
+            ) : error && entries.length === 0 ? (
+                <BloqueEstado estado="error" mensaje={error} onReintentar={() => cargar(0)} />
+            ) : entries.length === 0 ? (
+                <EmptyState
+                    compact
+                    icon={History}
+                    title={hayFiltros ? 'Sin resultados con estos filtros' : 'Sin interacciones registradas'}
+                    description={hayFiltros ? 'Probá con otro canal o con otras fechas.' : 'Todavía no se le envió nada a este deudor.'}
+                />
+            ) : (
+                <Stack spacing={1.5}>
+                    {entries.map((entry) => <TimelineEntry key={entry.id} entry={entry} />)}
+                    {error && <BloqueEstado estado="error" mensaje={error} onReintentar={() => cargar(page + 1)} />}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5, pt: 1 }}>
+                        <Typography variant="caption" color="text.secondary">
+                            Mostrando {entries.length.toLocaleString('es-AR')} de {total.toLocaleString('es-AR')}
+                        </Typography>
+                        {quedan && (
+                            <Button
+                                variant="outlined"
+                                onClick={() => cargar(page + 1)}
+                                disabled={loading}
+                                startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
+                                sx={{ minHeight: 44 }}
+                            >
+                                Cargar más
+                            </Button>
+                        )}
                     </Box>
-                </Box>
+                </Stack>
             )}
-        </Box>
+        </SectionCard>
     );
 }

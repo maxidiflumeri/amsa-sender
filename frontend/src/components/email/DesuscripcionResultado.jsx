@@ -1,31 +1,27 @@
 import { useLocation } from 'react-router-dom';
-import { Box, Card, CardContent, Typography, Button } from '@mui/material';
+import { Paper, Typography } from '@mui/material';
+import PaginaPublica from '../plantillas/PaginaPublica';
 
 export default function DesuscripcionResultado() {
     const { search } = useLocation();
     const params = new URLSearchParams(search);
-    const status = params.get('status');
-    const msg = decodeURIComponent(params.get('msg') || '');
-
-    const isSuccess = status === 'success';
+    const exito = params.get('status') === 'success';
+    // `get` ya decodifica el valor: decodificarlo otra vez rompía los textos con un «%».
+    const msg = params.get('msg') || '';
 
     return (
-        <Box minHeight="100dvh" display="flex" alignItems="center" justifyContent="center" p={2}>
-            <Card sx={{ maxWidth: 520, width: '100%', borderRadius: 3 }}>
-                <CardContent>
-                    <Typography variant="h5" fontWeight={700} gutterBottom>
-                        {isSuccess ? '¡Listo! Te desuscribiste' : 'No se pudo completar la baja'}
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ mb: 2 }}>
-                        {isSuccess
-                            ? 'Ya no recibirás futuros correos. Si fue un error, podés volver a suscribirte contactando al remitente.'
-                            : (msg || 'El enlace de desuscripción es inválido o expiró.')}
-                    </Typography>
-                    <Button variant="contained" onClick={() => window.close()}>
-                        Cerrar
-                    </Button>
-                </CardContent>
-            </Card>
-        </Box>
+        <PaginaPublica>
+            <Paper variant="outlined" sx={{ borderRadius: '14px', p: { xs: 3, sm: 4 }, textAlign: 'center' }}>
+                <Typography component="h1" sx={{ fontSize: 22, fontWeight: 700, mb: 1 }}>
+                    {exito ? 'Listo, ya no vas a recibir más correos' : 'No pudimos completar la baja'}
+                </Typography>
+                <Typography color="text.secondary" sx={{ mb: 2 }}>
+                    {exito
+                        ? 'Si fue un error, pedile al remitente que te vuelva a incluir.'
+                        : (msg || 'El enlace es inválido o venció.')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">Ya podés cerrar esta pestaña.</Typography>
+            </Paper>
+        </PaginaPublica>
     );
 }

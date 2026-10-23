@@ -1,85 +1,103 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
-    TableHead, TableRow, IconButton, Chip, Button, Dialog, DialogTitle,
-    DialogContent, DialogActions, TextField, Select, MenuItem, FormControl,
-    InputLabel, Tooltip, CircularProgress, Alert, Switch, FormControlLabel,
-    TablePagination, InputAdornment,
+    Alert, Box, Button, CircularProgress, FormControl, FormControlLabel, FormHelperText, IconButton, InputAdornment,
+    InputLabel, MenuItem, Select, Switch, TablePagination, TextField, Typography,
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
+import { Pencil, Plus, Search, Trash2, UserX, Users, X } from 'lucide-react';
 import api from '../../api/axios';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import {
+    AvatarUsuario, BloqueEstado, ConfirmDialog, DataTableResponsive, EmptyState, PageContainer, PageHeader,
+    ResponsiveDialog, SectionCard, StatusChip,
+} from '../ui';
+import MenuMas from './MenuMas';
+
+const POR_PAGINA = 10;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const FORM_CREAR = { email: '', nombre: '', rolId: '' };
 
 export default function GestionUsuarios() {
+    const feedback = useFeedback();
     const [usuarios, setUsuarios] = useState([]);
     const [roles, setRoles] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    const [estado, setEstado] = useState('cargando'); // cargando | listo | error
 
-    // Dialog crear
     const [crearOpen, setCrearOpen] = useState(false);
-    const [crearForm, setCrearForm] = useState({ email: '', nombre: '', rolId: '' });
+    const [crearForm, setCrearForm] = useState(FORM_CREAR);
+    const [crearErrores, setCrearErrores] = useState({});
     const [crearError, setCrearError] = useState('');
     const [crearLoading, setCrearLoading] = useState(false);
 
-    // Dialog editar
-    const [editarOpen, setEditarOpen] = useState(false);
     const [editarUsuario, setEditarUsuario] = useState(null);
     const [editarForm, setEditarForm] = useState({ nombre: '', rolId: '', activo: true });
+    const [editarInicial, setEditarInicial] = useState(null);
     const [editarError, setEditarError] = useState('');
     const [editarLoading, setEditarLoading] = useState(false);
 
     const [busqueda, setBusqueda] = useState('');
     const [page, setPage] = useState(0);
-    const ROWS_PER_PAGE = 10;
 
-    // Dialog eliminar
-    const [eliminarOpen, setEliminarOpen] = useState(false);
     const [eliminarUsuario, setEliminarUsuario] = useState(null);
     const [eliminarLoading, setEliminarLoading] = useState(false);
     const [eliminarError, setEliminarError] = useState('');
 
-    const cargar = async () => {
+    const cargar = useCallback(async () => {
+        setEstado((e) => (e === 'listo' ? e : 'cargando'));
         try {
-            setLoading(true);
             const [uRes, rRes] = await Promise.all([api.get('/usuarios'), api.get('/roles')]);
-            setUsuarios(uRes.data);
-            setRoles(rRes.data);
+            setUsuarios(Array.isArray(uRes.data) ? uRes.data : []);
+            setRoles(Array.isArray(rRes.data) ? rRes.data : []);
+            setEstado('listo');
         } catch {
-            setError('Error al cargar usuarios');
-        } finally {
-            setLoading(false);
+            setEstado('error');
         }
+    }, []);
+
+    useEffect(() => { cargar(); }, [cargar]);
+
+    const filtrados = useMemo(() => {
+        const q = busqueda.trim().toLowerCase();
+        if (!q) return usuarios;
+        return usuarios.filter((u) => u.nombre?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
+    }, [usuarios, busqueda]);
+    const pagina = filtrados.slice(page * POR_PAGINA, (page + 1) * POR_PAGINA);
+
+    const abrirCrear = () => {
+        setCrearForm(FORM_CREAR);
+        setCrearErrores({});
+        setCrearError('');
+        setCrearOpen(true);
     };
 
-    useEffect(() => { cargar(); }, []);
-
     const handleCrear = async () => {
+        const e = {};
+        if (!EMAIL_RE.test(crearForm.email.trim())) e.email = 'Escribí un email válido.';
+        if (!crearForm.nombre.trim()) e.nombre = 'Falta el nombre.';
+        if (!crearForm.rolId) e.rolId = 'Elegí un rol.';
+        setCrearErrores(e);
+        if (Object.keys(e).length > 0) return;
+
         setCrearError('');
-        if (!crearForm.email || !crearForm.nombre || !crearForm.rolId) {
-            setCrearError('Todos los campos son obligatorios.');
-            return;
-        }
         setCrearLoading(true);
         try {
-            await api.post('/usuarios', { ...crearForm, rolId: Number(crearForm.rolId) });
+            await api.post('/usuarios', { ...crearForm, email: crearForm.email.trim(), rolId: Number(crearForm.rolId) });
             setCrearOpen(false);
-            setCrearForm({ email: '', nombre: '', rolId: '' });
+            feedback.exito('Usuario creado. Ya puede entrar con Google.');
             await cargar();
-        } catch (e) {
-            setCrearError(e.response?.data?.message || 'Error al crear usuario');
+        } catch (err) {
+            setCrearError(mensajeDeError(err, 'No se pudo crear el usuario.'));
         } finally {
             setCrearLoading(false);
         }
     };
 
     const abrirEditar = (u) => {
+        const base = { nombre: u.nombre || '', rolId: u.rolId || '', activo: u.activo };
         setEditarUsuario(u);
-        setEditarForm({ nombre: u.nombre || '', rolId: u.rolId || '', activo: u.activo });
+        setEditarForm(base);
+        setEditarInicial(base);
         setEditarError('');
-        setEditarOpen(true);
     };
 
     const handleEditar = async () => {
@@ -91,19 +109,14 @@ export default function GestionUsuarios() {
                 rolId: Number(editarForm.rolId),
                 activo: editarForm.activo,
             });
-            setEditarOpen(false);
+            setEditarUsuario(null);
+            feedback.exito('Cambios guardados.');
             await cargar();
-        } catch (e) {
-            setEditarError(e.response?.data?.message || 'Error al actualizar usuario');
+        } catch (err) {
+            setEditarError(mensajeDeError(err, 'No se pudo actualizar el usuario.'));
         } finally {
             setEditarLoading(false);
         }
-    };
-
-    const abrirEliminar = (u) => {
-        setEliminarUsuario(u);
-        setEliminarError('');
-        setEliminarOpen(true);
     };
 
     const handleEliminar = async () => {
@@ -111,211 +124,237 @@ export default function GestionUsuarios() {
         setEliminarLoading(true);
         try {
             await api.delete(`/usuarios/${eliminarUsuario.id}`);
-            setEliminarOpen(false);
+            setEliminarUsuario(null);
+            feedback.exito('Usuario eliminado.');
             await cargar();
-        } catch (e) {
-            setEliminarError(e.response?.data?.message || 'Error al eliminar usuario');
+        } catch (err) {
+            // Se queda abierto el diálogo con el motivo, para que no se pierda detrás de nada.
+            setEliminarError(mensajeDeError(err, 'No se pudo eliminar el usuario.'));
         } finally {
             setEliminarLoading(false);
         }
     };
 
-    if (loading) return <Box display="flex" justifyContent="center" mt={6}><CircularProgress /></Box>;
+    const rolDe = (u) => u.rolObj?.nombre || u.rol || '—';
+
+    const columns = [
+        {
+            key: 'nombre',
+            label: 'Nombre',
+            primary: true,
+            render: (u) => (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+                    <AvatarUsuario nombre={u.nombre || u.email} foto={u.foto} size={32} />
+                    <span>{u.nombre || '—'}</span>
+                </Box>
+            ),
+        },
+        { key: 'email', label: 'Email', secondary: true },
+        { key: 'rol', label: 'Rol', render: (u) => <StatusChip label={rolDe(u)} tono="acento" /> },
+        { key: 'activo', label: 'Estado', render: (u) => <StatusChip label={u.activo ? 'Activo' : 'Suspendido'} tono={u.activo ? 'ok' : 'neutro'} /> },
+    ];
+
+    const sucioEditar = !!editarInicial && JSON.stringify(editarForm) !== JSON.stringify(editarInicial);
 
     return (
-        <Box py={3}>
-            <Box display="flex" justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} flexDirection={{ xs: 'column', sm: 'row' }} gap={1.5} mb={3}>
-                <Typography variant="h5" fontWeight="bold">Gestión de usuarios</Typography>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCrearError(''); setCrearOpen(true); }}>
-                    Nuevo usuario
-                </Button>
-            </Box>
+        <PageContainer>
+            <PageHeader
+                title="Usuarios"
+                subtitle="Quiénes pueden entrar a Sender y con qué rol."
+                breadcrumbs={migasDe('/admin/usuarios')}
+                actions={
+                    <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={abrirCrear}>
+                        Nuevo usuario
+                    </Button>
+                }
+            />
 
-            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            {estado === 'error' ? (
+                <BloqueEstado estado="error" mensaje="No se pudieron cargar los usuarios." onReintentar={cargar} />
+            ) : (
+                <SectionCard noPadding>
+                    <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+                        <TextField
+                            fullWidth
+                            placeholder="Buscar por nombre o email"
+                            value={busqueda}
+                            onChange={(e) => { setBusqueda(e.target.value); setPage(0); }}
+                            sx={{ maxWidth: 420 }}
+                            slotProps={{
+                                htmlInput: { 'aria-label': 'Buscar por nombre o email' },
+                                input: {
+                                    startAdornment: <InputAdornment position="start"><Search size={18} strokeWidth={1.75} aria-hidden /></InputAdornment>,
+                                    endAdornment: busqueda ? (
+                                        <InputAdornment position="end">
+                                            <IconButton aria-label="Limpiar la búsqueda" edge="end" onClick={() => { setBusqueda(''); setPage(0); }} sx={{ width: 44, height: 44 }}>
+                                                <X size={18} strokeWidth={1.75} aria-hidden />
+                                            </IconButton>
+                                        </InputAdornment>
+                                    ) : undefined,
+                                },
+                            }}
+                        />
+                    </Box>
+                    <DataTableResponsive
+                        ariaLabel="Usuarios"
+                        columns={columns}
+                        rows={pagina}
+                        rowKey={(u) => u.id}
+                        loading={estado === 'cargando'}
+                        acciones={(u) => (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                                <Button startIcon={<Pencil size={16} strokeWidth={1.75} aria-hidden />} onClick={() => abrirEditar(u)}>
+                                    Editar
+                                </Button>
+                                <MenuMas items={[{ label: 'Eliminar', icon: Trash2, peligro: true, onClick: () => { setEliminarError(''); setEliminarUsuario(u); } }]} />
+                            </Box>
+                        )}
+                        empty={
+                            busqueda ? (
+                                <EmptyState compact icon={UserX} title="Sin resultados" description={`Ningún usuario coincide con "${busqueda}".`} />
+                            ) : (
+                                <EmptyState compact icon={Users} title="Todavía no hay usuarios" action={{ label: 'Nuevo usuario', onClick: abrirCrear }} />
+                            )
+                        }
+                    />
+                    {estado === 'listo' && filtrados.length > POR_PAGINA && (
+                        <TablePagination
+                            component="div"
+                            count={filtrados.length}
+                            page={page}
+                            onPageChange={(_, p) => setPage(p)}
+                            rowsPerPage={POR_PAGINA}
+                            rowsPerPageOptions={[POR_PAGINA]}
+                            labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+                        />
+                    )}
+                </SectionCard>
+            )}
 
-            <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
-                <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <ResponsiveDialog
+                open={crearOpen}
+                onClose={() => setCrearOpen(false)}
+                maxWidth="xs"
+                sucio={JSON.stringify(crearForm) !== JSON.stringify(FORM_CREAR) && !crearLoading}
+                title="Nuevo usuario"
+                actions={
+                    <>
+                        <Button onClick={() => setCrearOpen(false)} disabled={crearLoading}>Cancelar</Button>
+                        <Button
+                            variant="contained"
+                            onClick={handleCrear}
+                            disabled={crearLoading}
+                            startIcon={crearLoading ? <CircularProgress size={16} color="inherit" /> : null}
+                        >
+                            {crearLoading ? 'Creando…' : 'Crear usuario'}
+                        </Button>
+                    </>
+                }
+            >
+                <Box component="form" noValidate onSubmit={(e) => { e.preventDefault(); handleCrear(); }} sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+                    {crearError && <Alert severity="error" role="alert">{crearError}</Alert>}
+                    <Alert severity="info">La persona entra con Google usando este email.</Alert>
                     <TextField
-                        size="small"
+                        label="Email"
+                        type="email"
+                        value={crearForm.email}
+                        onChange={(e) => { setCrearForm((f) => ({ ...f, email: e.target.value })); setCrearErrores((x) => ({ ...x, email: undefined })); }}
                         fullWidth
-                        placeholder="Buscar por nombre o email..."
-                        value={busqueda}
-                        onChange={(e) => { setBusqueda(e.target.value); setPage(0); }}
-                        InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-                        sx={{ maxWidth: 400 }}
+                        required
+                        error={!!crearErrores.email}
+                        helperText={crearErrores.email}
+                        slotProps={{ htmlInput: { inputMode: 'email', autoCapitalize: 'off' } }}
+                    />
+                    <TextField
+                        label="Nombre"
+                        value={crearForm.nombre}
+                        onChange={(e) => { setCrearForm((f) => ({ ...f, nombre: e.target.value })); setCrearErrores((x) => ({ ...x, nombre: undefined })); }}
+                        fullWidth
+                        required
+                        error={!!crearErrores.nombre}
+                        helperText={crearErrores.nombre ?? 'Se actualiza con el nombre de Google cuando entre.'}
+                    />
+                    <FormControl fullWidth required error={!!crearErrores.rolId}>
+                        <InputLabel id="crear-rol">Rol</InputLabel>
+                        <Select
+                            labelId="crear-rol"
+                            value={crearForm.rolId}
+                            label="Rol"
+                            onChange={(e) => { setCrearForm((f) => ({ ...f, rolId: e.target.value })); setCrearErrores((x) => ({ ...x, rolId: undefined })); }}
+                        >
+                            {roles.map((r) => <MenuItem key={r.id} value={r.id} sx={{ minHeight: 44 }}>{r.nombre}</MenuItem>)}
+                        </Select>
+                        {crearErrores.rolId && <FormHelperText>{crearErrores.rolId}</FormHelperText>}
+                    </FormControl>
+                </Box>
+            </ResponsiveDialog>
+
+            <ResponsiveDialog
+                open={!!editarUsuario}
+                onClose={() => setEditarUsuario(null)}
+                maxWidth="xs"
+                sucio={sucioEditar && !editarLoading}
+                title="Editar usuario"
+                actions={
+                    <>
+                        <Button onClick={() => setEditarUsuario(null)} disabled={editarLoading}>Cancelar</Button>
+                        <Button
+                            variant="contained"
+                            onClick={handleEditar}
+                            disabled={editarLoading || !editarForm.rolId}
+                            startIcon={editarLoading ? <CircularProgress size={16} color="inherit" /> : null}
+                        >
+                            {editarLoading ? 'Guardando…' : 'Guardar'}
+                        </Button>
+                    </>
+                }
+            >
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+                    {editarError && <Alert severity="error" role="alert">{editarError}</Alert>}
+                    <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{editarUsuario?.email}</Typography>
+                    <TextField
+                        label="Nombre"
+                        value={editarForm.nombre}
+                        onChange={(e) => setEditarForm((f) => ({ ...f, nombre: e.target.value }))}
+                        fullWidth
+                    />
+                    <FormControl fullWidth>
+                        <InputLabel id="editar-rol">Rol</InputLabel>
+                        <Select
+                            labelId="editar-rol"
+                            value={editarForm.rolId}
+                            label="Rol"
+                            onChange={(e) => setEditarForm((f) => ({ ...f, rolId: e.target.value }))}
+                        >
+                            {roles.map((r) => <MenuItem key={r.id} value={r.id} sx={{ minHeight: 44 }}>{r.nombre}</MenuItem>)}
+                        </Select>
+                    </FormControl>
+                    <FormControlLabel
+                        sx={{ minHeight: 44, mx: 0 }}
+                        control={
+                            <Switch
+                                checked={editarForm.activo}
+                                onChange={(e) => setEditarForm((f) => ({ ...f, activo: e.target.checked }))}
+                                color="success"
+                            />
+                        }
+                        label={editarForm.activo ? 'Activo' : 'Suspendido: no puede entrar'}
                     />
                 </Box>
-                <Table sx={{ minWidth: { xs: 320, sm: 500 } }}>
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Nombre</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Email</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Rol</TableCell>
-                            <TableCell>Estado</TableCell>
-                            <TableCell align="right">Acciones</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {(() => {
-                            const filtrados = usuarios.filter(u =>
-                                u.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
-                                u.email?.toLowerCase().includes(busqueda.toLowerCase())
-                            );
-                            const pagina = filtrados.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);
-                            if (filtrados.length === 0) return (
-                                <TableRow>
-                                    <TableCell colSpan={5} align="center">
-                                        {busqueda ? 'Sin resultados para la búsqueda' : 'No hay usuarios'}
-                                    </TableCell>
-                                </TableRow>
-                            );
-                            return pagina.map((u) => (
-                                <TableRow key={u.id} hover>
-                                    <TableCell>{u.nombre || '—'}</TableCell>
-                                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{u.email}</TableCell>
-                                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                                        <Chip label={u.rolObj?.nombre || u.rol || '—'} size="small" />
-                                    </TableCell>
-                                    <TableCell>
-                                        <Chip
-                                            label={u.activo ? 'Activo' : 'Suspendido'}
-                                            color={u.activo ? 'success' : 'default'}
-                                            size="small"
-                                        />
-                                    </TableCell>
-                                    <TableCell align="right">
-                                        <Tooltip title="Editar">
-                                            <IconButton size="small" onClick={() => abrirEditar(u)}>
-                                                <EditIcon fontSize="small" />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Eliminar">
-                                            <IconButton size="small" color="error" onClick={() => abrirEliminar(u)}>
-                                                <DeleteIcon fontSize="small" />
-                                            </IconButton>
-                                        </Tooltip>
-                                    </TableCell>
-                                </TableRow>
-                            ));
-                        })()}
-                    </TableBody>
-                </Table>
-                <TablePagination
-                    component="div"
-                    count={usuarios.filter(u =>
-                        u.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
-                        u.email?.toLowerCase().includes(busqueda.toLowerCase())
-                    ).length}
-                    page={page}
-                    onPageChange={(_, p) => setPage(p)}
-                    rowsPerPage={ROWS_PER_PAGE}
-                    rowsPerPageOptions={[ROWS_PER_PAGE]}
-                    labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
-                />
-            </TableContainer>
+            </ResponsiveDialog>
 
-            {/* Dialog Crear */}
-            <Dialog open={crearOpen} onClose={() => setCrearOpen(false)} maxWidth="xs" fullWidth>
-                <DialogTitle>Nuevo usuario</DialogTitle>
-                <DialogContent>
-                    <Box display="flex" flexDirection="column" gap={2} mt={1}>
-                        {crearError && <Alert severity="error">{crearError}</Alert>}
-                        <TextField
-                            label="Email"
-                            value={crearForm.email}
-                            onChange={(e) => setCrearForm(f => ({ ...f, email: e.target.value }))}
-                            type="email"
-                            fullWidth
-                        />
-                        <TextField
-                            label="Nombre"
-                            value={crearForm.nombre}
-                            onChange={(e) => setCrearForm(f => ({ ...f, nombre: e.target.value }))}
-                            fullWidth
-                        />
-                        <FormControl fullWidth>
-                            <InputLabel>Rol</InputLabel>
-                            <Select
-                                value={crearForm.rolId}
-                                label="Rol"
-                                onChange={(e) => setCrearForm(f => ({ ...f, rolId: e.target.value }))}
-                            >
-                                {roles.map(r => (
-                                    <MenuItem key={r.id} value={r.id}>{r.nombre}</MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setCrearOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleCrear} disabled={crearLoading}>
-                        {crearLoading ? <CircularProgress size={18} /> : 'Crear'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Dialog Editar */}
-            <Dialog open={editarOpen} onClose={() => setEditarOpen(false)} maxWidth="xs" fullWidth>
-                <DialogTitle>Editar usuario</DialogTitle>
-                <DialogContent>
-                    <Box display="flex" flexDirection="column" gap={2} mt={1}>
-                        {editarError && <Alert severity="error">{editarError}</Alert>}
-                        <TextField
-                            label="Nombre"
-                            value={editarForm.nombre}
-                            onChange={(e) => setEditarForm(f => ({ ...f, nombre: e.target.value }))}
-                            fullWidth
-                        />
-                        <FormControl fullWidth>
-                            <InputLabel>Rol</InputLabel>
-                            <Select
-                                value={editarForm.rolId}
-                                label="Rol"
-                                onChange={(e) => setEditarForm(f => ({ ...f, rolId: e.target.value }))}
-                            >
-                                {roles.map(r => (
-                                    <MenuItem key={r.id} value={r.id}>{r.nombre}</MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={editarForm.activo}
-                                    onChange={(e) => setEditarForm(f => ({ ...f, activo: e.target.checked }))}
-                                    color="success"
-                                />
-                            }
-                            label={editarForm.activo ? 'Activo' : 'Suspendido'}
-                        />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setEditarOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleEditar} disabled={editarLoading}>
-                        {editarLoading ? <CircularProgress size={18} /> : 'Guardar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Dialog Eliminar */}
-            <Dialog open={eliminarOpen} onClose={() => setEliminarOpen(false)} maxWidth="xs" fullWidth>
-                <DialogTitle>Eliminar usuario</DialogTitle>
-                <DialogContent>
-                    {eliminarError && <Alert severity="error" sx={{ mb: 1 }}>{eliminarError}</Alert>}
-                    <Typography>
-                        ¿Seguro que querés eliminar a <strong>{eliminarUsuario?.nombre || eliminarUsuario?.email}</strong>?
-                        Esta acción no se puede deshacer.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setEliminarOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" color="error" onClick={handleEliminar} disabled={eliminarLoading}>
-                        {eliminarLoading ? <CircularProgress size={18} /> : 'Eliminar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        </Box>
+            <ConfirmDialog
+                open={!!eliminarUsuario}
+                titulo="¿Eliminar el usuario?"
+                mensaje={<>Se elimina a <strong>{eliminarUsuario?.nombre || eliminarUsuario?.email}</strong> y deja de poder entrar. Esta acción no se puede deshacer.</>}
+                confirmarTexto="Eliminar"
+                peligro
+                cargando={eliminarLoading}
+                onConfirmar={handleEliminar}
+                onCancelar={() => setEliminarUsuario(null)}
+            >
+                {eliminarError && <Alert severity="error" role="alert">{eliminarError}</Alert>}
+            </ConfirmDialog>
+        </PageContainer>
     );
 }

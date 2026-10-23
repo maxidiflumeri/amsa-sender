@@ -1,396 +1,266 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import {
-    Box,
-    Container,
-    Paper,
-    Typography,
-    Button,
-    Chip,
-    Skeleton,
-    Alert,
-    useTheme,
-    Grid,
-    Divider,
-} from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import PersonIcon from '@mui/icons-material/Person';
-import PhoneIcon from '@mui/icons-material/Phone';
-import EmailIcon from '@mui/icons-material/Email';
-import BusinessIcon from '@mui/icons-material/Business';
-import DescriptionIcon from '@mui/icons-material/Description';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Box, Button, IconButton, Link, Skeleton, Tooltip, Typography } from '@mui/material';
+import { Copy, Mail, MailX, Phone, PhoneOff, UserX } from 'lucide-react';
 import api from '../../api/axios';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import { BloqueEstado, EmptyState, PageContainer, PageHeader, SectionCard } from '../ui';
 import TimelineDeudor from './TimelineDeudor';
+import { nombreDeEmpresa } from './comunes';
 
 const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('es-AR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(date);
+    if (!dateString) return '—';
+    return new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(dateString));
 };
 
-const DataRow = ({ label, value, theme }) => (
-    <Box sx={{ mb: 2 }}>
-        <Typography
-            variant="caption"
-            sx={{
-                color: theme.palette.text.secondary,
-                textTransform: 'uppercase',
-                fontWeight: 'bold',
-                fontSize: '0.7rem',
-            }}
-        >
-            {label}
-        </Typography>
-        <Typography
-            variant="body1"
-            sx={{ color: theme.palette.text.primary, mt: 0.5 }}
-        >
-            {value || '-'}
-        </Typography>
-    </Box>
-);
+// Una grilla CSS que se acomoda sola: 1 columna en el celular, las que entren desde ahí. Los valores largos (un mail,
+// un texto de los datos adicionales) se parten en vez de empujar la pantalla.
+const GRILLA = { display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))', m: 0 };
+
+function Dato({ etiqueta, children }) {
+    return (
+        <Box sx={{ minWidth: 0 }}>
+            <Typography component="dt" variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em', fontSize: 11 }}>
+                {etiqueta}
+            </Typography>
+            <Typography component="dd" variant="body1" sx={{ m: 0, mt: 0.25, overflowWrap: 'anywhere' }}>
+                {children ?? '—'}
+            </Typography>
+        </Box>
+    );
+}
+
+const esVacio = (v) => v === null || v === undefined || v === '';
+const esPrimitivo = (v) => typeof v !== 'object' || v === null;
+
+/** Un valor de los datos adicionales, legible: nada de JSON crudo en una línea. */
+function ValorLegible({ valor, nivel = 0 }) {
+    if (esVacio(valor)) return '—';
+    if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
+    if (esPrimitivo(valor)) return String(valor);
+    if (Array.isArray(valor)) {
+        if (valor.every(esPrimitivo)) return valor.map((v) => (esVacio(v) ? '—' : String(v))).join(', ') || '—';
+        return (
+            <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                {valor.map((v, i) => <li key={i}><ValorLegible valor={v} nivel={nivel + 1} /></li>)}
+            </Box>
+        );
+    }
+    const pares = Object.entries(valor);
+    if (pares.length === 0) return '—';
+    return (
+        <Box component="dl" sx={{ m: 0, display: 'grid', gap: 0.5, pl: nivel > 0 ? 1.5 : 0 }}>
+            {pares.map(([k, v]) => (
+                <Box key={k}>
+                    <Box component="dt" sx={{ fontSize: 12, color: 'text.secondary' }}>{k}</Box>
+                    <Box component="dd" sx={{ m: 0, fontSize: 14 }}><ValorLegible valor={v} nivel={nivel + 1} /></Box>
+                </Box>
+            ))}
+        </Box>
+    );
+}
+
+/**
+ * Un teléfono o un mail con sus acciones. En la computadora son botones con texto; en el celular, un renglón de 44 px
+ * donde el valor mismo es el enlace (llamar o escribir) y al costado un botón para copiar.
+ */
+function FilaContacto({ valor, tipo, onCopiar }) {
+    const esTel = tipo === 'telefono';
+    const Icono = esTel ? Phone : Mail;
+    const href = esTel ? `tel:${valor.replace(/[^\d+]/g, '')}` : `mailto:${valor}`;
+    const accion = esTel ? 'Llamar' : 'Escribir';
+
+    return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 44, borderTop: 1, borderColor: 'divider', '&:first-of-type': { borderTop: 0 } }}>
+            <Box sx={{ color: 'text.secondary', display: 'flex', flex: 'none' }}><Icono size={18} strokeWidth={1.75} aria-hidden /></Box>
+            <Link href={href} underline="hover" color="text.primary" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', py: 1, fontSize: 15 }}>
+                {valor}
+            </Link>
+            <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1, flex: 'none' }}>
+                <Button size="small" variant="outlined" color="inherit" href={href} startIcon={<Icono size={16} strokeWidth={1.75} aria-hidden />}>{accion}</Button>
+                <Button size="small" variant="outlined" color="inherit" onClick={() => onCopiar(valor)} startIcon={<Copy size={16} strokeWidth={1.75} aria-hidden />}>Copiar</Button>
+            </Box>
+            <Tooltip title="Copiar">
+                <IconButton aria-label={`Copiar ${valor}`} onClick={() => onCopiar(valor)} sx={{ display: { xs: 'inline-flex', md: 'none' }, width: 44, height: 44, flex: 'none' }}>
+                    <Copy size={18} strokeWidth={1.75} aria-hidden />
+                </IconButton>
+            </Tooltip>
+        </Box>
+    );
+}
+
+function ListaContactos({ titulo, valores, tipo, vacio, IconoVacio, onCopiar }) {
+    return (
+        <Box sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>{titulo} ({valores.length})</Typography>
+            {valores.length === 0 ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary', minHeight: 44 }}>
+                    <IconoVacio size={18} strokeWidth={1.75} aria-hidden />
+                    <Typography variant="body2">{vacio}</Typography>
+                </Box>
+            ) : (
+                valores.map((v, i) => <FilaContacto key={`${v}-${i}`} valor={v} tipo={tipo} onCopiar={onCopiar} />)
+            )}
+        </Box>
+    );
+}
 
 export default function FichaDeudor() {
-    const theme = useTheme();
-    const navigate = useNavigate();
     const { id } = useParams();
+    const location = useLocation();
+    const navigate = useNavigate();
+    const feedback = useFeedback();
 
     const [deudor, setDeudor] = useState(null);
+    const [empresasMap, setEmpresasMap] = useState(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [notFound, setNotFound] = useState(false);
 
-    useEffect(() => {
-        const cargarDeudor = async () => {
-            if (!id) {
-                setError('ID de deudor inválido');
-                setLoading(false);
-                return;
-            }
+    // Si llegó desde la búsqueda, "Volver" retrocede y la búsqueda sigue como se dejó (filtros y página en la URL).
+    const volverA = location.state?.desdeBusqueda ? -1 : '/deudores';
+    const migas = [...migasDe('/deudores'), { label: 'Ficha' }];
 
-            setLoading(true);
-            setError(null);
-            setNotFound(false);
-
-            try {
-                const res = await api.get(`/deudores/${id}`);
-                setDeudor(res.data);
-            } catch (err) {
-                if (err.response?.status === 404) {
-                    setNotFound(true);
-                } else {
-                    setError(err.response?.data?.message || 'Error al cargar el deudor');
-                }
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        cargarDeudor();
+    const cargar = useCallback(async () => {
+        if (!id) {
+            setError('ID de deudor inválido');
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        setNotFound(false);
+        try {
+            const res = await api.get(`/deudores/${id}`);
+            setDeudor(res.data);
+        } catch (err) {
+            if (err.response?.status === 404) setNotFound(true);
+            else setError(mensajeDeError(err, 'No se pudo cargar el deudor.'));
+        } finally {
+            setLoading(false);
+        }
     }, [id]);
 
-    const handleVolver = () => {
-        navigate('/deudores');
+    useEffect(() => {
+        cargar();
+    }, [cargar]);
+
+    // El nombre de la empresa, como en el listado. Si no llega, se muestra el ID (no es motivo para frenar la ficha).
+    useEffect(() => {
+        let vivo = true;
+        api.get('/deudores/empresas')
+            .then((res) => {
+                if (!vivo) return;
+                const mapa = new Map();
+                for (const e of res.data || []) if (e && typeof e === 'object' && 'id' in e) mapa.set(e.id, e.nombre);
+                setEmpresasMap(mapa);
+            })
+            .catch(() => {});
+        return () => { vivo = false; };
+    }, []);
+
+    const copiar = async (texto) => {
+        try {
+            await navigator.clipboard.writeText(texto);
+            feedback.exito(`Copiado: ${texto}`);
+        } catch {
+            feedback.error('No se pudo copiar. Mantené apretado el texto para copiarlo a mano.');
+        }
     };
 
-    // Loading state
     if (loading) {
         return (
-            <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                    <Skeleton variant="circular" width={40} height={40} />
-                    <Skeleton variant="text" width={200} height={50} />
-                </Box>
-                <Paper sx={{ p: 3, mb: 3, bgcolor: theme.palette.background.paper }}>
-                    <Skeleton variant="text" width="60%" height={40} />
-                    <Skeleton variant="text" width="40%" height={30} />
-                    <Divider sx={{ my: 3 }} />
-                    <Grid container spacing={3}>
-                        {[1, 2, 3, 4].map((i) => (
-                            <Grid item xs={12} sm={6} md={3} key={i}>
-                                <Skeleton variant="text" width="60%" height={20} />
-                                <Skeleton variant="text" width="80%" height={30} />
-                            </Grid>
-                        ))}
-                    </Grid>
-                </Paper>
-                <Paper sx={{ p: 3, bgcolor: theme.palette.background.paper }}>
-                    <Skeleton variant="text" width="40%" height={40} />
-                    <Skeleton variant="rectangular" width="100%" height={100} sx={{ mt: 2 }} />
-                </Paper>
-            </Container>
+            <PageContainer>
+                <PageHeader title="Deudor" back={volverA} breadcrumbs={migas} />
+                <Skeleton variant="rounded" height={140} sx={{ mb: 2 }} />
+                <Skeleton variant="rounded" height={180} sx={{ mb: 2 }} />
+                <Skeleton variant="rounded" height={240} />
+            </PageContainer>
         );
     }
 
-    // Not found state
     if (notFound) {
         return (
-            <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-                <Paper
-                    sx={{
-                        p: 4,
-                        bgcolor: theme.palette.background.paper,
-                        textAlign: 'center',
-                    }}
-                >
-                    <PersonIcon
-                        sx={{ fontSize: 80, color: theme.palette.text.secondary, mb: 2 }}
-                    />
-                    <Typography variant="h5" sx={{ mb: 2, color: theme.palette.text.primary }}>
-                        Deudor no encontrado
-                    </Typography>
-                    <Typography
-                        variant="body1"
-                        sx={{ mb: 3, color: theme.palette.text.secondary }}
-                    >
-                        El deudor con ID {id} no existe en el sistema
-                    </Typography>
-                    <Button
-                        variant="contained"
-                        startIcon={<ArrowBackIcon />}
-                        onClick={handleVolver}
-                    >
-                        Volver al listado
-                    </Button>
-                </Paper>
-            </Container>
+            <PageContainer>
+                <PageHeader title="Deudor no encontrado" back={volverA} breadcrumbs={migas} />
+                <EmptyState
+                    icon={UserX}
+                    title="No existe ese deudor"
+                    description={`El deudor con ID ${id} no está en el sistema.`}
+                    action={{ label: 'Volver a la búsqueda', onClick: () => navigate(volverA) }}
+                />
+            </PageContainer>
         );
     }
 
-    // Error state
     if (error) {
         return (
-            <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-                <Alert severity="error" sx={{ mb: 3 }}>
-                    {error}
-                </Alert>
-                <Button
-                    variant="outlined"
-                    startIcon={<ArrowBackIcon />}
-                    onClick={handleVolver}
-                >
-                    Volver al listado
-                </Button>
-            </Container>
+            <PageContainer>
+                <PageHeader title="Deudor" back={volverA} breadcrumbs={migas} />
+                <BloqueEstado estado="error" mensaje={error} onReintentar={cargar} />
+            </PageContainer>
         );
     }
 
-    // Data view
+    const datos = deudor.datos && typeof deudor.datos === 'object' ? Object.entries(deudor.datos) : [];
+
     return (
-        <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-            {/* Header */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                <Button
-                    variant="outlined"
-                    startIcon={<ArrowBackIcon />}
-                    onClick={handleVolver}
-                    sx={{ mr: 2 }}
-                >
-                    Volver
-                </Button>
-                <PersonIcon sx={{ fontSize: 40, color: theme.palette.primary.main }} />
-                <Box>
-                    <Typography variant="h4" component="h1" sx={{ color: theme.palette.text.primary }}>
-                        {deudor.nombre || 'Sin nombre'}
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                        ID Deudor: {deudor.idDeudor !== null ? deudor.idDeudor : '-'}
-                    </Typography>
-                </Box>
-            </Box>
+        <PageContainer>
+            <PageHeader
+                title={deudor.nombre || 'Sin nombre'}
+                subtitle={`ID deudor: ${deudor.idDeudor ?? '—'}`}
+                back={volverA}
+                backLabel={volverA === -1 ? 'Volver a la búsqueda' : 'Volver'}
+                breadcrumbs={migas}
+            />
 
-            {/* Card Datos del deudor */}
-            <Paper
-                sx={{
-                    p: 3,
-                    mb: 3,
-                    bgcolor: theme.palette.background.paper,
-                    borderRadius: 2,
-                }}
-            >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-                    <BusinessIcon sx={{ color: theme.palette.primary.main }} />
-                    <Typography variant="h6" sx={{ color: theme.palette.text.primary }}>
-                        Datos del deudor
-                    </Typography>
-                </Box>
-                <Divider sx={{ mb: 3, borderColor: theme.palette.mode === 'light' ? '#e0e0e0' : '#333' }} />
-                <Grid container spacing={3}>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <DataRow
-                            label="Documento"
-                            value={deudor.documento}
-                            theme={theme}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <DataRow
-                            label="Empresa"
-                            value={deudor.empresa}
-                            theme={theme}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <DataRow
-                            label="Nro. Empresa"
-                            value={deudor.nroEmpresa}
-                            theme={theme}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <DataRow
-                            label="Remesa"
-                            value={deudor.remesa}
-                            theme={theme}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <DataRow
-                            label="Última actualización"
-                            value={formatDate(deudor.actualizadoEn)}
-                            theme={theme}
-                        />
-                    </Grid>
-                </Grid>
-            </Paper>
-
-            {/* Card Canales de contacto */}
-            <Paper
-                sx={{
-                    p: 3,
-                    mb: 3,
-                    bgcolor: theme.palette.background.paper,
-                    borderRadius: 2,
-                }}
-            >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-                    <PhoneIcon sx={{ color: theme.palette.primary.main }} />
-                    <Typography variant="h6" sx={{ color: theme.palette.text.primary }}>
-                        Canales de contacto
-                    </Typography>
-                </Box>
-                <Divider sx={{ mb: 3, borderColor: theme.palette.mode === 'light' ? '#e0e0e0' : '#333' }} />
-
-                {/* Teléfonos */}
-                <Box sx={{ mb: 3 }}>
-                    <Typography
-                        variant="subtitle2"
-                        sx={{
-                            color: theme.palette.text.secondary,
-                            mb: 1.5,
-                            fontWeight: 'bold',
-                        }}
-                    >
-                        Teléfonos
-                    </Typography>
-                    {deudor.canales.telefonos.length === 0 ? (
-                        <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                            Sin teléfonos registrados
-                        </Typography>
-                    ) : (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            {deudor.canales.telefonos.map((tel, idx) => (
-                                <Chip
-                                    key={idx}
-                                    icon={<PhoneIcon />}
-                                    label={tel}
-                                    color="success"
-                                    variant="outlined"
-                                    sx={{
-                                        fontSize: '0.9rem',
-                                        color: theme.palette.text.primary,
-                                        borderColor: theme.palette.success.main,
-                                    }}
-                                />
-                            ))}
-                        </Box>
-                    )}
-                </Box>
-
-                {/* Emails */}
-                <Box>
-                    <Typography
-                        variant="subtitle2"
-                        sx={{
-                            color: theme.palette.text.secondary,
-                            mb: 1.5,
-                            fontWeight: 'bold',
-                        }}
-                    >
-                        Emails
-                    </Typography>
-                    {deudor.canales.emails.length === 0 ? (
-                        <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                            Sin emails registrados
-                        </Typography>
-                    ) : (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            {deudor.canales.emails.map((email, idx) => (
-                                <Chip
-                                    key={idx}
-                                    icon={<EmailIcon />}
-                                    label={email}
-                                    color="primary"
-                                    variant="outlined"
-                                    sx={{
-                                        fontSize: '0.9rem',
-                                        color: theme.palette.text.primary,
-                                        borderColor: theme.palette.primary.main,
-                                    }}
-                                />
-                            ))}
-                        </Box>
-                    )}
-                </Box>
-            </Paper>
-
-            {/* Card Datos adicionales (JSON) */}
-            {deudor.datos && Object.keys(deudor.datos).length > 0 && (
-                <Paper
-                    sx={{
-                        p: 3,
-                        mb: 3,
-                        bgcolor: theme.palette.background.paper,
-                        borderRadius: 2,
-                    }}
-                >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-                        <DescriptionIcon sx={{ color: theme.palette.primary.main }} />
-                        <Typography variant="h6" sx={{ color: theme.palette.text.primary }}>
-                            Datos adicionales
-                        </Typography>
+            <Box sx={{ display: 'grid', gap: 2 }}>
+                <SectionCard title="Datos del deudor">
+                    <Box component="dl" sx={GRILLA}>
+                        <Dato etiqueta="Documento">{deudor.documento}</Dato>
+                        <Dato etiqueta="Empresa">{esVacio(deudor.empresa) ? null : nombreDeEmpresa(empresasMap, deudor.empresa)}</Dato>
+                        <Dato etiqueta="Nro. de empresa">{deudor.nroEmpresa}</Dato>
+                        <Dato etiqueta="Remesa">{deudor.remesa}</Dato>
+                        <Dato etiqueta="Última actualización">{formatDate(deudor.actualizadoEn)}</Dato>
                     </Box>
-                    <Divider sx={{ mb: 3, borderColor: theme.palette.mode === 'light' ? '#e0e0e0' : '#333' }} />
-                    <Grid container spacing={2}>
-                        {Object.entries(deudor.datos).map(([key, value]) => (
-                            <Grid item xs={12} sm={6} md={4} key={key}>
-                                <DataRow
-                                    label={key}
-                                    value={typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                                    theme={theme}
-                                />
-                            </Grid>
-                        ))}
-                    </Grid>
-                </Paper>
-            )}
+                </SectionCard>
 
-            {/* Card Historial de interacciones (Timeline omnicanal) */}
-            <Paper
-                sx={{
-                    p: 3,
-                    bgcolor: theme.palette.background.paper,
-                    borderRadius: 2,
-                }}
-            >
+                <SectionCard title="Canales de contacto">
+                    <Box sx={{ display: 'grid', gap: 2.5, gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' } }}>
+                        <ListaContactos
+                            titulo="Teléfonos"
+                            valores={deudor.canales?.telefonos ?? []}
+                            tipo="telefono"
+                            vacio="Sin teléfonos registrados"
+                            IconoVacio={PhoneOff}
+                            onCopiar={copiar}
+                        />
+                        <ListaContactos
+                            titulo="Emails"
+                            valores={deudor.canales?.emails ?? []}
+                            tipo="email"
+                            vacio="Sin emails registrados"
+                            IconoVacio={MailX}
+                            onCopiar={copiar}
+                        />
+                    </Box>
+                </SectionCard>
+
+                {datos.length > 0 && (
+                    <SectionCard title="Datos adicionales">
+                        <Box component="dl" sx={GRILLA}>
+                            {datos.map(([clave, valor]) => (
+                                <Dato key={clave} etiqueta={clave}>
+                                    <ValorLegible valor={valor} />
+                                </Dato>
+                            ))}
+                        </Box>
+                    </SectionCard>
+                )}
+
                 <TimelineDeudor deudorId={deudor.id} />
-            </Paper>
-        </Container>
+            </Box>
+        </PageContainer>
     );
 }

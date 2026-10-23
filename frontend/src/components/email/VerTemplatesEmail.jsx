@@ -1,379 +1,217 @@
-import { useEffect, useState } from 'react';
-import {
-    Box,
-    Button,
-    IconButton,
-    Paper,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    Typography,
-    Tooltip,
-    TextField,
-    Snackbar,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    useMediaQuery,
-    LinearProgress,
-    Skeleton
-} from '@mui/material';
-import {
-    Visibility as VisibilityIcon,
-    Edit as EditIcon,
-    Delete as DeleteIcon,
-    Add as AddIcon
-} from '@mui/icons-material';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import Chip from '@mui/material/Chip';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Box, Button, Chip, InputAdornment, TextField } from '@mui/material';
+import { Copy, Eye, FileText, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
-import dayjs from 'dayjs';
-import MuiAlert from '@mui/material/Alert';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ArticleIcon from '@mui/icons-material/Article';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import { BloqueEstado, ConfirmDialog, DataTableResponsive, EmptyState, PageContainer, PageHeader, ResponsiveDialog, SectionCard } from '../ui';
+import MenuMas from '../plantillas/MenuMas';
 
-const VerTemplatesEmail = () => {
-    const isMobile = useMediaQuery('(max-width:768px)');
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-    const [templates, setTemplates] = useState([]);
-    const [busqueda, setBusqueda] = useState('');
+const fechaCorta = (f) => (f ? new Date(f).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : 'Sin fecha');
+
+export default function VerTemplatesEmail() {
+    const feedback = useFeedback();
     const navigate = useNavigate();
-    const [feedback, setFeedback] = useState({
-        open: false,
-        message: '',
-        type: 'success'
-    });
+    const [params, setParams] = useSearchParams();
+    const busqueda = params.get('q') ?? '';
 
-    // eliminar
-    const [dialogOpen, setDialogOpen] = useState(false);
-    const [selectedTemplate, setSelectedTemplate] = useState(null);
+    const [plantillas, setPlantillas] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState(null);
 
-    // duplicar
-    const [dupOpen, setDupOpen] = useState(false);
-    const [dupName, setDupName] = useState('');
-    const [dupLoading, setDupLoading] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const [aEliminar, setAEliminar] = useState(null);
+    const [eliminando, setEliminando] = useState(false);
 
-    useEffect(() => {
-        const fetchTemplates = async () => {
-            setLoading(true);                  // ⬅️ inicio
-            try {
-                const { data } = await api.get('/email/templates');
-                setTemplates(data);
-            } catch (error) {
-                console.error('Error al obtener los templates', error);
-            } finally {
-                setLoading(false);               // ⬅️ fin
-            }
-        };
+    const [aDuplicar, setADuplicar] = useState(null);
+    const [nombreCopia, setNombreCopia] = useState('');
+    const [duplicando, setDuplicando] = useState(false);
 
-        fetchTemplates();
+    const cargar = useCallback(async () => {
+        setCargando(true);
+        setErrorCarga(null);
+        try {
+            const { data } = await api.get('/email/templates');
+            setPlantillas(Array.isArray(data) ? data : []);
+        } catch (err) {
+            setErrorCarga(mensajeDeError(err, 'No se pudieron cargar las plantillas.'));
+        } finally {
+            setCargando(false);
+        }
     }, []);
 
+    useEffect(() => { cargar(); }, [cargar]);
 
-    const handleEliminar = async () => {
-        try {
-            await api.delete(`email/templates/${selectedTemplate.id}`);
-            setTemplates((prev) => prev.filter((tpl) => tpl.id !== selectedTemplate.id));
-            setFeedback({
-                open: true,
-                type: 'success',
-                message: 'Template eliminado correctamente'
-            });
-
-        } catch (error) {
-            console.error('Error al eliminar template', error);
-            setFeedback({
-                open: true,
-                type: 'error',
-                message: 'Error al eliminar el template'
-            });
-        }
-        setDialogOpen(false);
-        setSelectedTemplate(null);
+    const cambiarBusqueda = (valor) => {
+        const nuevo = new URLSearchParams(params);
+        if (valor) nuevo.set('q', valor);
+        else nuevo.delete('q');
+        setParams(nuevo, { replace: true });
     };
 
-    const SkeletonRow = () => (
-        <TableRow>
-            <TableCell><Skeleton variant="text" width="60%" /></TableCell>
-            <TableCell><Skeleton variant="text" width="75%" /></TableCell>
-            <TableCell><Skeleton variant="text" width="50%" /></TableCell>
-            <TableCell><Skeleton variant="text" width="40%" /></TableCell>
-            <TableCell align="right">
-                <Skeleton variant="rounded" width={120} height={32} sx={{ ml: 'auto' }} />
-            </TableCell>
-        </TableRow>
-    );
-
-    // Duplicar - abre modal con nombre por defecto
-    const openDuplicateModal = (tpl) => {
-        setSelectedTemplate(tpl);
-        setDupName(`${tpl.nombre} #copy`);
-        setDupOpen(true);
-    };
-
-    // Duplicar - confirma y llama API
-    const handleDuplicate = async () => {
-        if (!selectedTemplate) return;
-        setDupLoading(true);
-
+    const eliminar = async () => {
+        setEliminando(true);
         try {
-            // 1) Intento endpoint recomendado del backend
-            // POST /email/templates/:id/duplicate  { nombre: dupName }
-            try {
-                const { data: duplicated } = await api.post(`/email/templates/${selectedTemplate.id}/duplicate`, {
-                    nombre: dupName
-                });
-
-                // Insertamos al principio
-                setTemplates((prev) => [duplicated, ...prev]);
-                setFeedback({ open: true, type: 'success', message: 'Template duplicado correctamente' });
-            } catch (e1) {
-                // 2) Fallback si no existe el endpoint: crear uno nuevo copiando campos conocidos
-                // Tomamos todas las props del original salvo id/fechas y seteamos nombre nuevo.
-                const {
-                    id, creadoAt, actualizadoAt, createdAt, updatedAt, // por dudas de naming
-                    nombre, ...rest
-                } = selectedTemplate;
-
-                // En muchos casos tendrás html/diseño JSON/etc. Copiamos todo "rest" para no perdernos nada.
-                const payload = {
-                    ...rest,
-                    nombre: dupName,
-                };
-
-                const { data: created } = await api.post('/email/templates', payload);
-
-                setTemplates((prev) => [created, ...prev]);
-                setFeedback({ open: true, type: 'success', message: 'Template duplicado correctamente' });
-            }
-        } catch (error) {
-            console.error('Error al duplicar template', error);
-            setFeedback({ open: true, type: 'error', message: 'No se pudo duplicar el template' });
+            await api.delete(`email/templates/${aEliminar.id}`);
+            setPlantillas((prev) => prev.filter((t) => t.id !== aEliminar.id));
+            feedback.exito(`Se eliminó la plantilla «${aEliminar.nombre}».`);
+            setAEliminar(null);
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo eliminar la plantilla.'));
         } finally {
-            setDupLoading(false);
-            setDupOpen(false);
-            setSelectedTemplate(null);
+            setEliminando(false);
         }
     };
 
-    // 🔍 Filtro por nombre
-    const templatesFiltrados = templates.filter((tpl) =>
-        (tpl.nombre ?? '').toLowerCase().includes(busqueda.toLowerCase())
-    );
+    const abrirDuplicar = (t) => {
+        setADuplicar(t);
+        setNombreCopia(`${t.nombre} (copia)`);
+    };
+
+    const duplicar = async () => {
+        if (!aDuplicar) return;
+        setDuplicando(true);
+        try {
+            let nueva;
+            try {
+                ({ data: nueva } = await api.post(`/email/templates/${aDuplicar.id}/duplicate`, { nombre: nombreCopia }));
+            } catch {
+                // Si el backend no tiene el endpoint de duplicar, se crea una nueva copiando los campos de la original.
+                const copia = { ...aDuplicar, nombre: nombreCopia };
+                ['id', 'creadoAt', 'actualizadoAt', 'createdAt', 'updatedAt'].forEach((k) => delete copia[k]);
+                ({ data: nueva } = await api.post('/email/templates', copia));
+            }
+            setPlantillas((prev) => [nueva, ...prev]);
+            feedback.exito('Plantilla duplicada.');
+            setADuplicar(null);
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo duplicar la plantilla.'));
+        } finally {
+            setDuplicando(false);
+        }
+    };
+
+    const visibles = useMemo(() => {
+        const q = busqueda.trim().toLowerCase();
+        return q ? plantillas.filter((t) => (t.nombre ?? '').toLowerCase().includes(q)) : plantillas;
+    }, [plantillas, busqueda]);
+
+    const columnas = [
+        { key: 'nombre', label: 'Nombre', primary: true },
+        { key: 'asunto', label: 'Asunto', secondary: true, render: (t) => t.asunto || 'Sin asunto' },
+        {
+            key: 'remitente',
+            label: 'Remitente',
+            render: (t) => (t.cuentaSmtp
+                ? <Chip label={t.cuentaSmtp.nombre} size="small" color="primary" variant="outlined" />
+                : <Chip label="Global" size="small" variant="outlined" />),
+        },
+        { key: 'creadoAt', label: 'Creada', render: (t) => fechaCorta(t.creadoAt) },
+    ];
 
     return (
-        <>
-            <Box sx={{ py: 2 }}>
-                <Paper elevation={3} sx={{ p: isMobile ? 2 : 4 }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={2}>
-                        <Box display="flex" alignItems="center">
-                            <ArticleIcon sx={{ fontSize: 32 }} />
-                            <Typography ml={1} variant="h5" fontWeight="bold">
-                                Templates de Email
-                            </Typography>
-                        </Box>
-
-                        <Button
-                            sx={{
-                                borderRadius: 2,
-                                textTransform: 'none',
-                                backgroundColor: '#075E54',
-                                '&:hover': {
-                                    backgroundColor: '#0b7b65',
-                                    transform: 'scale(1.03)',
-                                    boxShadow: 4,
-                                },
-                            }}
-                            variant="contained"
-                            startIcon={<AddIcon />}
-                            onClick={() => navigate('/email/crearTemplate')}
-                        >
-                            Nuevo Template
-                        </Button>
-                    </Box>
-                    <Box sx={{ p: 2, m: 2 }}>
-                        <TextField
-                            label="Buscar por nombre"
-                            variant="outlined"
-                            size="small"
-                            value={busqueda}
-                            onChange={(e) => setBusqueda(e.target.value)}
-                            sx={{ width: '100%' }}
-                        />
-                    </Box>
-
-                    {loading && <Box sx={{ mb: 1 }}><LinearProgress /></Box>}
-
-                    <TableContainer>
-                        <Table>
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>Nombre</TableCell>
-                                    <TableCell>Asunto</TableCell>
-                                    <TableCell>Remitente</TableCell>
-                                    <TableCell>Fecha de creación</TableCell>
-                                    <TableCell align="right">Acciones</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {loading ? (
-                                    // ⬅️ 6 filas fantasma mientras carga
-                                    Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={`sk-${i}`} />)
-                                ) : (
-                                    <>
-                                        {templatesFiltrados.map((tpl) => (
-                                            <TableRow key={tpl.id}>
-                                                <TableCell>{tpl.nombre}</TableCell>
-                                                <TableCell>{tpl.asunto}</TableCell>
-                                                <TableCell>
-                                                    {tpl.cuentaSmtp
-                                                        ? <Chip label={tpl.cuentaSmtp.nombre} size="small" color="primary" variant="outlined" />
-                                                        : <Chip label="Global" size="small" variant="outlined" />
-                                                    }
-                                                </TableCell>
-                                                <TableCell>
-                                                    {tpl.creadoAt ? dayjs(tpl.creadoAt).format('DD/MM/YYYY HH:mm') : 'Sin fecha'}
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    <Tooltip title="Vista previa">
-                                                        <IconButton onClick={() => navigate(`/preview-template/${tpl.id}`)}>
-                                                            <VisibilityIcon />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                    <Tooltip title="Editar">
-                                                        <IconButton onClick={() => navigate(`/email/crearTemplate?id=${tpl.id}`)}>
-                                                            <EditIcon />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                    <Tooltip title="Duplicar">
-                                                        <IconButton onClick={() => openDuplicateModal(tpl)}>
-                                                            <ContentCopyIcon />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                    <Tooltip title="Eliminar">
-                                                        <IconButton onClick={() => { setSelectedTemplate(tpl); setDialogOpen(true); }}>
-                                                            <DeleteIcon color="error" />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                        {templatesFiltrados.length === 0 && (
-                                            <TableRow>
-                                                <TableCell colSpan={4} align="center">
-                                                    No se encontraron templates.
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                    </>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-                </Paper>
-            </Box>
-
-            {/* Modal eliminar */}
-            <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
-                <DialogTitle>¿Eliminar template?</DialogTitle>
-                <DialogContent>
-                    <Typography>
-                        ¿Esta seguro que desea eliminar el template "{selectedTemplate?.nombre}"? Esta acción no se puede deshacer.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setDialogOpen(false)} color="secondary">
-                        Cancelar
+        <PageContainer>
+            <PageHeader
+                title="Plantillas de email"
+                subtitle="El diseño y el asunto de los mails de tus campañas y de los envíos manuales."
+                breadcrumbs={migasDe('/email/templates')}
+                actions={
+                    <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={() => navigate('/email/crearTemplate')}>
+                        Nueva plantilla
                     </Button>
-                    <Button sx={{
-                        px: 2,
-                        py: 1,
-                        borderRadius: 2,
-                        fontFamily: commonFont,
-                        textTransform: 'none',
-                        fontSize: '0.9rem',
-                        backgroundColor: '#075E54',
-                        transition: 'all 0.3s ease',
-                        '&:hover': {
-                            backgroundColor: '#0b7b65',
-                            transform: 'scale(1.03)',
-                            boxShadow: 4,
-                        },
-                    }} onClick={handleEliminar} color="primary" variant="contained">
-                        Confirmar
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                }
+            />
 
-            {/* Modal duplicar */}
-            <Dialog open={dupOpen} onClose={() => !dupLoading && setDupOpen(false)}>
-                <DialogTitle>Duplicar template</DialogTitle>
-                <DialogContent>
-                    <Typography mb={2}>
-                        Ingresá el nombre para el nuevo template.
-                    </Typography>
-                    <TextField
-                        fullWidth
-                        label="Nombre del duplicado"
-                        value={dupName}
-                        onChange={(e) => setDupName(e.target.value)}
-                        disabled={dupLoading}
+            <TextField
+                size="small"
+                fullWidth
+                placeholder="Buscar por nombre"
+                value={busqueda}
+                onChange={(e) => cambiarBusqueda(e.target.value)}
+                inputProps={{ 'aria-label': 'Buscar plantillas por nombre' }}
+                InputProps={{ startAdornment: <InputAdornment position="start"><Search size={18} strokeWidth={1.75} aria-hidden /></InputAdornment> }}
+                sx={{ mb: 2, maxWidth: { sm: 400 } }}
+            />
+
+            {errorCarga ? (
+                <BloqueEstado estado="error" mensaje={errorCarga} onReintentar={cargar} />
+            ) : (
+                <SectionCard noPadding>
+                    <DataTableResponsive
+                        ariaLabel="Plantillas de email"
+                        columns={columnas}
+                        rows={visibles}
+                        loading={cargando}
+                        onRowClick={(t) => navigate(`/email/crearTemplate?id=${t.id}`)}
+                        acciones={(t) => (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<Pencil size={16} strokeWidth={1.75} aria-hidden />}
+                                    onClick={() => navigate(`/email/crearTemplate?id=${t.id}`)}
+                                    sx={{ minHeight: { xs: 44, md: 32 } }}
+                                >
+                                    Editar
+                                </Button>
+                                <MenuMas
+                                    etiqueta={`Más acciones de ${t.nombre}`}
+                                    items={[
+                                        { label: 'Ver', icono: Eye, onClick: () => navigate(`/preview-template/${t.id}`) },
+                                        { label: 'Duplicar', icono: Copy, onClick: () => abrirDuplicar(t) },
+                                        { label: 'Eliminar', icono: Trash2, onClick: () => setAEliminar(t), peligro: true },
+                                    ]}
+                                />
+                            </Box>
+                        )}
+                        empty={
+                            <EmptyState
+                                icon={FileText}
+                                compact
+                                title={busqueda ? 'No hay plantillas con ese nombre' : 'Todavía no hay plantillas de email'}
+                                description={busqueda ? 'Probá con otra búsqueda.' : 'Creá la primera para usarla en tus campañas.'}
+                                action={busqueda ? undefined : { label: 'Nueva plantilla', onClick: () => navigate('/email/crearTemplate') }}
+                            />
+                        }
                     />
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setDupOpen(false)} color="secondary" disabled={dupLoading}>
-                        Cancelar
-                    </Button>
-                    <Button
-                        sx={{
-                            px: 2,
-                            py: 1,
-                            borderRadius: 2,
-                            fontFamily: commonFont,
-                            textTransform: 'none',
-                            fontSize: '0.9rem',
-                            backgroundColor: '#075E54',
-                            transition: 'all 0.3s ease',
-                            '&:hover': {
-                                backgroundColor: '#0b7b65',
-                                transform: 'scale(1.03)',
-                                boxShadow: 4,
-                            },
-                        }}
-                        onClick={handleDuplicate}
-                        color="primary"
-                        variant="contained"
-                        disabled={dupLoading || !dupName.trim()}
-                    >
-                        {dupLoading ? 'Duplicando...' : 'Duplicar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                </SectionCard>
+            )}
 
-            <Snackbar
-                open={feedback.open}
-                autoHideDuration={3000}
-                onClose={() => setFeedback({ ...feedback, open: false })}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            <ConfirmDialog
+                open={!!aEliminar}
+                peligro
+                cargando={eliminando}
+                titulo="¿Eliminar la plantilla?"
+                mensaje={<>Se va a eliminar <strong>{aEliminar?.nombre}</strong>. No se puede deshacer.</>}
+                confirmarTexto="Eliminar"
+                onConfirmar={eliminar}
+                onCancelar={() => setAEliminar(null)}
+            />
+
+            <ResponsiveDialog
+                open={!!aDuplicar}
+                onClose={() => !duplicando && setADuplicar(null)}
+                maxWidth="xs"
+                title="Duplicar plantilla"
+                actions={
+                    <>
+                        <Button onClick={() => setADuplicar(null)} disabled={duplicando}>Cancelar</Button>
+                        <Button variant="contained" onClick={duplicar} disabled={duplicando || !nombreCopia.trim()}>
+                            {duplicando ? 'Duplicando…' : 'Duplicar'}
+                        </Button>
+                    </>
+                }
             >
-                <MuiAlert
-                    elevation={6}
-                    variant="filled"
-                    severity={feedback.type}
-                    onClose={() => setFeedback({ ...feedback, open: false })}
-                    icon={<CheckCircleIcon fontSize="inherit" />}
-                >
-                    {feedback.message}
-                </MuiAlert>
-            </Snackbar>
-        </>
+                <TextField
+                    fullWidth
+                    autoFocus
+                    label="Nombre de la copia"
+                    value={nombreCopia}
+                    onChange={(e) => setNombreCopia(e.target.value)}
+                    disabled={duplicando}
+                    sx={{ mt: 0.5 }}
+                />
+            </ResponsiveDialog>
+        </PageContainer>
     );
-};
-
-export default VerTemplatesEmail;
+}

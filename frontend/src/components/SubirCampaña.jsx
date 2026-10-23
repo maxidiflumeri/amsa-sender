@@ -1,104 +1,44 @@
-import React, { useState, useRef } from 'react';
-import {
-    TextField,
-    Button,
-    Paper,
-    Typography,
-    CircularProgress,
-    Box,
-    Stack
-} from '@mui/material';
-import UploadFileIcon from '@mui/icons-material/UploadFile';
+import { Box, Typography } from '@mui/material';
 import api from '../api/axios';
+import { mensajeDeError, useFeedback } from '../context/FeedbackContext';
+import SubirCsvDialog from './campanias/waweb/SubirCsvDialog';
 
-export default function SubirCampaña({ onUploadSuccess, setMensaje }) {
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-    const [archivo, setArchivo] = useState(null);
-    const [nombreCampaña, setNombreCampaña] = useState('');
-    const [subiendo, setSubiendo] = useState(false);
-    const inputFileRef = useRef(null);
+// "Nueva campaña" de WhatsApp Web. El error de subida se avisa acá mismo: antes dependía de un `setMensaje` que la
+// lista nunca pasaba y el error no se veía.
 
-    const handleUpload = async () => {
-        if (!archivo || !nombreCampaña) {
-            setMensaje({ tipo: 'error', texto: 'Completa todos los campos' });
-            return;
-        }
+const code = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.9em' };
 
+export default function SubirCampaña({ open, onClose, onUploadSuccess }) {
+    const feedback = useFeedback();
+
+    const subir = async (nombre, archivo) => {
         const formData = new FormData();
         formData.append('file', archivo);
-        formData.append('campania', nombreCampaña);
-
-        setSubiendo(true);
+        formData.append('campania', nombre);
         try {
             await api.post('/whatsapp/campanias/upload-csv', formData);
-            setArchivo(null);
-            setNombreCampaña('');
-            inputFileRef.current.value = null;
-            onUploadSuccess();
         } catch (error) {
-            console.error('Error subiendo campaña:', error);
-            setMensaje({ tipo: 'error', texto: 'Ocurrió un error al subir la campaña' });
-        } finally {
-            setSubiendo(false);
+            feedback.error(mensajeDeError(error, 'No se pudo subir la campaña. Revisá que el archivo sea un CSV con la columna numero.'));
+            throw error;
         }
-    };
-
-    const handleArchivoClick = () => {
-        inputFileRef.current?.click();
+        onUploadSuccess?.();
     };
 
     return (
-        <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>Subir nueva campaña</Typography>
-
-            <Stack spacing={2}>
-                <TextField
-                    fullWidth
-                    label="Nombre de campaña"
-                    value={nombreCampaña}
-                    onChange={(e) => setNombreCampaña(e.target.value)}
-                />
-
-                <input
-                    type="file"
-                    accept=".csv"
-                    ref={inputFileRef}
-                    style={{ display: 'none' }}
-                    onChange={(e) => setArchivo(e.target.files[0])}
-                />
-
-                <Button
-                    variant="outlined"
-                    startIcon={<UploadFileIcon />}
-                    onClick={handleArchivoClick}
-                >
-                    {archivo ? archivo.name : 'Seleccionar archivo CSV'}
-                </Button>
-
-                <Box textAlign="center">
-                    <Button
-                        variant="contained"
-                        disabled={subiendo || !nombreCampaña || !archivo}
-                        onClick={handleUpload}
-                        startIcon={subiendo ? <CircularProgress size={20} /> : null}
-                        sx={{
-                            borderRadius: 2,
-                            fontFamily: commonFont,
-                            textTransform: 'none',
-                            fontSize: '0.9rem',
-                            backgroundColor: '#075E54',
-                            transition: 'all 0.3s ease',
-                            '&:hover': {
-                                backgroundColor: '#0b7b65',
-                                transform: 'scale(1.03)',
-                                boxShadow: 4,
-                            },
-                        }}
-                    >
-                        {subiendo ? 'Subiendo...' : 'Subir'}
-                    </Button>
+        <SubirCsvDialog
+            open={open}
+            onClose={onClose}
+            onSubir={subir}
+            ayuda={(
+                <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Formato del CSV</Typography>
+                    <Typography variant="body2" component="div">
+                        Separado por comas, con una fila de encabezados. La columna <Box component="code" sx={code}>numero</Box> es obligatoria;
+                        {' '}<Box component="code" sx={code}>mensaje</Box> es opcional (un texto propio para ese contacto). Las demás
+                        columnas quedan como variables que la plantilla puede usar. Las filas sin número se descartan.
+                    </Typography>
                 </Box>
-            </Stack>
-        </Paper>
+            )}
+        />
     );
 }

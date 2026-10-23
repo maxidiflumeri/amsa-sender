@@ -35,8 +35,10 @@ export class WapiAnaliticaController {
   }
 
   private parseFechas(desde?: string, hasta?: string) {
-    const desdeDate = desde ? new Date(`${desde}T00:00:00.000`) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const hastaDate = hasta ? new Date(`${hasta}T23:59:59.999`) : new Date();
+    // Los días son de Argentina (sin horario de verano): sin el offset, `new Date` usaba la zona del servidor, que en
+    // prod es UTC, y el rango arrancaba a las 21 del día anterior y cortaba las últimas 3 horas del "hasta".
+    const desdeDate = desde ? new Date(`${desde}T00:00:00.000-03:00`) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const hastaDate = hasta ? new Date(`${hasta}T23:59:59.999-03:00`) : new Date();
     return { desdeDate, hastaDate };
   }
 

@@ -1,435 +1,357 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Box, Button, ToggleButton, ToggleButtonGroup, Tooltip, TextField, Typography, useMediaQuery } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
+import { ArrowLeft } from 'lucide-react';
 import {
-    Box, Typography, Paper, Grid, Button, ButtonGroup, Table, TableHead,
-    TableRow, TableCell, TableBody, CircularProgress, Alert, Card,
-    CardContent, Stack, IconButton, Tooltip, Chip,
-} from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import PersonIcon from '@mui/icons-material/Person';
-import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
-    Legend, LineChart, Line, ResponsiveContainer,
+    Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis,
 } from 'recharts';
 import api from '../../../api/axios';
+import { BloqueEstado, DataTableResponsive, EmptyState, SectionCard, StatusChip } from '../../ui';
+import { estadoConversacion } from '../../analitica/estados';
+import { aDiaLocal, diaLocalHaceDias, fmtDiaCorto, fmtDuracion, fmtFecha, fmtNumero, porcentaje } from '../../analitica/formato';
+import { useGraficos } from '../../analitica/graficos';
+import GrillaKpi from '../../analitica/GrillaKpi';
 import PanelAnalisisIA from './PanelAnalisisIA';
 
-function formatMs(ms) {
-    if (!ms) return '—';
-    const s = Math.floor(ms / 1000);
-    if (s < 60) return `${s}s`;
-    const m = Math.floor(s / 60);
-    const rem = s % 60;
-    if (m < 60) return `${m}m ${rem}s`;
-    return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
+const PRESETS = [
+    { k: '1d', l: 'Hoy', dias: 0 },
+    { k: '7d', l: '7 días', dias: 7 },
+    { k: '30d', l: '30 días', dias: 30 },
+];
+const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-function formatFecha(ts) {
-    if (!ts) return '—';
-    return new Date(ts).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
+const rangoDe = (k) => {
+    const p = PRESETS.find((x) => x.k === k) ?? PRESETS[2];
+    return { desde: diaLocalHaceDias(p.dias), hasta: aDiaLocal() };
+};
 
-function KpiCard({ label, value, color = 'text.primary', subtitle }) {
-    return (
-        <Card variant="outlined" sx={{ height: '100%' }}>
-            <CardContent sx={{ pb: '8px !important' }}>
-                <Typography variant="caption" color="text.secondary">{label}</Typography>
-                <Typography variant="h5" fontWeight="bold" color={color}>{value ?? '—'}</Typography>
-                {subtitle && <Typography variant="caption" color="text.secondary">{subtitle}</Typography>}
-            </CardContent>
-        </Card>
-    );
-}
+const cortar = (s, n) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s));
 
-const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-
-function HeatmapActividad({ agentes }) {
-    // Agregamos actividad por día-hora de todos los agentes
-    const matrix = Array.from({ length: 7 }, () => new Array(24).fill(0));
-
-    agentes.forEach(a => {
-        if (!a.actividadPorHora) return;
-        // actividadPorHora solo tiene horas, no días; el heatmap usa la data global
-        // En MetricasAgentes usamos actividadPorHora simplificada (solo horas en total)
-    });
-
-    return null; // placeholder cuando no hay datos de día-hora por agente individual
-}
-
-export default function MetricasAgentes() {
-    const [periodo, setPeriodo] = useState('30d');
-    const [desde, setDesde] = useState('');
-    const [hasta, setHasta] = useState('');
-    const [datos, setDatos] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [agenteDetalle, setAgenteDetalle] = useState(null);
-    const [loadingDetalle, setLoadingDetalle] = useState(false);
-    const [detalle, setDetalle] = useState(null);
-
-    const getRango = useCallback((p) => {
-        const hasta = new Date();
-        const desde = new Date();
-        if (p === '1d') desde.setDate(desde.getDate() - 1);
-        else if (p === '7d') desde.setDate(desde.getDate() - 7);
-        else desde.setDate(desde.getDate() - 30);
-        return {
-            desde: desde.toISOString().slice(0, 10),
-            hasta: hasta.toISOString().slice(0, 10),
-        };
-    }, []);
-
-    const cargar = useCallback(async (desdeStr, hastaStr) => {
-        setLoading(true);
-        setError('');
-        try {
-            const r = await api.get('/wapi/analitica/agentes', { params: { desde: desdeStr, hasta: hastaStr } });
-            setDatos(r.data);
-        } catch {
-            setError('Error al cargar métricas de agentes');
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        const { desde: d, hasta: h } = getRango(periodo);
-        setDesde(d);
-        setHasta(h);
-        cargar(d, h);
-    }, [periodo, getRango, cargar]);
-
-    const verDetalle = async (agente) => {
-        setAgenteDetalle(agente);
-        setLoadingDetalle(true);
-        try {
-            const { desde: d, hasta: h } = getDesdeHasta();
-            const r = await api.get(`/wapi/analitica/agentes/${agente.id}`, { params: { desde: d, hasta: h } });
-            setDetalle(r.data);
-        } catch {
-            setDetalle(null);
-        } finally {
-            setLoadingDetalle(false);
-        }
-    };
-
-    const getDesdeHasta = () => {
-        if (desde && hasta) return { desde, hasta };
-        return getRango(periodo);
-    };
-
-    const aplicarRangoCustom = () => {
-        if (desde && hasta) cargar(desde, hasta);
-    };
-
-    if (agenteDetalle) {
-        return (
-            <Box>
-                <Button startIcon={<ArrowBackIcon />} onClick={() => { setAgenteDetalle(null); setDetalle(null); }} sx={{ mb: 2 }}>
-                    Volver
-                </Button>
-                <Typography variant="h6" fontWeight="bold" mb={2}>
-                    Detalle: {agenteDetalle.nombre}
-                </Typography>
-                {loadingDetalle && <Box display="flex" justifyContent="center" py={4}><CircularProgress /></Box>}
-                {detalle && (
-                    <Box>
-                        <Grid container spacing={2} mb={3}>
-                            <Grid item xs={6} sm={4} md={2}>
-                                <KpiCard label="Asignadas" value={detalle.metricas.asignadas} />
-                            </Grid>
-                            <Grid item xs={6} sm={4} md={2}>
-                                <KpiCard label="Resueltas" value={detalle.metricas.resueltas} color="success.main" />
-                            </Grid>
-                            <Grid item xs={6} sm={4} md={2}>
-                                <KpiCard label="Activas" value={detalle.metricas.activas} color="info.main" />
-                            </Grid>
-                            <Grid item xs={6} sm={4} md={2}>
-                                <KpiCard label="Mensajes enviados" value={detalle.metricas.mensajesEnviados} />
-                            </Grid>
-                            <Grid item xs={6} sm={4} md={2}>
-                                <KpiCard label="Avg 1ra resp." value={formatMs(detalle.metricas.avgPrimeraRespuestaMs)} />
-                            </Grid>
-                            <Grid item xs={6} sm={4} md={2}>
-                                <KpiCard label="Avg resolución" value={formatMs(detalle.metricas.avgResolucionMs)} />
-                            </Grid>
-                        </Grid>
-
-                        {/* Distribución horaria */}
-                        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                            <Typography variant="subtitle2" fontWeight="bold" mb={2}>Actividad por hora</Typography>
-                            <ResponsiveContainer width="100%" height={200}>
-                                <BarChart data={detalle.actividadPorHora} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="hora" tickFormatter={h => `${h}h`} />
-                                    <YAxis />
-                                    <RTooltip formatter={(v) => [v, 'Mensajes']} labelFormatter={h => `${h}:00 hs`} />
-                                    <Bar dataKey="count" fill="#1976d2" radius={[4, 4, 0, 0]} name="Mensajes" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </Paper>
-
-                        {/* Actividad por día de semana */}
-                        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                            <Typography variant="subtitle2" fontWeight="bold" mb={2}>Actividad por día de semana</Typography>
-                            <ResponsiveContainer width="100%" height={180}>
-                                <BarChart
-                                    data={detalle.actividadPorDia.map(d => ({
-                                        dia: ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.dia],
-                                        count: d.count,
-                                    }))}
-                                    margin={{ top: 5, right: 20, bottom: 5, left: 0 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="dia" />
-                                    <YAxis />
-                                    <RTooltip />
-                                    <Bar dataKey="count" fill="#4caf50" radius={[4, 4, 0, 0]} name="Mensajes" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </Paper>
-
-                        {/* Conversaciones del asesor */}
-                        <Paper variant="outlined" sx={{ p: 2 }}>
-                            <Typography variant="subtitle2" fontWeight="bold" mb={2}>Conversaciones en el período</Typography>
-                            <Box sx={{ overflowX: 'auto' }}>
-                            <Table size="small" sx={{ minWidth: { xs: 300, sm: 520 } }}>
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell>Número</TableCell>
-                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Nombre</TableCell>
-                                        <TableCell>Estado</TableCell>
-                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Creada</TableCell>
-                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>1ra resp.</TableCell>
-                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Resuelta</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {detalle.conversaciones.length === 0 && (
-                                        <TableRow><TableCell colSpan={6} align="center">Sin conversaciones</TableCell></TableRow>
-                                    )}
-                                    {detalle.conversaciones.map(c => (
-                                        <TableRow key={c.id} hover>
-                                            <TableCell>{c.numero}</TableCell>
-                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{c.nombre ?? '—'}</TableCell>
-                                            <TableCell>
-                                                <Chip
-                                                    label={c.estado.replace('_', ' ')}
-                                                    color={c.estado === 'resuelta' ? 'success' : c.estado === 'asignada' ? 'info' : 'default'}
-                                                    size="small"
-                                                />
-                                            </TableCell>
-                                            <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', sm: 'table-cell' } }}>{formatFecha(c.creadoAt)}</TableCell>
-                                            <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.primeraRespuestaAt)}</TableCell>
-                                            <TableCell sx={{ whiteSpace: 'nowrap', display: { xs: 'none', md: 'table-cell' } }}>{formatFecha(c.resolvedAt)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                            </Box>
-                        </Paper>
-                    </Box>
-                )}
-            </Box>
-        );
-    }
+/** Actividad de mensajes por hora y por agente. Las celdas se reparten el ancho: en el celular no hace falta scroll. */
+function MapaActividad({ agentes }) {
+    const theme = useTheme();
+    const max = Math.max(1, ...agentes.flatMap((a) => (a.actividadPorHora || []).map((h) => h.count)));
+    const horas = Array.from({ length: 24 }, (_, h) => h);
+    const columnas = { xs: 'minmax(0, 1fr)', md: '120px minmax(0, 1fr)' };
+    const fila24 = { display: 'grid', gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '2px' };
 
     return (
         <Box>
-            {/* Selector período */}
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} mb={3} flexWrap="wrap">
-                <ButtonGroup size="small" variant="outlined">
-                    {[{ k: '1d', l: 'Hoy' }, { k: '7d', l: '7 días' }, { k: '30d', l: '30 días' }].map(({ k, l }) => (
-                        <Button key={k} variant={periodo === k ? 'contained' : 'outlined'} onClick={() => setPeriodo(k)}>
-                            {l}
-                        </Button>
+            <Box sx={{ display: 'grid', gridTemplateColumns: columnas, mb: 0.5 }}>
+                <Box sx={{ display: { xs: 'none', md: 'block' } }} />
+                <Box sx={fila24} aria-hidden>
+                    {horas.map((h) => (
+                        <Typography
+                            key={h}
+                            variant="caption"
+                            sx={{ textAlign: 'center', fontSize: 11, color: 'text.secondary', visibility: { xs: h % 3 === 0 ? 'visible' : 'hidden', md: 'visible' } }}
+                        >
+                            {h}
+                        </Typography>
                     ))}
-                </ButtonGroup>
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                    <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
-                        style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: 14, minWidth: 0, width: '100%', maxWidth: 140 }} />
-                    <Typography variant="body2">—</Typography>
-                    <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
-                        style={{ padding: '6px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: 14, minWidth: 0, width: '100%', maxWidth: 140 }} />
-                    <Button size="small" variant="outlined" onClick={aplicarRangoCustom}>Aplicar</Button>
-                </Stack>
-            </Stack>
-
-            {loading && <Box display="flex" justifyContent="center" py={6}><CircularProgress /></Box>}
-            {error && <Alert severity="error">{error}</Alert>}
-
-            {datos && !loading && (
-                <Box>
-                    <PanelAnalisisIA
-                        endpoint={`/wapi/analitica/agentes/ai?desde=${getDesdeHasta().desde}&hasta=${getDesdeHasta().hasta}`}
-                        label="Analizar equipo con IA"
-                    />
-
-                    {/* KPIs globales */}
-                    <Grid container spacing={2} mb={3}>
-                        <Grid item xs={6} sm={3}>
-                            <KpiCard label="Total conversaciones" value={datos.global.totalConvs} />
-                        </Grid>
-                        <Grid item xs={6} sm={3}>
-                            <KpiCard
-                                label="Resueltas"
-                                value={datos.global.resueltas}
-                                color="success.main"
-                                subtitle={datos.global.totalConvs > 0
-                                    ? `${Math.round(datos.global.resueltas / datos.global.totalConvs * 100)}%`
-                                    : ''}
-                            />
-                        </Grid>
-                        <Grid item xs={6} sm={3}>
-                            <KpiCard label="Avg 1ra respuesta" value={formatMs(datos.global.avgPrimeraRespuestaMs)} />
-                        </Grid>
-                        <Grid item xs={6} sm={3}>
-                            <KpiCard label="Avg resolución" value={formatMs(datos.global.avgResolucionMs)} />
-                        </Grid>
-                    </Grid>
-
-                    {/* Gráfico comparativo asignadas vs resueltas */}
-                    {datos.agentes.length > 0 && (
-                        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                            <Typography variant="subtitle2" fontWeight="bold" mb={2}>Comparativa por agente</Typography>
-                            <ResponsiveContainer width="100%" height={250}>
-                                <BarChart data={datos.agentes} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="nombre" />
-                                    <YAxis />
-                                    <RTooltip />
-                                    <Legend />
-                                    <Bar dataKey="asignadas" name="Asignadas" fill="#2196f3" stackId="a" />
-                                    <Bar dataKey="resueltas" name="Resueltas" fill="#4caf50" stackId="b" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </Paper>
-                    )}
-
-                    {/* Evolución diaria */}
-                    {datos.evolucionDiaria.length > 0 && (
-                        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                            <Typography variant="subtitle2" fontWeight="bold" mb={2}>Evolución diaria</Typography>
-                            <ResponsiveContainer width="100%" height={220}>
-                                <LineChart data={datos.evolucionDiaria} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="fecha" tickFormatter={f => f.slice(5)} />
-                                    <YAxis />
-                                    <RTooltip />
-                                    <Legend />
-                                    <Line type="monotone" dataKey="convs" name="Conversaciones" stroke="#2196f3" dot={false} />
-                                    <Line type="monotone" dataKey="resueltas" name="Resueltas" stroke="#4caf50" dot={false} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </Paper>
-                    )}
-
-                    {/* Heatmap de actividad (por hora por agente) */}
-                    {datos.agentes.length > 0 && (() => {
-                        const horasData = datos.agentes.flatMap(a =>
-                            (a.actividadPorHora || []).map(h => ({ ...h, agente: a.nombre }))
-                        );
-                        const maxCount = Math.max(1, ...horasData.map(h => h.count));
-
-                        return (
-                            <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                                <Typography variant="subtitle2" fontWeight="bold" mb={2}>Actividad por hora (agregada)</Typography>
-                                {/* Wrapper con scroll horizontal para el heatmap en mobile */}
-                                <Box sx={{ overflowX: 'auto', pb: 1 }}>
-                                    <Box sx={{ minWidth: 620 }}>
-                                        {/* Cabecera de horas */}
-                                        <Box display="flex" alignItems="center" mb={0.5}>
-                                            <Box width={90} flexShrink={0} />
-                                            {Array.from({ length: 24 }, (_, h) => (
-                                                <Box key={h} width={22} textAlign="center" flexShrink={0}>
-                                                    <Typography variant="caption" sx={{ fontSize: 9 }}>{h}</Typography>
-                                                </Box>
-                                            ))}
-                                        </Box>
-                                        {datos.agentes.map(agente => (
-                                            <Box key={agente.id} display="flex" alignItems="center" mb={0.25}>
-                                                <Box width={90} flexShrink={0}>
-                                                    <Typography variant="caption" noWrap sx={{ fontSize: 10 }}>{agente.nombre}</Typography>
-                                                </Box>
-                                                {(agente.actividadPorHora || Array.from({ length: 24 }, (_, h) => ({ hora: h, count: 0 }))).map(h => (
-                                                    <Tooltip key={h.hora} title={`${h.hora}:00 — ${h.count} msgs`}>
-                                                        <Box
-                                                            width={20} height={16}
-                                                            mx={0.1}
-                                                            flexShrink={0}
-                                                            sx={{
-                                                                backgroundColor: `rgba(25, 118, 210, ${h.count / maxCount})`,
-                                                                borderRadius: 0.5,
-                                                                border: '1px solid rgba(0,0,0,0.08)',
-                                                            }}
-                                                        />
-                                                    </Tooltip>
-                                                ))}
-                                            </Box>
-                                        ))}
-                                        <Box display="flex" alignItems="center" mt={1} gap={1}>
-                                            <Typography variant="caption">Menos</Typography>
-                                            {[0.1, 0.3, 0.5, 0.7, 1].map(o => (
-                                                <Box key={o} width={16} height={16} sx={{ backgroundColor: `rgba(25, 118, 210, ${o})`, borderRadius: 0.5 }} />
-                                            ))}
-                                            <Typography variant="caption">Más</Typography>
-                                        </Box>
-                                    </Box>
-                                </Box>
-                            </Paper>
-                        );
-                    })()}
-
-                    {/* Tabla ranking */}
-                    <Paper variant="outlined" sx={{ p: 2 }}>
-                        <Typography variant="subtitle2" fontWeight="bold" mb={2}>Ranking de agentes</Typography>
-                        <Box sx={{ overflowX: 'auto' }}>
-                        <Table size="small" sx={{ minWidth: { xs: 360, sm: 600 } }}>
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>Agente</TableCell>
-                                    <TableCell align="right">Asignadas</TableCell>
-                                    <TableCell align="right">Resueltas (%)</TableCell>
-                                    <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Activas</TableCell>
-                                    <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>Avg 1ra resp.</TableCell>
-                                    <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>Avg resolución</TableCell>
-                                    <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Mensajes</TableCell>
-                                    <TableCell></TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {datos.agentes.length === 0 && (
-                                    <TableRow><TableCell colSpan={8} align="center">Sin datos</TableCell></TableRow>
-                                )}
-                                {[...datos.agentes].sort((a, b) => b.asignadas - a.asignadas).map(a => (
-                                    <TableRow key={a.id} hover>
-                                        <TableCell>{a.nombre}</TableCell>
-                                        <TableCell align="right">{a.asignadas}</TableCell>
-                                        <TableCell align="right">
-                                            {a.resueltas}
-                                            {a.asignadas > 0 && (
-                                                <Typography component="span" variant="caption" color="text.secondary" ml={0.5}>
-                                                    ({Math.round(a.resueltas / a.asignadas * 100)}%)
-                                                </Typography>
-                                            )}
-                                        </TableCell>
-                                        <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{a.activas}</TableCell>
-                                        <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>{formatMs(a.avgPrimeraRespuestaMs)}</TableCell>
-                                        <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>{formatMs(a.avgResolucionMs)}</TableCell>
-                                        <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{a.mensajesEnviados}</TableCell>
-                                        <TableCell>
-                                            <Tooltip title="Ver detalle">
-                                                <IconButton size="small" onClick={() => verDetalle(a)}>
-                                                    <PersonIcon fontSize="small" />
-                                                </IconButton>
-                                            </Tooltip>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                        </Box>
-                    </Paper>
                 </Box>
+            </Box>
+            {agentes.map((a) => {
+                const porHora = a.actividadPorHora || horas.map((hora) => ({ hora, count: 0 }));
+                return (
+                    <Box key={a.id} sx={{ display: 'grid', gridTemplateColumns: columnas, alignItems: 'center', mb: { xs: 1, md: 0.5 }, columnGap: 1 }}>
+                        <Typography variant="caption" noWrap sx={{ fontSize: 12 }}>{a.nombre}</Typography>
+                        <Box sx={fila24}>
+                            {porHora.map((h) => (
+                                <Tooltip key={h.hora} title={`${a.nombre}: ${h.count} mensajes a las ${h.hora}:00`} enterTouchDelay={0} arrow>
+                                    <Box
+                                        sx={{
+                                            height: { xs: 22, md: 18 },
+                                            borderRadius: '3px',
+                                            bgcolor: h.count > 0 ? alpha(theme.palette.primary.main, 0.12 + 0.88 * (h.count / max)) : 'action.hover',
+                                        }}
+                                    />
+                                </Tooltip>
+                            ))}
+                        </Box>
+                    </Box>
+                );
+            })}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.5 }} aria-hidden>
+                <Typography variant="caption" color="text.secondary">Menos</Typography>
+                {[0.12, 0.35, 0.55, 0.78, 1].map((o) => (
+                    <Box key={o} sx={{ width: 16, height: 16, borderRadius: '3px', bgcolor: alpha(theme.palette.primary.main, o) }} />
+                ))}
+                <Typography variant="caption" color="text.secondary">Más</Typography>
+            </Box>
+        </Box>
+    );
+}
+
+function DetalleAgente({ agente, rango, onVolver }) {
+    const g = useGraficos();
+    const celular = useMediaQuery((t) => t.breakpoints.down('sm'));
+    const [detalle, setDetalle] = useState(null);
+    const [estado, setEstado] = useState('cargando');
+
+    const cargar = useCallback(() => {
+        setEstado('cargando');
+        api.get(`/wapi/analitica/agentes/${agente.id}`, { params: rango })
+            .then((r) => {
+                setDetalle(r.data);
+                setEstado('ok');
+            })
+            .catch(() => setEstado('error'));
+    }, [agente.id, rango]);
+
+    useEffect(() => {
+        setDetalle(null);
+        cargar();
+    }, [cargar]);
+
+    const volver = (
+        <Button startIcon={<ArrowLeft size={18} strokeWidth={1.75} aria-hidden />} onClick={onVolver} sx={{ mb: 2, minHeight: { xs: 44, sm: 36 } }}>
+            Volver al equipo
+        </Button>
+    );
+
+    if (estado === 'cargando') return <Box>{volver}<BloqueEstado estado="cargando" mensaje="Cargando el detalle…" /></Box>;
+    if (estado === 'error' || !detalle) {
+        return <Box>{volver}<BloqueEstado estado="error" mensaje="No se pudo cargar el detalle del agente." onReintentar={cargar} /></Box>;
+    }
+
+    const m = detalle.metricas;
+    const porDia = detalle.actividadPorDia.map((d) => ({ dia: DIAS_SEMANA[d.dia], count: d.count }));
+
+    return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box>{volver}</Box>
+            <SectionCard title={agente.nombre} subtitle={`Del ${rango.desde.split('-').reverse().join('/')} al ${rango.hasta.split('-').reverse().join('/')}`}>
+                <GrillaKpi
+                    max={6}
+                    items={[
+                        { titulo: 'Asignadas', valor: fmtNumero(m.asignadas) },
+                        { titulo: 'Resueltas', valor: fmtNumero(m.resueltas) },
+                        { titulo: 'Activas', valor: fmtNumero(m.activas) },
+                        { titulo: 'Mensajes enviados', valor: fmtNumero(m.mensajesEnviados) },
+                        { titulo: '1ª respuesta', valor: fmtDuracion(m.avgPrimeraRespuestaMs), leyenda: 'promedio' },
+                        { titulo: 'Resolución', valor: fmtDuracion(m.avgResolucionMs), leyenda: 'promedio' },
+                    ]}
+                />
+            </SectionCard>
+
+            <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' } }}>
+                <SectionCard title="Actividad por hora">
+                    <Box sx={{ height: 220 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={detalle.actividadPorHora} margin={{ top: 5, right: 8, bottom: 5, left: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke={g.grilla} vertical={false} />
+                                <XAxis dataKey="hora" tickFormatter={(h) => `${h}h`} interval={celular ? 2 : 1} {...g.eje} />
+                                <YAxis width={celular ? 32 : 40} allowDecimals={false} {...g.eje} axisLine={false} />
+                                <RTooltip {...g.tooltip} formatter={(v) => [fmtNumero(v), 'Mensajes']} labelFormatter={(h) => `${h}:00 hs`} />
+                                <Bar dataKey="count" fill={g.primary} radius={[4, 4, 0, 0]} name="Mensajes" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </Box>
+                </SectionCard>
+                <SectionCard title="Actividad por día de la semana">
+                    <Box sx={{ height: 220 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={porDia} margin={{ top: 5, right: 8, bottom: 5, left: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke={g.grilla} vertical={false} />
+                                <XAxis dataKey="dia" {...g.eje} />
+                                <YAxis width={celular ? 32 : 40} allowDecimals={false} {...g.eje} axisLine={false} />
+                                <RTooltip {...g.tooltip} formatter={(v) => [fmtNumero(v), 'Mensajes']} />
+                                <Bar dataKey="count" fill={g.info} radius={[4, 4, 0, 0]} name="Mensajes" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </Box>
+                </SectionCard>
+            </Box>
+
+            <SectionCard title="Conversaciones en el período" noPadding>
+                <DataTableResponsive
+                    ariaLabel="Conversaciones del agente"
+                    columns={[
+                        { key: 'numero', label: 'Número', primary: true },
+                        { key: 'nombre', label: 'Nombre', secondary: true, render: (c) => c.nombre ?? '—' },
+                        { key: 'estado', label: 'Estado', render: (c) => { const e = estadoConversacion(c.estado); return <StatusChip label={e.label} tono={e.tono} />; } },
+                        { key: 'creadoAt', label: 'Creada', render: (c) => fmtFecha(c.creadoAt) },
+                        { key: 'primeraRespuestaAt', label: '1ª respuesta', render: (c) => fmtFecha(c.primeraRespuestaAt), hideBelow: 'lg' },
+                        { key: 'resolvedAt', label: 'Resuelta', render: (c) => fmtFecha(c.resolvedAt), hideBelow: 'lg' },
+                    ]}
+                    rows={detalle.conversaciones}
+                    empty={<EmptyState compact title="Sin conversaciones" description="No atendió conversaciones en este período." />}
+                />
+            </SectionCard>
+        </Box>
+    );
+}
+
+export default function MetricasAgentes() {
+    const g = useGraficos();
+    const celular = useMediaQuery((t) => t.breakpoints.down('sm'));
+    const [params, setParams] = useSearchParams();
+    const agenteId = params.get('a');
+
+    // `preset` es el botón marcado (null con un rango propio); `aplicado` es lo que realmente se consultó;
+    // `desde`/`hasta` son lo tipeado, que no cuenta hasta tocar "Aplicar".
+    const [preset, setPreset] = useState('30d');
+    const [aplicado, setAplicado] = useState(() => rangoDe('30d'));
+    const [desde, setDesde] = useState(aplicado.desde);
+    const [hasta, setHasta] = useState(aplicado.hasta);
+
+    const [datos, setDatos] = useState(null);
+    const [estado, setEstado] = useState('cargando');
+
+    const cargar = useCallback(() => {
+        setEstado('cargando');
+        api.get('/wapi/analitica/agentes', { params: aplicado })
+            .then((r) => {
+                setDatos(r.data);
+                setEstado('ok');
+            })
+            .catch(() => setEstado('error'));
+    }, [aplicado]);
+
+    useEffect(() => {
+        cargar();
+    }, [cargar]);
+
+    const elegirPreset = (_, k) => {
+        if (!k) return;
+        const r = rangoDe(k);
+        setPreset(k);
+        setAplicado(r);
+        setDesde(r.desde);
+        setHasta(r.hasta);
+    };
+
+    const rangoValido = !!desde && !!hasta && desde <= hasta;
+    const cambioRango = desde !== aplicado.desde || hasta !== aplicado.hasta;
+    const aplicarRango = () => {
+        if (!rangoValido) return;
+        setPreset(null);
+        setAplicado({ desde, hasta });
+    };
+
+    const abrirAgente = (a) => setParams((p) => { const s = new URLSearchParams(p); s.set('a', String(a.id)); return s; });
+    const cerrarAgente = () => setParams((p) => { const s = new URLSearchParams(p); s.delete('a'); return s; });
+
+    const ranking = useMemo(() => (datos ? [...datos.agentes].sort((a, b) => b.asignadas - a.asignadas) : []), [datos]);
+
+    const agenteAbierto = agenteId && datos ? datos.agentes.find((a) => String(a.id) === agenteId) : null;
+    if (agenteAbierto) return <DetalleAgente agente={agenteAbierto} rango={aplicado} onVolver={cerrarAgente} />;
+
+    return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'center' }, flexWrap: 'wrap' }}>
+                <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    color="primary"
+                    value={preset}
+                    onChange={elegirPreset}
+                    aria-label="Período"
+                    sx={{ '& .MuiToggleButton-root': { minHeight: { xs: 44, sm: 36 }, flex: { xs: 1, md: 'none' }, px: 2 } }}
+                >
+                    {PRESETS.map((p) => <ToggleButton key={p.k} value={p.k}>{p.l}</ToggleButton>)}
+                </ToggleButtonGroup>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <TextField type="date" size="small" label="Desde" value={desde} onChange={(e) => setDesde(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: { xs: 1, md: 'none' }, minWidth: 140 }} />
+                    <TextField type="date" size="small" label="Hasta" value={hasta} onChange={(e) => setHasta(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} sx={{ flex: { xs: 1, md: 'none' }, minWidth: 140 }} />
+                    <Button variant="outlined" onClick={aplicarRango} disabled={!rangoValido || !cambioRango} sx={{ minHeight: { xs: 44, sm: 36 }, width: { xs: '100%', sm: 'auto' } }}>
+                        Aplicar
+                    </Button>
+                </Box>
+            </Box>
+
+            {estado === 'cargando' && <BloqueEstado estado="cargando" mensaje="Cargando métricas del equipo…" />}
+            {estado === 'error' && <BloqueEstado estado="error" mensaje="No se pudieron cargar las métricas de los agentes." onReintentar={cargar} />}
+
+            {estado === 'ok' && datos && (
+                <>
+                    <Box>
+                        <PanelAnalisisIA
+                            endpoint={`/wapi/analitica/agentes/ai?desde=${aplicado.desde}&hasta=${aplicado.hasta}`}
+                            label="Analizar equipo con IA"
+                        />
+                        <GrillaKpi
+                            items={[
+                                { titulo: 'Conversaciones', valor: fmtNumero(datos.global.totalConvs) },
+                                {
+                                    titulo: 'Resueltas',
+                                    valor: fmtNumero(datos.global.resueltas),
+                                    leyenda: datos.global.totalConvs > 0 ? `${porcentaje(datos.global.resueltas, datos.global.totalConvs, 0)}% del total` : undefined,
+                                },
+                                { titulo: '1ª respuesta', valor: fmtDuracion(datos.global.avgPrimeraRespuestaMs), leyenda: 'promedio' },
+                                { titulo: 'Resolución', valor: fmtDuracion(datos.global.avgResolucionMs), leyenda: 'promedio' },
+                            ]}
+                        />
+                    </Box>
+
+                    {datos.agentes.length > 0 && (
+                        <SectionCard title="Comparativa por agente" subtitle="Conversaciones asignadas y resueltas.">
+                            <Box sx={{ height: 260 }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={datos.agentes} margin={{ top: 5, right: 8, bottom: 5, left: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke={g.grilla} vertical={false} />
+                                        <XAxis dataKey="nombre" tickFormatter={(n) => cortar(n, celular ? 7 : 14)} interval={0} {...g.eje} />
+                                        <YAxis width={celular ? 32 : 40} allowDecimals={false} {...g.eje} axisLine={false} />
+                                        <RTooltip {...g.tooltip} />
+                                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                                        <Bar dataKey="asignadas" name="Asignadas" fill={g.info} radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="resueltas" name="Resueltas" fill={g.success} radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </Box>
+                        </SectionCard>
+                    )}
+
+                    {datos.evolucionDiaria.length > 0 && (
+                        <SectionCard title="Evolución diaria">
+                            <Box sx={{ height: 240 }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={datos.evolucionDiaria} margin={{ top: 5, right: 12, bottom: 5, left: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke={g.grilla} vertical={false} />
+                                        <XAxis dataKey="fecha" tickFormatter={fmtDiaCorto} minTickGap={celular ? 32 : 16} {...g.eje} />
+                                        <YAxis width={celular ? 32 : 40} allowDecimals={false} {...g.eje} axisLine={false} />
+                                        <RTooltip {...g.tooltip} labelFormatter={fmtDiaCorto} />
+                                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                                        <Line type="monotone" dataKey="convs" name="Conversaciones" stroke={g.info} strokeWidth={2} dot={false} />
+                                        <Line type="monotone" dataKey="resueltas" name="Resueltas" stroke={g.success} strokeWidth={2} dot={false} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </Box>
+                        </SectionCard>
+                    )}
+
+                    {datos.agentes.length > 0 && (
+                        <SectionCard title="Actividad por hora" subtitle="Mensajes enviados por cada agente, hora por hora.">
+                            <MapaActividad agentes={datos.agentes} />
+                        </SectionCard>
+                    )}
+
+                    <SectionCard title="Ranking de agentes" noPadding>
+                        <DataTableResponsive
+                            ariaLabel="Ranking de agentes"
+                            columns={[
+                                { key: 'nombre', label: 'Agente', primary: true },
+                                { key: 'asignadas', label: 'Asignadas', align: 'right', render: (a) => fmtNumero(a.asignadas) },
+                                {
+                                    key: 'resueltas',
+                                    label: 'Resueltas',
+                                    align: 'right',
+                                    render: (a) => `${fmtNumero(a.resueltas)}${a.asignadas > 0 ? ` (${porcentaje(a.resueltas, a.asignadas, 0)}%)` : ''}`,
+                                },
+                                { key: 'activas', label: 'Activas', align: 'right', render: (a) => fmtNumero(a.activas) },
+                                { key: 'avgPrimeraRespuestaMs', label: '1ª respuesta', align: 'right', render: (a) => fmtDuracion(a.avgPrimeraRespuestaMs), hideBelow: 'lg' },
+                                { key: 'avgResolucionMs', label: 'Resolución', align: 'right', render: (a) => fmtDuracion(a.avgResolucionMs), hideBelow: 'lg' },
+                                { key: 'mensajesEnviados', label: 'Mensajes', align: 'right', render: (a) => fmtNumero(a.mensajesEnviados) },
+                            ]}
+                            rows={ranking}
+                            onRowClick={abrirAgente}
+                            acciones={(a) => <Button size="small" variant="outlined" onClick={() => abrirAgente(a)}>Ver detalle</Button>}
+                            empty={<EmptyState compact title="Sin agentes" description="No hay actividad de agentes en este período." />}
+                        />
+                    </SectionCard>
+                </>
             )}
         </Box>
     );

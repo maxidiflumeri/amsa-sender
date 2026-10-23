@@ -1,117 +1,73 @@
-import React, { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Box, Button, Card, CardContent, Typography, Chip, CircularProgress,
-    Snackbar, Dialog, DialogTitle, DialogContent, DialogActions,
-    Select, MenuItem, FormControl, InputLabel, FormControlLabel,
-    Switch, Alert, Tooltip, IconButton, Divider, useTheme,
-    TextField,
+    Alert, Box, Button, Chip, CircularProgress, Divider, FormControl, FormControlLabel, InputAdornment, InputLabel,
+    MenuItem, Paper, Select, Switch, TextField, Typography,
 } from '@mui/material';
-import MuiAlert from '@mui/material/Alert';
-import SyncIcon from '@mui/icons-material/Sync';
-import SettingsIcon from '@mui/icons-material/Settings';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import CancelIcon from '@mui/icons-material/Cancel';
-import PendingIcon from '@mui/icons-material/HourglassEmpty';
+import { RefreshCw, Search, Settings2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import {
+    BloqueEstado, EmptyState, PageContainer, PageHeader, ResponsiveDialog, StatusChip, WaBurbuja, formatoWhatsApp,
+} from '../ui';
 
-const ESTADO_CHIP = {
-    APPROVED: { label: 'Aprobado', color: 'success', icon: <CheckCircleIcon sx={{ fontSize: 14 }} /> },
-    PENDING:  { label: 'Pendiente', color: 'warning', icon: <PendingIcon sx={{ fontSize: 14 }} /> },
-    REJECTED: { label: 'Rechazado', color: 'error', icon: <CancelIcon sx={{ fontSize: 14 }} /> },
-    PAUSED:   { label: 'Pausado', color: 'default', icon: <PendingIcon sx={{ fontSize: 14 }} /> },
+// Estados de Meta traducidos, con el tono de su chip (antes: Aprobado/Rechazado en inglés mezclado con íconos sueltos).
+const ESTADO = {
+    APPROVED: { label: 'Aprobada', tono: 'ok' },
+    PENDING: { label: 'Pendiente', tono: 'aviso' },
+    REJECTED: { label: 'Rechazada', tono: 'error' },
+    PAUSED: { label: 'Pausada', tono: 'neutro' },
 };
 
+const CATEGORIA = { MARKETING: 'Marketing', UTILITY: 'Utilidad', AUTHENTICATION: 'Autenticación' };
+
 const ACCIONES = [
-    { value: 'INBOX', label: 'Derivar al inbox (hablar con asesor)' },
-    { value: 'BAJA',  label: 'Registrar como baja' },
+    { value: 'INBOX', label: 'Derivar a Conversaciones (hablar con un asesor)' },
+    { value: 'BAJA', label: 'Registrar como baja' },
     { value: 'IGNORAR', label: 'Ignorar (no hacer nada)' },
 ];
+const ACCION_CORTA = { INBOX: 'Conversaciones', BAJA: 'Baja', IGNORAR: 'Ignorar' };
 
-/** Extrae los botones Quick Reply de los componentes del template */
+/** Extrae los botones de respuesta rápida de los componentes de la plantilla. */
 function extraerBotonesQR(componentes) {
     if (!Array.isArray(componentes)) return [];
-    const buttonsComp = componentes.find(c => c.type === 'BUTTONS');
-    if (!buttonsComp) return [];
-    return (buttonsComp.buttons || []).filter(b => b.type === 'QUICK_REPLY');
+    const comp = componentes.find((c) => c.type === 'BUTTONS');
+    return (comp?.buttons || []).filter((b) => b.type === 'QUICK_REPLY');
 }
 
-/** Muestra una preview simplificada del template */
-function TemplatePreview({ componentes }) {
-    const theme = useTheme();
+/** La plantilla tal como la ve quien la recibe: una sola burbuja de WhatsApp, con sus botones. */
+function VistaPlantilla({ componentes }) {
     if (!Array.isArray(componentes)) return null;
-
-    const header = componentes.find(c => c.type === 'HEADER');
-    const body   = componentes.find(c => c.type === 'BODY');
-    const footer = componentes.find(c => c.type === 'FOOTER');
-    const buttons = componentes.find(c => c.type === 'BUTTONS');
+    const header = componentes.find((c) => c.type === 'HEADER');
+    const body = componentes.find((c) => c.type === 'BODY');
+    const footer = componentes.find((c) => c.type === 'FOOTER');
+    const botones = componentes.find((c) => c.type === 'BUTTONS')?.buttons?.map((b) => b.text).filter(Boolean);
 
     return (
-        <Box
-            sx={{
-                backgroundColor: theme.palette.mode === 'dark' ? '#1a2a1a' : '#DCF8C6',
-                borderRadius: 2,
-                p: 1.5,
-                maxWidth: 320,
-                fontFamily: '"Helvetica Neue", sans-serif',
-                fontSize: 13,
-            }}
-        >
-            {header && header.format === 'TEXT' && (
-                <Typography fontWeight="bold" fontSize={13} mb={0.5}>
-                    {header.text}
-                </Typography>
-            )}
-            {header && header.format !== 'TEXT' && (
-                <Box
-                    sx={{
-                        backgroundColor: theme.palette.mode === 'dark' ? '#2a3a2a' : '#b2dfdb',
-                        borderRadius: 1, p: 1, mb: 0.5, textAlign: 'center', fontSize: 12,
-                        color: 'text.secondary',
-                    }}
-                >
-                    [{header.format}]
-                </Box>
-            )}
-            {body && (
-                <Typography fontSize={13} sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                    {body.text}
-                </Typography>
-            )}
-            {footer && (
-                <Typography fontSize={11} color="text.secondary" mt={0.5}>
-                    {footer.text}
-                </Typography>
-            )}
-            {buttons && (
-                <Box mt={1} display="flex" flexDirection="column" gap={0.5}>
-                    <Divider sx={{ mb: 0.5 }} />
-                    {(buttons.buttons || []).map((btn, i) => (
-                        <Box
-                            key={i}
-                            sx={{
-                                textAlign: 'center',
-                                color: theme.palette.mode === 'dark' ? '#64b5f6' : '#128C7E',
-                                fontSize: 13,
-                                fontWeight: 500,
-                                py: 0.25,
-                            }}
-                        >
-                            {btn.text}
-                        </Box>
-                    ))}
-                </Box>
-            )}
+        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            <WaBurbuja direccion="saliente" botones={botones} sx={{ maxWidth: '100%', alignSelf: 'flex-start' }}>
+                {header?.format === 'TEXT' && <Box sx={{ fontWeight: 700, mb: 0.5 }}>{header.text}</Box>}
+                {header && header.format !== 'TEXT' && (
+                    <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 1, mb: 0.5, textAlign: 'center', fontSize: 12, color: 'text.secondary' }}>
+                        {{ IMAGE: 'Imagen', VIDEO: 'Video', DOCUMENT: 'Documento' }[header.format] ?? header.format}
+                    </Box>
+                )}
+                {body?.text ? formatoWhatsApp(body.text) : null}
+                {footer?.text && <Box sx={{ fontSize: 12.5, color: 'text.secondary', mt: 0.5 }}>{footer.text}</Box>}
+            </WaBurbuja>
         </Box>
     );
 }
 
-/** Dialog para configurar las acciones de los botones QR de un template */
-function DialogButtonActions({ open, template, onClose, onGuardado }) {
-    const botonesQR = template ? extraerBotonesQR(template.componentes) : [];
-    const initial = () => {
-        const existing = template?.buttonActions ?? [];
+/** Qué hace cada botón de respuesta rápida cuando el deudor lo toca. */
+function DialogAccionesBotones({ open, plantilla, onClose, onGuardado }) {
+    const feedback = useFeedback();
+    const botonesQR = useMemo(() => (plantilla ? extraerBotonesQR(plantilla.componentes) : []), [plantilla]);
+    const inicial = useMemo(() => {
+        const existentes = plantilla?.buttonActions ?? [];
         return botonesQR.map((btn, i) => {
-            const guardado = existing.find(a => a.indice === i) || {};
+            const guardado = existentes.find((a) => a.indice === i) || {};
             return {
                 indice: i,
                 texto: btn.text,
@@ -120,362 +76,313 @@ function DialogButtonActions({ open, template, onClose, onGuardado }) {
                 enviarConfirmacion: guardado.enviarConfirmacion ?? false,
             };
         });
-    };
+    }, [plantilla, botonesQR]);
 
     const [acciones, setAcciones] = useState([]);
-    const [saving, setSaving] = useState(false);
+    const [guardando, setGuardando] = useState(false);
     const [error, setError] = useState('');
 
     useEffect(() => {
-        if (open && template) setAcciones(initial());
-    }, [open, template]);
+        if (open && plantilla) {
+            setAcciones(inicial);
+            setError('');
+        }
+    }, [open, plantilla, inicial]);
 
-    const update = (i, campo, valor) => {
-        setAcciones(prev => prev.map((a, idx) => idx === i ? { ...a, [campo]: valor } : a));
-    };
+    // Para avisar antes de descartar: compara contra lo que había al abrir.
+    const sucio = JSON.stringify(acciones) !== JSON.stringify(inicial);
 
-    const handleGuardar = async () => {
-        setSaving(true);
+    const cambiar = (i, campo, valor) => setAcciones((prev) => prev.map((a, idx) => (idx === i ? { ...a, [campo]: valor } : a)));
+
+    const guardar = async () => {
+        setGuardando(true);
         setError('');
         try {
-            await api.patch(`/wapi/templates/${template.id}/button-actions`, { buttonActions: acciones });
-            onGuardado();
+            await api.patch(`/wapi/templates/${plantilla.id}/button-actions`, { buttonActions: acciones });
+            feedback.exito('Configuración de los botones guardada.');
+            await onGuardado();
             onClose();
-        } catch {
-            setError('Error al guardar. Intentá de nuevo.');
+        } catch (err) {
+            // El error queda adentro del diálogo, donde se está mirando.
+            setError(mensajeDeError(err, 'No se pudo guardar. Probá de nuevo.'));
         } finally {
-            setSaving(false);
+            setGuardando(false);
         }
     };
 
-    if (!template) return null;
+    if (!plantilla) return null;
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>
-                Configurar botones — <em>{template.metaNombre}</em>
-            </DialogTitle>
-            <DialogContent>
-                <Box display="flex" flexDirection="column" gap={3} mt={1}>
-                    {error && <Alert severity="error">{error}</Alert>}
+        <ResponsiveDialog
+            open={open}
+            onClose={onClose}
+            maxWidth="sm"
+            sucio={sucio}
+            title={<>Configurar botones · <em>{plantilla.metaNombre}</em></>}
+            actions={
+                <>
+                    <Button onClick={onClose} disabled={guardando}>Cancelar</Button>
+                    <Button
+                        variant="contained"
+                        onClick={guardar}
+                        disabled={guardando || botonesQR.length === 0}
+                        startIcon={guardando ? <CircularProgress size={16} color="inherit" /> : undefined}
+                    >
+                        Guardar
+                    </Button>
+                </>
+            }
+        >
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                {error && <Alert severity="error">{error}</Alert>}
 
-                    <Box>
-                        <Typography variant="caption" color="text.secondary" mb={1} display="block">
-                            Preview del template
-                        </Typography>
-                        <TemplatePreview componentes={template.componentes} />
-                    </Box>
-
-                    <Divider />
-
-                    {botonesQR.length === 0 && (
-                        <Alert severity="info">Este template no tiene botones Quick Reply configurados.</Alert>
-                    )}
-
-                    {acciones.map((accion, i) => (
-                        <Box key={i} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 2 }}>
-                            <Typography fontWeight="bold" fontSize={14} mb={1.5}>
-                                Botón {i + 1}: "{accion.texto}"
-                            </Typography>
-
-                            <Box display="flex" flexDirection="column" gap={1.5}>
-                                <FormControl fullWidth size="small">
-                                    <InputLabel>Acción al recibir respuesta</InputLabel>
-                                    <Select
-                                        value={accion.accion}
-                                        label="Acción al recibir respuesta"
-                                        onChange={(e) => update(i, 'accion', e.target.value)}
-                                    >
-                                        {ACCIONES.map(a => (
-                                            <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
-
-                                <TextField
-                                    label="Payload del botón"
-                                    size="small"
-                                    fullWidth
-                                    value={accion.payload}
-                                    onChange={(e) => update(i, 'payload', e.target.value)}
-                                    helperText="Usá {{1}}, {{2}}... (variables del template) o {{nombre_columna}} (columna del CSV). Ej: INBOX|ref={{nro_cliente}}"
-                                    inputProps={{ maxLength: 128 }}
-                                />
-
-                                {accion.accion === 'BAJA' && (
-                                    <FormControlLabel
-                                        control={
-                                            <Switch
-                                                checked={accion.enviarConfirmacion}
-                                                onChange={(e) => update(i, 'enviarConfirmacion', e.target.checked)}
-                                                size="small"
-                                            />
-                                        }
-                                        label={
-                                            <Typography fontSize={13}>
-                                                Enviar mensaje de confirmación de baja
-                                            </Typography>
-                                        }
-                                    />
-                                )}
-                            </Box>
-                        </Box>
-                    ))}
+                <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Así la recibe el deudor</Typography>
+                    <VistaPlantilla componentes={plantilla.componentes} />
                 </Box>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Cancelar</Button>
-                <Button
-                    variant="contained"
-                    onClick={handleGuardar}
-                    disabled={saving || botonesQR.length === 0}
-                >
-                    {saving ? <CircularProgress size={18} /> : 'Guardar'}
-                </Button>
-            </DialogActions>
-        </Dialog>
+
+                <Divider />
+
+                {botonesQR.length === 0 && <Alert severity="info">Esta plantilla no tiene botones de respuesta rápida.</Alert>}
+
+                {acciones.map((accion, i) => (
+                    <Box key={accion.indice} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 2 }}>
+                        <Typography sx={{ fontWeight: 650, fontSize: 14, mb: 1.5 }}>Botón {i + 1}: «{accion.texto}»</Typography>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel id={`accion-${i}`}>Qué pasa cuando lo toca</InputLabel>
+                                <Select
+                                    labelId={`accion-${i}`}
+                                    value={accion.accion}
+                                    label="Qué pasa cuando lo toca"
+                                    onChange={(e) => cambiar(i, 'accion', e.target.value)}
+                                >
+                                    {ACCIONES.map((a) => <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>)}
+                                </Select>
+                            </FormControl>
+
+                            <TextField
+                                label="Payload del botón"
+                                size="small"
+                                fullWidth
+                                value={accion.payload}
+                                onChange={(e) => cambiar(i, 'payload', e.target.value)}
+                                helperText="Usá {{1}}, {{2}}… (variables de la plantilla) o {{nombre_columna}} (columna del CSV). Ej: INBOX|ref={{nro_cliente}}"
+                                inputProps={{ maxLength: 128 }}
+                            />
+
+                            {accion.accion === 'BAJA' && (
+                                <FormControlLabel
+                                    sx={{ minHeight: 44 }}
+                                    control={<Switch checked={accion.enviarConfirmacion} onChange={(e) => cambiar(i, 'enviarConfirmacion', e.target.checked)} />}
+                                    label={<Typography sx={{ fontSize: 14 }}>Enviar mensaje de confirmación de la baja</Typography>}
+                                />
+                            )}
+                        </Box>
+                    </Box>
+                ))}
+            </Box>
+        </ResponsiveDialog>
     );
 }
 
 export default function WapiTemplates() {
-    const theme = useTheme();
-    const [templates, setTemplates] = useState([]);
-    const [configs, setConfigs] = useState([]);
-    const [configId, setConfigId] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [syncing, setSyncing] = useState(false);
-    const [dialogOpen, setDialogOpen] = useState(false);
-    const [templateSeleccionado, setTemplateSeleccionado] = useState(null);
-    const [feedback, setFeedback] = useState({ open: false, message: '', type: 'success' });
+    const feedback = useFeedback();
+    const [params, setParams] = useSearchParams();
+    // La línea y la búsqueda están en la URL: el atrás del celular vuelve a donde estaba.
+    const configId = params.get('linea') ?? '';
+    const busqueda = params.get('q') ?? '';
+
+    const [plantillas, setPlantillas] = useState([]);
+    const [lineas, setLineas] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState(null);
+    const [sincronizando, setSincronizando] = useState(false);
+    const [seleccionada, setSeleccionada] = useState(null);
+
+    const cambiarParam = (clave, valor) => {
+        const nuevo = new URLSearchParams(params);
+        if (valor) nuevo.set(clave, valor);
+        else nuevo.delete(clave);
+        setParams(nuevo, { replace: true });
+    };
 
     useEffect(() => {
         api.get('/wapi/config')
-            .then(res => setConfigs(Array.isArray(res.data) ? res.data : []))
-            .catch(() => {});
+            .then((res) => setLineas(Array.isArray(res.data) ? res.data : []))
+            .catch((err) => feedback.error(mensajeDeError(err, 'No se pudieron cargar las líneas.')));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    useEffect(() => { fetchTemplates(); }, [configId]);
-
-    const fetchTemplates = async () => {
-        setLoading(true);
+    const cargar = useCallback(async () => {
+        setCargando(true);
+        setErrorCarga(null);
         try {
-            const url = configId ? `/wapi/templates?configId=${configId}` : '/wapi/templates';
-            const res = await api.get(url);
-            setTemplates(res.data);
-        } catch {
-            setFeedback({ open: true, message: 'Error al cargar templates.', type: 'error' });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSincronizar = async () => {
-        setSyncing(true);
-        try {
-            const url = configId ? `/wapi/templates/sincronizar?configId=${configId}` : '/wapi/templates/sincronizar';
-            const res = await api.post(url);
-            const { sincronizados, errores } = res.data;
-            const msg = errores.length > 0
-                ? `${sincronizados} sincronizados, ${errores.length} con error.`
-                : `${sincronizados} templates sincronizados correctamente.`;
-            setFeedback({ open: true, message: msg, type: errores.length > 0 ? 'warning' : 'success' });
-            await fetchTemplates();
+            const res = await api.get(configId ? `/wapi/templates?configId=${configId}` : '/wapi/templates');
+            setPlantillas(Array.isArray(res.data) ? res.data : []);
         } catch (err) {
-            const msg = err.response?.data?.message || 'Error al sincronizar con Meta.';
-            setFeedback({ open: true, message: msg, type: 'error' });
+            setErrorCarga(mensajeDeError(err, 'No se pudieron cargar las plantillas.'));
         } finally {
-            setSyncing(false);
+            setCargando(false);
+        }
+    }, [configId]);
+
+    useEffect(() => { cargar(); }, [cargar]);
+
+    const sincronizar = async () => {
+        setSincronizando(true);
+        try {
+            const res = await api.post(configId ? `/wapi/templates/sincronizar?configId=${configId}` : '/wapi/templates/sincronizar');
+            const { sincronizados, errores = [] } = res.data;
+            if (errores.length > 0) feedback.aviso(`${sincronizados} sincronizadas, ${errores.length} con error.`);
+            else feedback.exito(`${sincronizados} plantillas sincronizadas.`);
+            await cargar();
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo sincronizar con Meta.'), { accion: { etiqueta: 'Reintentar', onClick: sincronizar } });
+        } finally {
+            setSincronizando(false);
         }
     };
 
-    const abrirConfig = (tpl) => {
-        setTemplateSeleccionado(tpl);
-        setDialogOpen(true);
-    };
-
-    const onGuardado = async () => {
-        setFeedback({ open: true, message: 'Configuración guardada.', type: 'success' });
-        await fetchTemplates();
-    };
-
-    if (loading) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" height="40vh">
-                <CircularProgress />
-            </Box>
-        );
-    }
+    const visibles = useMemo(() => {
+        const q = busqueda.trim().toLowerCase();
+        if (!q) return plantillas;
+        return plantillas.filter((p) => p.metaNombre?.toLowerCase().includes(q));
+    }, [plantillas, busqueda]);
 
     return (
-        <Box py={4}>
-            {/* Header */}
-            <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={3}>
-                <Box>
-                    <Typography variant="h5" fontWeight="bold">Templates</Typography>
-                    <Typography variant="body2" color="text.secondary" mt={0.5}>
-                        Templates aprobados en Meta. Sincronizá para traer los últimos cambios.
-                    </Typography>
-                </Box>
-                <Button
-                    variant="contained"
-                    startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
-                    onClick={handleSincronizar}
-                    disabled={syncing}
-                >
-                    {syncing ? 'Sincronizando...' : 'Sincronizar desde Meta'}
-                </Button>
-            </Box>
+        <PageContainer>
+            <PageHeader
+                title="Plantillas"
+                subtitle="Las plantillas aprobadas en Meta para la API de WhatsApp. Sincronizá para traer los últimos cambios."
+                breadcrumbs={migasDe('/wapi/templates')}
+                actions={
+                    <Button
+                        variant="contained"
+                        onClick={sincronizar}
+                        disabled={sincronizando}
+                        startIcon={sincronizando ? <CircularProgress size={16} color="inherit" /> : <RefreshCw size={18} strokeWidth={1.75} aria-hidden />}
+                    >
+                        {sincronizando ? 'Sincronizando…' : 'Sincronizar desde Meta'}
+                    </Button>
+                }
+            />
 
-            {/* Filtro por línea */}
-            {configs.length > 0 && (
-                <Box mb={3} maxWidth={320}>
-                    <FormControl fullWidth size="small">
-                        <InputLabel>Filtrar por línea</InputLabel>
-                        <Select
-                            value={configId}
-                            label="Filtrar por línea"
-                            onChange={(e) => setConfigId(e.target.value)}
-                        >
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5, mb: 2.5 }}>
+                {lineas.length > 0 && (
+                    <FormControl size="small" sx={{ minWidth: { sm: 240 } }}>
+                        <InputLabel id="filtro-linea">Línea</InputLabel>
+                        <Select labelId="filtro-linea" value={configId} label="Línea" onChange={(e) => cambiarParam('linea', e.target.value)}>
                             <MenuItem value="">Todas las líneas</MenuItem>
-                            {configs.map(c => (
-                                <MenuItem key={c.id} value={c.id}>
-                                    {c.nombre ?? `Línea ${c.id}`}
-                                </MenuItem>
-                            ))}
+                            {lineas.map((c) => <MenuItem key={c.id} value={String(c.id)}>{c.nombre ?? `Línea ${c.id}`}</MenuItem>)}
                         </Select>
                     </FormControl>
-                </Box>
+                )}
+                <TextField
+                    size="small"
+                    placeholder="Buscar por nombre"
+                    value={busqueda}
+                    onChange={(e) => cambiarParam('q', e.target.value)}
+                    inputProps={{ 'aria-label': 'Buscar plantillas por nombre' }}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><Search size={18} strokeWidth={1.75} aria-hidden /></InputAdornment> }}
+                    sx={{ flex: 1, maxWidth: { sm: 360 } }}
+                />
+            </Box>
+
+            {/* Filtrar o sincronizar no tapa la pantalla con un spinner: las tarjetas quedan y se atenúan. */}
+            {errorCarga && <BloqueEstado estado="error" mensaje={errorCarga} onReintentar={cargar} />}
+            {cargando && plantillas.length === 0 && !errorCarga && <BloqueEstado estado="cargando" mensaje="Cargando plantillas…" />}
+
+            {!errorCarga && !(cargando && plantillas.length === 0) && visibles.length === 0 && (
+                <EmptyState
+                    icon={Search}
+                    title={busqueda ? 'No hay plantillas con ese nombre' : 'Todavía no hay plantillas'}
+                    description={busqueda ? 'Probá con otra búsqueda o cambiá de línea.' : 'Sincronizá desde Meta para traer las plantillas de tu cuenta.'}
+                    action={busqueda ? undefined : { label: 'Sincronizar desde Meta', onClick: sincronizar }}
+                />
             )}
 
-            {templates.length === 0 && !loading && (
-                <Alert severity="info">
-                    No hay templates cargados. Hacé click en "Sincronizar desde Meta" para traerlos.
-                </Alert>
-            )}
-
-            {/* Grid de templates */}
             <Box
                 sx={{
                     display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 1fr' },
+                    gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' },
                     gap: 2,
+                    opacity: cargando && plantillas.length > 0 ? 0.55 : 1,
+                    transition: 'opacity .15s',
                 }}
             >
-                {templates.map((tpl) => {
-                    const estado = ESTADO_CHIP[tpl.estado] ?? { label: tpl.estado, color: 'default' };
+                {visibles.map((tpl) => {
+                    const estado = ESTADO[tpl.estado] ?? { label: tpl.estado, tono: 'neutro' };
                     const botonesQR = extraerBotonesQR(tpl.componentes);
-                    const tieneAcciones = Array.isArray(tpl.buttonActions) && tpl.buttonActions.length > 0;
+                    const acciones = Array.isArray(tpl.buttonActions) ? tpl.buttonActions : [];
+                    const motivo = tpl.estado === 'REJECTED' ? (tpl.motivoRechazo ?? tpl.rejectedReason ?? tpl.rechazoMotivo) : null;
 
                     return (
-                        <Card key={tpl.id} variant="outlined" sx={{ display: 'flex', flexDirection: 'column' }}>
-                            <CardContent sx={{ flexGrow: 1 }}>
-                                {/* Nombre + estado */}
-                                <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1.5}>
-                                    <Typography fontWeight="bold" fontSize={14} sx={{ wordBreak: 'break-word', mr: 1 }}>
-                                        {tpl.metaNombre}
-                                    </Typography>
-                                    <Chip
-                                        label={estado.label}
-                                        color={estado.color}
-                                        size="small"
-                                        icon={estado.icon}
-                                    />
+                        <Paper key={tpl.id} variant="outlined" sx={{ borderRadius: '14px', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                            <Box sx={{ p: 2, flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                                    <Typography sx={{ fontWeight: 650, fontSize: 15, overflowWrap: 'anywhere' }}>{tpl.metaNombre}</Typography>
+                                    <StatusChip label={estado.label} tono={estado.tono} sx={{ flex: 'none' }} />
                                 </Box>
 
-                                {/* Metadata */}
-                                <Box display="flex" gap={0.75} flexWrap="wrap" mb={1.5}>
-                                    <Chip label={tpl.categoria} size="small" variant="outlined" />
+                                <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                                    <Chip label={CATEGORIA[tpl.categoria] ?? tpl.categoria} size="small" variant="outlined" />
                                     <Chip label={tpl.idioma} size="small" variant="outlined" />
                                 </Box>
 
-                                {/* Preview */}
-                                {tpl.estado === 'APPROVED' && (
-                                    <TemplatePreview componentes={tpl.componentes} />
+                                {tpl.estado === 'REJECTED' && (
+                                    <Alert severity="error" variant="outlined" sx={{ py: 0 }}>
+                                        {motivo ? `Meta la rechazó: ${motivo}` : 'Meta rechazó esta plantilla. Corregila en el administrador de Meta y volvé a sincronizar.'}
+                                    </Alert>
                                 )}
 
-                                {/* Estado de botones */}
+                                {tpl.estado === 'APPROVED' && <VistaPlantilla componentes={tpl.componentes} />}
+
                                 {botonesQR.length > 0 && (
-                                    <Box mt={1.5}>
-                                        <Typography variant="caption" color="text.secondary">
-                                            Botones QR: {botonesQR.length}
-                                        </Typography>
-                                        {tieneAcciones ? (
-                                            <Box display="flex" gap={0.5} mt={0.5} flexWrap="wrap">
-                                                {tpl.buttonActions.map((a, i) => (
+                                    <Box>
+                                        {acciones.length > 0 ? (
+                                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                                {acciones.map((a, i) => (
                                                     <Chip
                                                         key={i}
-                                                        label={`${a.texto ?? `Btn ${i + 1}`} → ${a.accion}`}
                                                         size="small"
-                                                        color={a.accion === 'BAJA' ? 'error' : a.accion === 'INBOX' ? 'success' : 'default'}
                                                         variant="outlined"
+                                                        color={a.accion === 'BAJA' ? 'error' : a.accion === 'INBOX' ? 'success' : 'default'}
+                                                        label={`${a.texto ?? `Botón ${i + 1}`} → ${ACCION_CORTA[a.accion] ?? a.accion}`}
                                                     />
                                                 ))}
                                             </Box>
                                         ) : (
-                                            <Typography variant="caption" color="warning.main" display="block" mt={0.25}>
-                                                Sin acciones configuradas
-                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'warning.main' }}>Los botones todavía no tienen acción configurada.</Typography>
                                         )}
                                     </Box>
                                 )}
 
-                                {/* Sync date */}
-                                <Typography variant="caption" color="text.disabled" display="block" mt={1.5}>
-                                    Sincronizado: {new Date(tpl.sincronizadoAt).toLocaleString('es-AR')}
-                                </Typography>
-                            </CardContent>
-
-                            {/* Footer con acción */}
-                            <Box
-                                sx={{
-                                    borderTop: '1px solid', borderColor: 'divider',
-                                    px: 2, py: 1,
-                                    backgroundColor: theme.palette.mode === 'dark' ? '#1a1a1a' : '#fafafa',
-                                    display: 'flex', justifyContent: 'flex-end',
-                                }}
-                            >
-                                <Tooltip title={botonesQR.length === 0 ? 'Sin botones QR para configurar' : 'Configurar acciones de botones'}>
-                                    <span>
-                                        <Button
-                                            size="small"
-                                            startIcon={<SettingsIcon />}
-                                            onClick={() => abrirConfig(tpl)}
-                                            disabled={botonesQR.length === 0}
-                                            color={tieneAcciones ? 'success' : 'primary'}
-                                        >
-                                            {tieneAcciones ? 'Reconfigurar' : 'Configurar botones'}
-                                        </Button>
-                                    </span>
-                                </Tooltip>
+                                {tpl.sincronizadoAt && (
+                                    <Typography variant="caption" color="text.secondary">
+                                        Sincronizada el {new Date(tpl.sincronizadoAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                                    </Typography>
+                                )}
                             </Box>
-                        </Card>
+
+                            {botonesQR.length > 0 && (
+                                <Box sx={{ borderTop: 1, borderColor: 'divider', px: 2, py: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                                    <Button
+                                        size="small"
+                                        startIcon={<Settings2 size={18} strokeWidth={1.75} aria-hidden />}
+                                        onClick={() => setSeleccionada(tpl)}
+                                        sx={{ minHeight: { xs: 44, sm: 32 } }}
+                                    >
+                                        {acciones.length > 0 ? 'Reconfigurar botones' : 'Configurar botones'}
+                                    </Button>
+                                </Box>
+                            )}
+                        </Paper>
                     );
                 })}
             </Box>
 
-            {/* Dialog configuración */}
-            <DialogButtonActions
-                open={dialogOpen}
-                template={templateSeleccionado}
-                onClose={() => setDialogOpen(false)}
-                onGuardado={onGuardado}
-            />
-
-            <Snackbar
-                open={feedback.open}
-                autoHideDuration={5000}
-                onClose={() => setFeedback(p => ({ ...p, open: false }))}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <MuiAlert
-                    onClose={() => setFeedback(p => ({ ...p, open: false }))}
-                    severity={feedback.type}
-                    variant="filled"
-                    elevation={6}
-                >
-                    {feedback.message}
-                </MuiAlert>
-            </Snackbar>
-        </Box>
+            <DialogAccionesBotones open={!!seleccionada} plantilla={seleccionada} onClose={() => setSeleccionada(null)} onGuardado={cargar} />
+        </PageContainer>
     );
 }

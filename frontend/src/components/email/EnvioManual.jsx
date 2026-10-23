@@ -1,27 +1,57 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Box, Typography, ToggleButton, ToggleButtonGroup, TextField, Button,
-    FormControl, InputLabel, Select, MenuItem, Paper, CircularProgress,
-    Snackbar, Alert, Autocomplete, Chip, Dialog, DialogTitle,
-    DialogContent, DialogActions, Divider, Tooltip, IconButton,
+    Alert, Autocomplete, Box, Button, Chip, CircularProgress, FormControl, InputLabel, MenuItem, Select,
+    TextField, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery,
 } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
-import SaveIcon from '@mui/icons-material/Save';
-import PreviewIcon from '@mui/icons-material/Preview';
-import ArticleIcon from '@mui/icons-material/Article';
-import EditNoteIcon from '@mui/icons-material/EditNote';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
-import CloseIcon from '@mui/icons-material/Close';
+import { useTheme } from '@mui/material/styles';
+import { Eye, FilePenLine, FileText, Paperclip, Save, Send } from 'lucide-react';
 import EmailEditor from 'react-email-editor';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
 import { renderTemplate } from '../../utils/renderTemplate';
+import { migasDe } from '../layout/navConfig';
+import { ConfirmDialog, EmptyState, PageContainer, PageHeader, ResponsiveDialog, SectionCard, VistaPreviaEmail } from '../ui';
+import HTMLTemplateEditor from '../utils/HTMLTemplateEditor';
+import { REGEX_EMAIL } from '../plantillas/variablesEmail';
+
+// Se acepta pegar varios emails juntos, separados por coma, punto y coma, espacio o salto de línea.
+const SEPARADORES = /[\s,;]+/;
+
+/** Parte un texto en emails sueltos, sin vacíos. */
+function separarEmails(texto) {
+    return String(texto).split(SEPARADORES).map((e) => e.trim()).filter(Boolean);
+}
+
+/** Une listas de emails sin repetir (sin distinguir mayúsculas): el chip usa el email como key. */
+function sinDuplicados(lista) {
+    const vistos = new Set();
+    return lista.filter((e) => {
+        const k = e.toLowerCase();
+        if (vistos.has(k)) return false;
+        vistos.add(k);
+        return true;
+    });
+}
 
 export default function EnvioManual() {
-    const [modo, setModo] = useState('template');
+    const feedback = useFeedback();
+    const theme = useTheme();
+    const navigate = useNavigate();
+    const hayEditorDiseno = useMediaQuery(theme.breakpoints.up('md'));
+    const [params, setParams] = useSearchParams();
+    // El modo está en la URL: el atrás del celular no tira abajo lo que se estaba armando.
+    const modo = params.get('modo') === 'libre' ? 'libre' : 'plantilla';
+    const cambiarModo = (m) => {
+        const nuevo = new URLSearchParams(params);
+        if (m === 'libre') nuevo.set('modo', 'libre');
+        else nuevo.delete('modo');
+        setParams(nuevo, { replace: true });
+    };
 
-    // Destinatario y SMTP (comunes)
+    // Destinatario y cuenta (comunes)
     const [toList, setToList] = useState([]);
+    const [textoEmail, setTextoEmail] = useState('');
     const [toNombre, setToNombre] = useState('');
     const [smtpId, setSmtpId] = useState('');
     const [cuentas, setCuentas] = useState([]);
@@ -30,15 +60,16 @@ export default function EnvioManual() {
     const [adjuntos, setAdjuntos] = useState([]);
     const adjuntosRef = useRef(null);
 
-    // Modo A: template
+    // Con plantilla
     const [templates, setTemplates] = useState([]);
     const [templateSeleccionado, setTemplateSeleccionado] = useState(null);
-    const [templateData, setTemplateData] = useState(null); // { html, asunto, design }
+    const [templateData, setTemplateData] = useState(null);
     const [variables, setVariables] = useState([]);
     const [variableValues, setVariableValues] = useState({});
     const [asuntoManual, setAsuntoManual] = useState('');
+    const [loadingTemplate, setLoadingTemplate] = useState(false);
 
-    // Modo B: composición libre
+    // Composición libre
     const [subjectLibre, setSubjectLibre] = useState('');
     const [htmlLibre, setHtmlLibre] = useState('');
     const emailEditorRef = useRef(null);
@@ -46,33 +77,34 @@ export default function EnvioManual() {
 
     // UI
     const [enviando, setEnviando] = useState(false);
-    const [resultado, setResultado] = useState(null); // { ok, reporteId, error }
-    const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
-    const [loadingTemplate, setLoadingTemplate] = useState(false);
-    const [previewDialog, setPreviewDialog] = useState(false);
-    const [guardarDialog, setGuardarDialog] = useState(false);
+    const [resultado, setResultado] = useState(null);
+    const [previewAbierto, setPreviewAbierto] = useState(false);
+    const [guardarAbierto, setGuardarAbierto] = useState(false);
     const [nombreTemplateNuevo, setNombreTemplateNuevo] = useState('');
     const [guardando, setGuardando] = useState(false);
+    // Lo que espera confirmación cuando son varios destinatarios: { html }.
+    const [pendiente, setPendiente] = useState(null);
 
-    // Cargar cuentas SMTP al montar
     useEffect(() => {
-        api.get('/email/cuentas').then(r => setCuentas(r.data || [])).catch(() => { });
+        api.get('/email/cuentas')
+            .then((r) => setCuentas(r.data || []))
+            .catch((err) => feedback.error(mensajeDeError(err, 'No se pudieron cargar las cuentas de email.')));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Recargar templates filtrados cada vez que cambia el SMTP seleccionado
+    // Las plantillas se filtran por la cuenta elegida.
     useEffect(() => {
         const url = smtpId ? `/email/templates?smtpId=${smtpId}` : '/email/templates';
-        api.get(url).then(r => {
-            setTemplates(r.data || []);
-            // Si el template seleccionado ya no está en los resultados, limpiarlo
-            setTemplateSeleccionado(prev =>
-                prev && !(r.data || []).find(t => t.id === prev.id) ? null : prev
-            );
-        }).catch(() => { });
+        api.get(url)
+            .then((r) => {
+                setTemplates(r.data || []);
+                setTemplateSeleccionado((prev) => (prev && !(r.data || []).find((t) => t.id === prev.id) ? null : prev));
+            })
+            .catch((err) => feedback.error(mensajeDeError(err, 'No se pudieron cargar las plantillas.')));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [smtpId]);
 
-    // Al seleccionar template: cargar HTML completo + extraer variables
-    const handleSeleccionarTemplate = useCallback(async (tmpl) => {
+    const seleccionarTemplate = useCallback(async (tmpl) => {
         if (!tmpl) {
             setTemplateSeleccionado(null);
             setTemplateData(null);
@@ -87,578 +119,462 @@ export default function EnvioManual() {
             setTemplateSeleccionado(tmpl);
             setTemplateData(data);
             setAsuntoManual(data.asunto || '');
-
-            const { data: varData } = await api.post('/email/manual/extract-vars', {
-                html: data.html || '',
-                asunto: data.asunto || '',
-            });
+            const { data: varData } = await api.post('/email/manual/extract-vars', { html: data.html || '', asunto: data.asunto || '' });
             setVariables(varData.variables || []);
-            // Inicializar valores vacíos por variable nueva
-            setVariableValues(prev => {
+            setVariableValues((prev) => {
                 const next = { ...prev };
-                for (const v of varData.variables || []) {
-                    if (!(v in next)) next[v] = '';
-                }
+                for (const v of varData.variables || []) if (!(v in next)) next[v] = '';
                 return next;
             });
-        } catch {
-            mostrarSnack('Error al cargar el template', 'error');
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo cargar la plantilla.'));
         } finally {
             setLoadingTemplate(false);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const quitarAdjunto = (index) => {
-        setAdjuntos(prev => prev.filter((_, i) => i !== index));
-        // Resetear el input para que se pueda volver a seleccionar el mismo archivo
-        if (adjuntosRef.current) adjuntosRef.current.value = '';
+    const quitarAdjunto = (index) => setAdjuntos((prev) => prev.filter((_, i) => i !== index));
+
+    const agregarEmails = (texto) => {
+        const nuevos = separarEmails(texto);
+        if (nuevos.length) setToList((prev) => sinDuplicados([...prev, ...nuevos]));
     };
 
-    // Preview HTML con variables aplicadas (calculado en cliente)
     const previewHtml = useMemo(() => {
-        if (modo === 'template') {
+        if (modo === 'plantilla') {
             if (!templateData?.html) return '';
-            return renderTemplate(templateData.html, { nombre: toNombre, ...variableValues });
+            return renderTemplate(templateData.html, { nombre: toNombre, ...variableValues }, { conservarFaltantes: true });
         }
         return htmlLibre;
     }, [modo, templateData, toNombre, variableValues, htmlLibre]);
 
     const asuntoPreview = useMemo(() => {
-        if (modo === 'template') {
-            return renderTemplate(asuntoManual, { nombre: toNombre, ...variableValues });
-        }
+        if (modo === 'plantilla') return renderTemplate(asuntoManual, { nombre: toNombre, ...variableValues }, { conservarFaltantes: true });
         return subjectLibre;
     }, [modo, asuntoManual, toNombre, variableValues, subjectLibre]);
 
-    // Exportar HTML desde Unlayer antes de enviar (Modo B)
-    const exportarHtmlLibre = () =>
+    // El contenido de la composición libre: el editor de diseño se exporta; el básico ya lo tiene en el estado.
+    const obtenerHtmlLibre = () =>
         new Promise((resolve) => {
-            if (!editorReady || !emailEditorRef.current?.editor) {
+            const editor = hayEditorDiseno && editorReady ? emailEditorRef.current?.editor : null;
+            if (!editor) {
                 resolve(htmlLibre);
                 return;
             }
-            emailEditorRef.current.editor.exportHtml((data) => {
+            editor.exportHtml((data) => {
                 setHtmlLibre(data.html);
                 resolve(data.html);
             });
         });
 
     const validar = (htmlFinal) => {
-        if (toList.length === 0) return 'Agregá al menos un email destinatario';
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        for (const email of toList) {
-            if (!emailRegex.test(email.trim())) return `Email inválido: ${email}`;
-        }
-        if (!smtpId) return 'Seleccioná una cuenta SMTP';
-        if (modo === 'template') {
-            if (!templateSeleccionado) return 'Seleccioná un template';
+        if (toList.length === 0) return 'Agregá al menos un email de destino.';
+        const malo = toList.find((e) => !REGEX_EMAIL.test(e.trim()));
+        if (malo) return `Este email no es válido: ${malo}`;
+        if (!smtpId) return 'Elegí la cuenta de email desde la que se envía.';
+        if (modo === 'plantilla') {
+            if (!templateSeleccionado) return 'Elegí una plantilla.';
         } else {
-            if (!subjectLibre.trim()) return 'El asunto es requerido';
-            if (!htmlFinal?.trim()) return 'El contenido del email es requerido';
+            if (!subjectLibre.trim()) return 'Escribí el asunto.';
+            if (!htmlFinal?.trim()) return 'Escribí el contenido del email.';
         }
         return null;
     };
 
-    const handleEnviar = async () => {
-        let htmlFinal = previewHtml;
-        if (modo === 'libre') {
-            htmlFinal = await exportarHtmlLibre();
-        }
-
-        const error = validar(htmlFinal);
-        if (error) { mostrarSnack(error, 'warning'); return; }
-
+    const ejecutarEnvio = async (htmlFinal) => {
         setEnviando(true);
         setResultado(null);
         try {
             const formData = new FormData();
-            toList.forEach(email => formData.append('to', email.trim()));
+            toList.forEach((email) => formData.append('to', email.trim()));
             if (toNombre.trim()) formData.append('toNombre', toNombre.trim());
             formData.append('smtpId', String(smtpId));
             formData.append('subject', asuntoPreview);
             formData.append('html', htmlFinal);
-            if (modo === 'template' && templateSeleccionado) {
+            if (modo === 'plantilla' && templateSeleccionado) {
                 formData.append('templateId', String(templateSeleccionado.id));
                 formData.append('variables', JSON.stringify({ nombre: toNombre, ...variableValues }));
             }
-            adjuntos.forEach(f => formData.append('adjuntos', f));
+            adjuntos.forEach((f) => formData.append('adjuntos', f));
 
-            const { data } = await api.post('/email/manual/send', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
+            const { data } = await api.post('/email/manual/send', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
             setResultado(data);
-            const msg = data.total === 1
-                ? 'Mail enviado correctamente'
-                : `${data.enviados}/${data.total} mails enviados`;
-            mostrarSnack(msg, data.ok ? 'success' : 'warning');
+            if (data.ok && !data.omitidos?.length) {
+                feedback.exito(data.total === 1 ? 'Mail enviado.' : `${data.enviados}/${data.total} mails enviados.`);
+            } else {
+                feedback.aviso(`${data.enviados}/${data.total} mails enviados. Mirá el detalle abajo.`);
+            }
         } catch (err) {
-            const msg = err.response?.data?.message || err.message || 'Error al enviar';
+            const msg = mensajeDeError(err, 'No se pudo enviar el mail.');
             setResultado({ ok: false, error: msg });
-            mostrarSnack(msg, 'error');
+            feedback.error(msg);
         } finally {
             setEnviando(false);
         }
     };
 
-    const handleGuardarTemplate = async () => {
+    const enviar = async () => {
+        const htmlFinal = modo === 'libre' ? await obtenerHtmlLibre() : previewHtml;
+        const error = validar(htmlFinal);
+        if (error) {
+            feedback.aviso(error);
+            return;
+        }
+        // A varias personas, una confirmación: un envío no se deshace.
+        if (toList.length > 1) {
+            setPendiente({ html: htmlFinal });
+            return;
+        }
+        await ejecutarEnvio(htmlFinal);
+    };
+
+    const abrirPreview = async () => {
+        if (modo === 'libre') await obtenerHtmlLibre();
+        setPreviewAbierto(true);
+    };
+
+    const guardarComoPlantilla = async () => {
         if (!nombreTemplateNuevo.trim()) return;
-        let htmlFinal = htmlLibre;
-        if (editorReady && emailEditorRef.current?.editor) {
-            htmlFinal = await exportarHtmlLibre();
+        const htmlFinal = await obtenerHtmlLibre();
+        if (!htmlFinal?.trim()) {
+            feedback.aviso('Escribí el contenido del email antes de guardarlo como plantilla.');
+            return;
         }
         setGuardando(true);
         try {
-            await api.post('/email/manual/guardar-template', {
-                nombre: nombreTemplateNuevo.trim(),
-                asunto: subjectLibre,
-                html: htmlFinal,
-            });
-            mostrarSnack('Template guardado', 'success');
-            setGuardarDialog(false);
+            await api.post('/email/manual/guardar-template', { nombre: nombreTemplateNuevo.trim(), asunto: subjectLibre, html: htmlFinal });
+            feedback.exito('Plantilla guardada.');
+            setGuardarAbierto(false);
             setNombreTemplateNuevo('');
-            // Recargar lista de templates
-            api.get('/email/templates').then(r => setTemplates(r.data || [])).catch(() => { });
-        } catch {
-            mostrarSnack('Error al guardar el template', 'error');
+            api.get('/email/templates').then((r) => setTemplates(r.data || [])).catch(() => { /* la lista se recarga al elegir otra cuenta */ });
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo guardar la plantilla.'));
         } finally {
             setGuardando(false);
         }
     };
 
-    const mostrarSnack = (msg, severity = 'info') => {
-        setSnack({ open: true, msg, severity });
-    };
+    const tarjetaDestino = (
+        <SectionCard title="Destinatario y cuenta">
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Autocomplete
+                    multiple
+                    freeSolo
+                    autoSelect
+                    options={[]}
+                    value={toList}
+                    inputValue={textoEmail}
+                    onInputChange={(_, v, motivo) => {
+                        if (motivo !== 'input') {
+                            setTextoEmail(v);
+                            return;
+                        }
+                        // Al tipear o pegar una coma, un espacio o varios emails juntos, los completos se pasan a chips.
+                        if (SEPARADORES.test(v)) {
+                            const terminaEnSeparador = SEPARADORES.test(v.slice(-1));
+                            const partes = separarEmails(v);
+                            const resto = terminaEnSeparador ? '' : partes.pop() ?? '';
+                            agregarEmails(partes.join(' '));
+                            setTextoEmail(resto);
+                        } else {
+                            setTextoEmail(v);
+                        }
+                    }}
+                    onChange={(_, nuevo) => setToList(sinDuplicados(nuevo.flatMap((e) => separarEmails(e))))}
+                    renderTags={(value, getTagProps) =>
+                        value.map((email, index) => {
+                            const { key, ...resto } = getTagProps({ index });
+                            return (
+                                <Chip
+                                    key={key ?? email}
+                                    label={email}
+                                    {...resto}
+                                    color={REGEX_EMAIL.test(email) ? 'default' : 'error'}
+                                    sx={{ height: { xs: 32, md: 24 } }}
+                                />
+                            );
+                        })
+                    }
+                    renderInput={(p) => (
+                        <TextField
+                            {...p}
+                            label="Email de destino"
+                            placeholder={toList.length === 0 ? 'nombre@dominio.com' : ''}
+                            helperText="Podés pegar varios, separados por coma o espacio."
+                            inputProps={{ ...p.inputProps, inputMode: 'email', autoCapitalize: 'off' }}
+                        />
+                    )}
+                />
+                <TextField label="Nombre (opcional)" value={toNombre} onChange={(e) => setToNombre(e.target.value)} fullWidth />
+                <FormControl fullWidth>
+                    <InputLabel id="cuenta-manual">Cuenta de email</InputLabel>
+                    <Select labelId="cuenta-manual" value={smtpId} label="Cuenta de email" onChange={(e) => setSmtpId(e.target.value)}>
+                        {cuentas.map((c) => <MenuItem key={c.id} value={c.id}>{c.nombre} — {c.usuario}</MenuItem>)}
+                    </Select>
+                </FormControl>
+            </Box>
+        </SectionCard>
+    );
 
-    return (
-        <Box sx={{ py: 3, maxWidth: 1400, mx: 'auto' }}>
-            <Typography variant="h5" fontWeight="bold" mb={3}>
-                Envío Manual de Mail
-            </Typography>
+    const tarjetaAdjuntos = (
+        <SectionCard title="Archivos adjuntos">
+            <input
+                ref={adjuntosRef}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                    setAdjuntos((prev) => [...prev, ...Array.from(e.target.files)]);
+                    e.target.value = '';
+                }}
+            />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, alignItems: 'flex-start' }}>
+                <Button variant="outlined" startIcon={<Paperclip size={18} strokeWidth={1.75} aria-hidden />} onClick={() => adjuntosRef.current?.click()}>
+                    Adjuntar archivos
+                </Button>
+                {adjuntos.length > 0 && (
+                    <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                        {adjuntos.map((f, i) => (
+                            <Chip key={`${f.name}-${f.size}-${i}`} label={f.name} onDelete={() => quitarAdjunto(i)} sx={{ height: { xs: 32, md: 24 }, maxWidth: '100%' }} />
+                        ))}
+                    </Box>
+                )}
+            </Box>
+        </SectionCard>
+    );
 
-            {/* Selector de modo */}
-            <Box mb={3}>
-                <ToggleButtonGroup
-                    value={modo}
-                    exclusive
-                    onChange={(_, v) => { if (v) setModo(v); }}
-                    size="small"
+    const tarjetaAcciones = (
+        <SectionCard>
+            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                <Button
+                    variant="contained"
+                    startIcon={enviando ? <CircularProgress size={16} color="inherit" /> : <Send size={18} strokeWidth={1.75} aria-hidden />}
+                    onClick={enviar}
+                    disabled={enviando}
+                    sx={{ flex: { xs: '1 1 100%', sm: '0 0 auto' } }}
                 >
-                    <ToggleButton value="template">
-                        <ArticleIcon sx={{ mr: 1, fontSize: 18 }} />
-                        Desde template
-                    </ToggleButton>
-                    <ToggleButton value="libre">
-                        <EditNoteIcon sx={{ mr: 1, fontSize: 18 }} />
-                        Composición libre
-                    </ToggleButton>
-                </ToggleButtonGroup>
+                    {enviando ? 'Enviando…' : 'Enviar'}
+                </Button>
+                <Button
+                    variant="outlined"
+                    startIcon={<Eye size={18} strokeWidth={1.75} aria-hidden />}
+                    onClick={abrirPreview}
+                    disabled={modo === 'plantilla' && !previewHtml}
+                    sx={{ flex: { xs: '1 1 calc(50% - 6px)', sm: '0 0 auto' } }}
+                >
+                    Vista previa
+                </Button>
+                {modo === 'libre' && (
+                    <Button
+                        variant="outlined"
+                        startIcon={<Save size={18} strokeWidth={1.75} aria-hidden />}
+                        onClick={() => setGuardarAbierto(true)}
+                        sx={{ flex: { xs: '1 1 calc(50% - 6px)', sm: '0 0 auto' } }}
+                    >
+                        Guardar como plantilla
+                    </Button>
+                )}
             </Box>
 
-            <Box display="flex" gap={3} alignItems="flex-start" flexWrap="wrap">
-                {/* Panel izquierdo: formulario */}
-                <Paper elevation={2} sx={{ flex: '1 1 420px', minWidth: 320, p: 3, borderRadius: 3 }}>
-
-                    {/* Datos del destinatario */}
-                    <Typography variant="subtitle1" fontWeight="bold" mb={2}>
-                        Destinatario
-                    </Typography>
-                    <Box display="flex" flexDirection="column" gap={2} mb={3}>
-                        <Autocomplete
-                            multiple
-                            freeSolo
-                            options={[]}
-                            value={toList}
-                            onChange={(_, newValue) => setToList(newValue)}
-                            renderTags={(value, getTagProps) =>
-                                value.map((email, index) => (
-                                    <Chip
-                                        key={email}
-                                        label={email}
-                                        {...getTagProps({ index })}
-                                        size="small"
-                                        color={/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? 'default' : 'error'}
-                                    />
-                                ))
-                            }
-                            renderInput={(params) => (
-                                <TextField
-                                    {...params}
-                                    label="Email(s) destinatario(s) *"
-                                    placeholder={toList.length === 0 ? 'Escribí y presioná Enter' : ''}
-                                    size="small"
-                                    helperText="Presioná Enter para agregar cada email"
-                                />
-                            )}
-                        />
-                        <TextField
-                            label="Nombre"
-                            value={toNombre}
-                            onChange={e => setToNombre(e.target.value)}
-                            size="small"
-                            fullWidth
-                        />
-                    </Box>
-
-                    <Divider sx={{ mb: 3 }} />
-
-                    {/* Archivos adjuntos */}
-                    <Typography variant="subtitle1" fontWeight="bold" mb={1}>
-                        Archivos adjuntos
-                    </Typography>
-                    <input
-                        ref={adjuntosRef}
-                        type="file"
-                        multiple
-                        style={{ display: 'none' }}
-                        onChange={e => {
-                            setAdjuntos(prev => [...prev, ...Array.from(e.target.files)]);
-                            e.target.value = '';
-                        }}
-                    />
-                    <Box display="flex" flexDirection="column" gap={1} mb={3}>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<AttachFileIcon />}
-                            onClick={() => adjuntosRef.current?.click()}
-                            sx={{ alignSelf: 'flex-start' }}
+            {resultado && (
+                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {resultado.error ? (
+                        <Alert severity="error">{resultado.error}</Alert>
+                    ) : (
+                        <Alert
+                            severity={resultado.ok && !resultado.omitidos?.length ? 'success' : 'warning'}
+                            action={<Button color="inherit" size="small" onClick={() => navigate('/email/reportes')} sx={{ minHeight: 44 }}>Ver reportes</Button>}
                         >
-                            Adjuntar archivos
-                        </Button>
-                        {adjuntos.length > 0 && (
-                            <Box display="flex" gap={0.5} flexWrap="wrap" mt={0.5}>
-                                {adjuntos.map((f, i) => (
-                                    <Chip
-                                        key={i}
-                                        label={f.name}
-                                        size="small"
-                                        onDelete={() => quitarAdjunto(i)}
-                                        deleteIcon={<CloseIcon />}
-                                    />
-                                ))}
+                            {resultado.total === 1 && resultado.ok && !resultado.omitidos?.length
+                                ? `Mail enviado · reporte #${resultado.reporteIds?.[0]}`
+                                : `${resultado.enviados}/${resultado.total} mails enviados.`}
+                        </Alert>
+                    )}
+                    {resultado.errores?.length > 0 && (
+                        <Alert severity="error">
+                            No se pudieron enviar:
+                            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                                {resultado.errores.map((e) => <li key={e.email}>{e.email}{e.error ? `: ${e.error}` : ''}</li>)}
                             </Box>
-                        )}
-                    </Box>
-
-                    <Divider sx={{ mb: 3 }} />
-
-                    {/* Cuenta SMTP */}
-                    <Typography variant="subtitle1" fontWeight="bold" mb={2}>
-                        Cuenta de envío
-                    </Typography>
-                    <FormControl size="small" fullWidth sx={{ mb: 3 }}>
-                        <InputLabel>Cuenta SMTP *</InputLabel>
-                        <Select
-                            value={smtpId}
-                            onChange={e => setSmtpId(e.target.value)}
-                            label="Cuenta SMTP *"
-                        >
-                            {cuentas.map(c => (
-                                <MenuItem key={c.id} value={c.id}>
-                                    {c.nombre} — {c.usuario}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-
-                    <Divider sx={{ mb: 3 }} />
-
-                    {/* Modo A: template */}
-                    {modo === 'template' && (
-                        <>
-                            <Typography variant="subtitle1" fontWeight="bold" mb={2}>
-                                Template
-                            </Typography>
-
-                            <Autocomplete
-                                options={templates}
-                                getOptionLabel={o => o.nombre || ''}
-                                value={templateSeleccionado}
-                                onChange={(_, v) => handleSeleccionarTemplate(v)}
-                                loading={loadingTemplate}
-                                size="small"
-                                fullWidth
-                                renderInput={params => (
-                                    <TextField
-                                        {...params}
-                                        label="Seleccionar template *"
-                                        InputProps={{
-                                            ...params.InputProps,
-                                            endAdornment: (
-                                                <>
-                                                    {loadingTemplate && <CircularProgress size={16} />}
-                                                    {params.InputProps.endAdornment}
-                                                </>
-                                            ),
-                                        }}
-                                    />
-                                )}
-                                sx={{ mb: 2 }}
-                            />
-
-                            {/* Asunto editable */}
-                            {templateData && (
-                                <TextField
-                                    label="Asunto"
-                                    value={asuntoManual}
-                                    onChange={e => setAsuntoManual(e.target.value)}
-                                    size="small"
-                                    fullWidth
-                                    sx={{ mb: 2 }}
-                                    helperText="Podés usar variables como {{nombre}}"
-                                />
-                            )}
-
-                            {/* Variables dinámicas */}
-                            {variables.length > 0 && (
-                                <>
-                                    <Box display="flex" alignItems="center" gap={1} mb={1} mt={1}>
-                                        <Typography variant="subtitle2" color="text.secondary">
-                                            Variables del template
-                                        </Typography>
-                                        <Box display="flex" gap={0.5} flexWrap="wrap">
-                                            {variables.map(v => (
-                                                <Chip key={v} label={`{{${v}}}`} size="small" variant="outlined" />
-                                            ))}
-                                        </Box>
-                                    </Box>
-                                    <Box display="flex" flexDirection="column" gap={1.5} mt={1}>
-                                        {variables.map(v => (
-                                            <TextField
-                                                key={v}
-                                                label={v}
-                                                value={variableValues[v] || ''}
-                                                onChange={e => setVariableValues(prev => ({ ...prev, [v]: e.target.value }))}
-                                                size="small"
-                                                fullWidth
-                                            />
-                                        ))}
-                                    </Box>
-                                </>
-                            )}
-                        </>
+                        </Alert>
                     )}
-
-                    {/* Modo B: composición libre */}
-                    {modo === 'libre' && (
-                        <>
-                            <Typography variant="subtitle1" fontWeight="bold" mb={2}>
-                                Contenido
-                            </Typography>
-                            <TextField
-                                label="Asunto *"
-                                value={subjectLibre}
-                                onChange={e => setSubjectLibre(e.target.value)}
-                                size="small"
-                                fullWidth
-                                sx={{ mb: 2 }}
-                            />
-                            <Typography variant="caption" color="text.secondary" mb={1} display="block">
-                                Editor de contenido
-                            </Typography>
-                        </>
-                    )}
-
-                    <Divider sx={{ my: 3 }} />
-
-                    {/* Acciones */}
-                    <Box display="flex" gap={1.5} flexWrap="wrap">
-                        <Button
-                            variant="contained"
-                            startIcon={enviando ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
-                            onClick={handleEnviar}
-                            disabled={enviando}
-                            sx={{ flex: 1 }}
-                        >
-                            {enviando ? 'Enviando...' : 'Enviar'}
-                        </Button>
-                        <Tooltip title="Vista previa">
-                            <IconButton
-                                onClick={() => setPreviewDialog(true)}
-                                disabled={!previewHtml}
-                                color="primary"
-                                sx={{ border: '1px solid', borderColor: 'divider' }}
-                            >
-                                <PreviewIcon />
-                            </IconButton>
-                        </Tooltip>
-                        {modo === 'libre' && (
-                            <Tooltip title="Guardar como template">
-                                <IconButton
-                                    onClick={() => setGuardarDialog(true)}
-                                    color="secondary"
-                                    sx={{ border: '1px solid', borderColor: 'divider' }}
-                                >
-                                    <SaveIcon />
-                                </IconButton>
-                            </Tooltip>
-                        )}
-                    </Box>
-
-                    {/* Resultado del envío */}
-                    {resultado && (
-                        <Box mt={2}>
-                            {resultado.ok ? (
-                                <Alert
-                                    severity="success"
-                                    action={
-                                        <Tooltip title="Ver reportes">
-                                            <IconButton size="small" href="/email/reportes" target="_blank">
-                                                <OpenInNewIcon fontSize="small" />
-                                            </IconButton>
-                                        </Tooltip>
-                                    }
-                                >
-                                    {resultado.total === 1
-                                        ? `Mail enviado · reporte #${resultado.reporteIds?.[0]}`
-                                        : `${resultado.enviados}/${resultado.total} mails enviados`}
-                                </Alert>
-                            ) : resultado.enviados > 0 ? (
-                                <Alert severity="warning">
-                                    {resultado.enviados}/{resultado.total} enviados.{' '}
-                                    {resultado.errores?.map(e => e.email).join(', ')} fallaron.
-                                </Alert>
-                            ) : (
-                                <Alert severity="error">{resultado.error || 'Error al enviar'}</Alert>
-                            )}
-                        </Box>
-                    )}
-                </Paper>
-
-                {/* Panel derecho: preview + editor Unlayer (Modo B) */}
-                <Box sx={{ flex: '1 1 500px', minWidth: 320 }}>
-                    {modo === 'libre' && (
-                        <Paper elevation={2} sx={{ borderRadius: 3, overflow: 'hidden', mb: 2 }}>
-                            <Box px={2} py={1.5} borderBottom="1px solid" sx={{ borderColor: 'divider' }}>
-                                <Typography variant="subtitle2" fontWeight="bold">
-                                    Editor de contenido
-                                </Typography>
+                    {resultado.omitidos?.length > 0 && (
+                        <Alert severity="info">
+                            No se enviaron porque pidieron la baja:
+                            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                                {resultado.omitidos.map((e) => <li key={e.email}>{e.email}</li>)}
                             </Box>
-                            <EmailEditor
-                                ref={emailEditorRef}
-                                onReady={() => setEditorReady(true)}
-                                options={{ locale: 'es-ES', features: { textEditor: { tables: true } } }}
-                                style={{ height: 'calc(100vh - 220px)', minHeight: 500 }}
-                            />
-                        </Paper>
-                    )}
-
-                    {/* Live preview */}
-                    {(modo === 'template' && templateData) && (
-                        <Paper elevation={2} sx={{ borderRadius: 3, overflow: 'hidden' }}>
-                            <Box
-                                px={2} py={1.5}
-                                borderBottom="1px solid"
-                                sx={{ borderColor: 'divider' }}
-                                display="flex"
-                                alignItems="center"
-                                justifyContent="space-between"
-                            >
-                                <Typography variant="subtitle2" fontWeight="bold">
-                                    Vista previa
-                                </Typography>
-                                {asuntoPreview && (
-                                    <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 300 }}>
-                                        Asunto: {asuntoPreview}
-                                    </Typography>
-                                )}
-                            </Box>
-                            <Box sx={{ height: 600, overflow: 'auto', bgcolor: '#f5f5f5' }}>
-                                <iframe
-                                    srcDoc={previewHtml}
-                                    title="Vista previa del email"
-                                    sandbox="allow-same-origin"
-                                    style={{ width: '100%', height: '100%', border: 'none' }}
-                                />
-                            </Box>
-                        </Paper>
-                    )}
-
-                    {modo === 'template' && !templateData && (
-                        <Paper
-                            elevation={0}
-                            sx={{
-                                borderRadius: 3,
-                                border: '2px dashed',
-                                borderColor: 'divider',
-                                height: 300,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexDirection: 'column',
-                                gap: 1,
-                                color: 'text.secondary',
-                            }}
-                        >
-                            <PreviewIcon sx={{ fontSize: 48, opacity: 0.3 }} />
-                            <Typography variant="body2">
-                                Seleccioná un template para ver la vista previa
-                            </Typography>
-                        </Paper>
+                        </Alert>
                     )}
                 </Box>
-            </Box>
+            )}
+        </SectionCard>
+    );
 
-            {/* Dialog: vista previa en modal */}
-            <Dialog open={previewDialog} onClose={() => setPreviewDialog(false)} maxWidth="md" fullWidth>
-                <DialogTitle>
-                    Vista previa
-                    {asuntoPreview && (
-                        <Typography variant="caption" display="block" color="text.secondary">
-                            Asunto: {asuntoPreview}
-                        </Typography>
+    const tarjetaPlantilla = (
+        <SectionCard title="Plantilla">
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Autocomplete
+                    options={templates}
+                    getOptionLabel={(o) => o.nombre || ''}
+                    isOptionEqualToValue={(o, v) => o.id === v.id}
+                    value={templateSeleccionado}
+                    onChange={(_, v) => seleccionarTemplate(v)}
+                    loading={loadingTemplate}
+                    noOptionsText="No hay plantillas para esta cuenta"
+                    renderInput={(p) => (
+                        <TextField
+                            {...p}
+                            label="Plantilla"
+                            InputProps={{
+                                ...p.InputProps,
+                                endAdornment: (<>{loadingTemplate && <CircularProgress size={16} />}{p.InputProps.endAdornment}</>),
+                            }}
+                        />
                     )}
-                </DialogTitle>
-                <DialogContent dividers sx={{ p: 0, height: '70vh' }}>
-                    <iframe
-                        srcDoc={previewHtml}
-                        title="Vista previa del email"
-                        sandbox="allow-same-origin"
-                        style={{ width: '100%', height: '100%', border: 'none' }}
-                    />
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setPreviewDialog(false)}>Cerrar</Button>
-                </DialogActions>
-            </Dialog>
+                />
+                {templateData && (
+                    <TextField label="Asunto" value={asuntoManual} onChange={(e) => setAsuntoManual(e.target.value)} fullWidth helperText="Podés usar variables como {{nombre}}." />
+                )}
+                {variables.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                        <Typography variant="subtitle2" color="text.secondary">Variables de la plantilla</Typography>
+                        {variables.map((v) => (
+                            <TextField
+                                key={v}
+                                label={v}
+                                value={variableValues[v] || ''}
+                                onChange={(e) => setVariableValues((prev) => ({ ...prev, [v]: e.target.value }))}
+                                fullWidth
+                            />
+                        ))}
+                    </Box>
+                )}
+            </Box>
+        </SectionCard>
+    );
 
-            {/* Dialog: guardar como template */}
-            <Dialog open={guardarDialog} onClose={() => setGuardarDialog(false)} maxWidth="xs" fullWidth>
-                <DialogTitle>Guardar como template</DialogTitle>
-                <DialogContent>
-                    <TextField
-                        label="Nombre del template"
-                        value={nombreTemplateNuevo}
-                        onChange={e => setNombreTemplateNuevo(e.target.value)}
-                        fullWidth
-                        autoFocus
-                        sx={{ mt: 1 }}
+    // El editor va arriba del botón Enviar. En el celular es el editor básico: el de diseño no entra.
+    const tarjetaContenido = (
+        <SectionCard title="Contenido">
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField label="Asunto" value={subjectLibre} onChange={(e) => setSubjectLibre(e.target.value)} fullWidth />
+                {hayEditorDiseno ? (
+                    <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+                        <EmailEditor
+                            ref={emailEditorRef}
+                            onReady={() => setEditorReady(true)}
+                            options={{ locale: 'es-ES', features: { textEditor: { tables: true } } }}
+                            style={{ height: 'max(500px, calc(100dvh - 320px))' }}
+                        />
+                    </Box>
+                ) : (
+                    <HTMLTemplateEditor
+                        value={htmlLibre}
+                        onChange={setHtmlLibre}
+                        variables={[{ label: 'Nombre', token: '{{nombre}}' }]}
+                        placeholder="Escribí el mensaje…"
                     />
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setGuardarDialog(false)}>Cancelar</Button>
-                    <Button
-                        variant="contained"
-                        onClick={handleGuardarTemplate}
-                        disabled={guardando || !nombreTemplateNuevo.trim()}
-                        startIcon={guardando ? <CircularProgress size={14} /> : <SaveIcon />}
-                    >
-                        Guardar
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                )}
+            </Box>
+        </SectionCard>
+    );
 
-            {/* Snackbar de feedback */}
-            <Snackbar
-                open={snack.open}
-                autoHideDuration={4000}
-                onClose={() => setSnack(s => ({ ...s, open: false }))}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+    const tarjetaVistaPrevia = templateData ? (
+        <SectionCard title="Vista previa" subtitle={asuntoPreview ? <>Asunto: {asuntoPreview}</> : undefined}>
+            <VistaPreviaEmail html={previewHtml} />
+        </SectionCard>
+    ) : (
+        <SectionCard>
+            <EmptyState compact icon={FileText} title="Elegí una plantilla" description="Acá vas a ver cómo queda el mail antes de mandarlo." />
+        </SectionCard>
+    );
+
+    return (
+        <PageContainer>
+            <PageHeader
+                title="Envío manual"
+                subtitle="Mandá un mail suelto a una o varias personas, con una plantilla o escribiéndolo en el momento."
+                breadcrumbs={migasDe('/email/envio-manual')}
+            />
+
+            <ToggleButtonGroup
+                value={modo}
+                exclusive
+                onChange={(_, v) => v && cambiarModo(v)}
+                aria-label="Cómo armar el mail"
+                sx={{ mb: 2, width: { xs: '100%', sm: 'auto' }, '& .MuiToggleButton-root': { minHeight: 44, flex: { xs: 1, sm: 'none' }, gap: 1, textTransform: 'none' } }}
             >
-                <Alert severity={snack.severity} onClose={() => setSnack(s => ({ ...s, open: false }))}>
-                    {snack.msg}
-                </Alert>
-            </Snackbar>
-        </Box>
+                <ToggleButton value="plantilla"><FileText size={18} strokeWidth={1.75} aria-hidden />Con plantilla</ToggleButton>
+                <ToggleButton value="libre"><FilePenLine size={18} strokeWidth={1.75} aria-hidden />Escribirlo yo</ToggleButton>
+            </ToggleButtonGroup>
+
+            {modo === 'plantilla' ? (
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 480px) minmax(0, 1fr)' }, gap: 2, alignItems: 'start' }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {tarjetaDestino}
+                        {tarjetaPlantilla}
+                        {tarjetaAdjuntos}
+                        {tarjetaAcciones}
+                    </Box>
+                    {tarjetaVistaPrevia}
+                </Box>
+            ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {tarjetaDestino}
+                    {tarjetaContenido}
+                    {tarjetaAdjuntos}
+                    {tarjetaAcciones}
+                </Box>
+            )}
+
+            <ResponsiveDialog
+                open={previewAbierto}
+                onClose={() => setPreviewAbierto(false)}
+                cerrarConFondo
+                maxWidth="md"
+                title="Vista previa"
+                actions={<Button variant="contained" onClick={() => setPreviewAbierto(false)}>Cerrar</Button>}
+            >
+                {asuntoPreview && <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}><strong>Asunto:</strong> {asuntoPreview}</Typography>}
+                <VistaPreviaEmail html={previewHtml} />
+            </ResponsiveDialog>
+
+            <ResponsiveDialog
+                open={guardarAbierto}
+                onClose={() => !guardando && setGuardarAbierto(false)}
+                maxWidth="xs"
+                title="Guardar como plantilla"
+                actions={
+                    <>
+                        <Button onClick={() => setGuardarAbierto(false)} disabled={guardando}>Cancelar</Button>
+                        <Button
+                            variant="contained"
+                            onClick={guardarComoPlantilla}
+                            disabled={guardando || !nombreTemplateNuevo.trim()}
+                            startIcon={guardando ? <CircularProgress size={16} color="inherit" /> : <Save size={18} strokeWidth={1.75} aria-hidden />}
+                        >
+                            Guardar
+                        </Button>
+                    </>
+                }
+            >
+                <TextField label="Nombre de la plantilla" value={nombreTemplateNuevo} onChange={(e) => setNombreTemplateNuevo(e.target.value)} fullWidth autoFocus sx={{ mt: 0.5 }} />
+            </ResponsiveDialog>
+
+            <ConfirmDialog
+                open={!!pendiente}
+                titulo={`¿Enviar a ${toList.length} destinatarios?`}
+                mensaje={<>Se va a mandar «{asuntoPreview}» a {toList.length} direcciones de email. Un envío no se puede deshacer.</>}
+                confirmarTexto={`Enviar a ${toList.length}`}
+                onConfirmar={() => {
+                    const html = pendiente.html;
+                    setPendiente(null);
+                    ejecutarEnvio(html);
+                }}
+                onCancelar={() => setPendiente(null)}
+            />
+        </PageContainer>
     );
 }

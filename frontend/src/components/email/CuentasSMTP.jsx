@@ -1,585 +1,406 @@
-import React, { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-    Box, Button, Card, CardContent, Typography,
-    Dialog, DialogTitle, DialogContent, DialogActions,
-    TextField, CircularProgress, useTheme, Snackbar, IconButton,
-    LinearProgress, Skeleton, Tooltip, InputAdornment
+    Alert, Box, Button, CircularProgress, IconButton, InputAdornment, Paper, Skeleton, TextField, Typography,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
+import { Eye, EyeOff, Mail, Plus, Trash2 } from 'lucide-react';
 import api from '../../api/axios';
-import MuiAlert from '@mui/material/Alert';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import Visibility from '@mui/icons-material/Visibility';
-import VisibilityOff from '@mui/icons-material/VisibilityOff';
-import LinkIcon from '@mui/icons-material/Link';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import {
+    BloqueEstado, ConfirmDialog, EmptyState, PageContainer, PageHeader, ResponsiveDialog, SectionCard, StatusChip,
+} from '../ui';
+import MenuMas from '../admin/MenuMas';
+
+const FORM_VACIO = { nombre: '', host: '', puerto: 587, usuario: '', password: '', remitente: '', emailFrom: '' };
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const NOMBRES_DNS = {
+    spf: 'SPF (Sender Policy Framework)',
+    dkim: 'DKIM (DomainKeys Identified Mail)',
+    dmarc: 'DMARC (Domain-based Message Authentication, Reporting & Conformance)',
+};
+
+// El resultado de la última prueba de cada cuenta vive en el navegador: el backend no lo guarda.
+function leerPruebas() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem('smtpTestResultados') || '{}');
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch {
+        /* JSON roto o storage bloqueado: se arranca sin historial */
+    }
+    return {};
+}
+
+function guardarPruebas(valor) {
+    try {
+        localStorage.setItem('smtpTestResultados', JSON.stringify(valor));
+    } catch {
+        /* storage bloqueado: el resultado queda sólo en memoria */
+    }
+}
+
+function validar(f) {
+    const e = {};
+    if (!f.nombre.trim()) e.nombre = 'Poné un nombre para reconocer la cuenta.';
+    if (!f.host.trim()) e.host = 'Falta el servidor (host).';
+    const puerto = Number(f.puerto);
+    if (!Number.isInteger(puerto) || puerto < 1 || puerto > 65535) e.puerto = 'Un puerto entre 1 y 65535.';
+    if (!f.usuario.trim()) e.usuario = 'Falta el usuario.';
+    if (!f.password) e.password = 'Falta la contraseña.';
+    if (!f.remitente.trim()) e.remitente = 'Falta el nombre que va a ver quien recibe.';
+    if (!EMAIL_RE.test(f.emailFrom.trim())) e.emailFrom = 'Escribí un email válido.';
+    return e;
+}
+
+function EstadoPrueba({ resultado }) {
+    if (resultado === 'ok') return <StatusChip label="Conexión probada" tono="ok" />;
+    if (resultado === 'error') return <StatusChip label="Falló la prueba" tono="error" />;
+    return <StatusChip label="Sin probar" tono="neutro" />;
+}
 
 export default function CuentasSMTP() {
-    const [validacionesDominio, setValidacionesDominio] = useState({});
-    const [verificandoDominioMap, setVerificandoDominioMap] = useState({});
-    const [resultadoVerificacion, setResultadoVerificacion] = useState(null);
-    const [modalVerificacionOpen, setModalVerificacionOpen] = useState(false);
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-    const [showPassword, setShowPassword] = useState(false);
-    const togglePasswordVisibility = () => setShowPassword((prev) => !prev);
-    const [testResultados, setTestResultados] = useState(getStoredTestResultados);
-    const [probandoId, setProbandoId] = useState(null);
-    const theme = useTheme();
+    const feedback = useFeedback();
     const [cuentas, setCuentas] = useState([]);
+    const [estado, setEstado] = useState('cargando');
+    const [validaciones, setValidaciones] = useState({});
+    const [verificando, setVerificando] = useState({});
+    const [pruebas, setPruebas] = useState(leerPruebas);
+    const [probandoId, setProbandoId] = useState(null);
+    const [detalle, setDetalle] = useState(null); // { cuenta, datos }
     const [modalOpen, setModalOpen] = useState(false);
-    const [formData, setFormData] = useState({
-        nombre: '',
-        host: '',
-        puerto: 587,
-        usuario: '',
-        password: '',
-        remitente: '',
-        emailFrom: ''
-    });
-    const [loading, setLoading] = useState(false);
-    const [loadingCuentas, setLoadingCuentas] = useState(false);
-    const [error, setError] = useState('');
-    const [feedback, setFeedback] = useState({
-        open: false,
-        message: '',
-        type: 'success'
-    });
-    const [dialogOpen, setDialogOpen] = useState(false);
-    const [selectedCuenta, setSelectedCuenta] = useState(null);
+    const [form, setForm] = useState(FORM_VACIO);
+    const [errores, setErrores] = useState({});
+    const [errorGuardar, setErrorGuardar] = useState('');
+    const [guardando, setGuardando] = useState(false);
+    const [verPassword, setVerPassword] = useState(false);
+    const [porEliminar, setPorEliminar] = useState(null);
+    const [eliminando, setEliminando] = useState(false);
 
-    // ⭐ util: ellipsis 1 línea
-    const ellipsis = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 };
-    const CARD_MIN_HEIGHT = 240; // altura uniforme mínima
-
-    useEffect(() => { fetchCuentas(); }, []);
-
-    const fetchCuentas = async () => {
-        setLoadingCuentas(true);
-        try {
-            const res = await api.get('/email/cuentas');
-            setCuentas(res.data);
-            res.data.forEach((cuenta) => verificarDominio(cuenta.id));
-        } catch (err) {
-            console.error('Error al obtener cuentas SMTP', err);
-        } finally {
-            setLoadingCuentas(false);
-        }
-    };
-
-    function getStoredTestResultados() {
-        try {
-            const saved = localStorage.getItem('smtpTestResultados');
-            const parsed = saved ? JSON.parse(saved) : {};
-            if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return parsed;
-        } catch (e) {
-            console.warn('Error leyendo o parseando localStorage:', e);
-        }
-        localStorage.removeItem('smtpTestResultados');
-        return {};
-    }
-
-    const abrirModalVerificacion = (id) => {
-        setResultadoVerificacion(validacionesDominio[id]);
-        setModalVerificacionOpen(true);
-    };
-
-    const verificarDominio = async (id) => {
-        setVerificandoDominioMap((prev) => ({ ...prev, [id]: true }));
+    const verificarDominio = useCallback(async (id) => {
+        setVerificando((p) => ({ ...p, [id]: true }));
         try {
             const res = await api.get(`/email/cuentas/${id}/verificar-dominio`);
-            setValidacionesDominio((prev) => ({ ...prev, [id]: res.data }));
+            setValidaciones((p) => ({ ...p, [id]: res.data }));
         } catch {
-            setValidacionesDominio((prev) => ({
-                ...prev,
-                [id]: { spf: false, dkim: false, dmarc: false, error: true }
-            }));
+            setValidaciones((p) => ({ ...p, [id]: { error: 'No se pudo consultar el DNS del dominio.' } }));
         } finally {
-            setVerificandoDominioMap((prev) => ({ ...prev, [id]: false }));
+            setVerificando((p) => ({ ...p, [id]: false }));
         }
-    };
+    }, []);
 
-    const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
-
-    const handleDelete = async () => {
+    const fetchCuentas = useCallback(async () => {
+        setEstado((e) => (e === 'listo' ? e : 'cargando'));
         try {
-            await api.delete(`/email/cuentas/${selectedCuenta.id}`);
-            setCuentas((prev) => prev.filter((cuenta) => cuenta.id !== selectedCuenta.id));
-            setFeedback({ open: true, type: 'success', message: 'Cuenta SMTP eliminada.' });
-            setTestResultados((prev) => {
-                const nuevo = { ...prev };
-                delete nuevo[selectedCuenta.id];
-                localStorage.setItem('smtpTestResultados', JSON.stringify(nuevo));
-                return nuevo;
-            });
-            setSelectedCuenta(null);
-            setDialogOpen(false);
-        } catch (error) {
-            const msg = typeof error?.response?.data?.message === 'string'
-                ? error.response.data.message
-                : 'Error al eliminar la cuenta SMTP';
-            setFeedback({ open: true, type: 'error', message: msg });
-            setSelectedCuenta(null);
-            setDialogOpen(false);
+            const res = await api.get('/email/cuentas');
+            const lista = Array.isArray(res.data) ? res.data : [];
+            setCuentas(lista);
+            setEstado('listo');
+            lista.forEach((c) => verificarDominio(c.id));
+        } catch {
+            setEstado('error');
         }
-    };
+    }, [verificarDominio]);
 
-    const actualizarResultado = (id, resultado) => {
-        setTestResultados((prev) => {
-            const nuevo = { ...prev, [id]: resultado };
-            localStorage.setItem('smtpTestResultados', JSON.stringify(nuevo));
+    useEffect(() => {
+        fetchCuentas();
+    }, [fetchCuentas]);
+
+    const actualizarPrueba = (id, resultado) => {
+        setPruebas((prev) => {
+            const nuevo = { ...prev };
+            if (resultado) nuevo[id] = resultado;
+            else delete nuevo[id];
+            guardarPruebas(nuevo);
             return nuevo;
         });
     };
 
-    const handleSubmit = async () => {
-        setError(''); setLoading(true);
+    const probar = async (cuenta) => {
+        setProbandoId(cuenta.id);
+        actualizarPrueba(cuenta.id, null);
         try {
-            await api.post('/email/cuentas', formData);
+            await api.get(`/email/cuentas/${cuenta.id}/test`);
+            actualizarPrueba(cuenta.id, 'ok');
+            feedback.exito(`La conexión de "${cuenta.nombre}" funciona.`);
+        } catch (err) {
+            actualizarPrueba(cuenta.id, 'error');
+            feedback.error(mensajeDeError(err, 'No se pudo conectar con el servidor de correo.'));
+        } finally {
+            setProbandoId(null);
+        }
+    };
+
+    const abrirCrear = () => {
+        setForm(FORM_VACIO);
+        setErrores({});
+        setErrorGuardar('');
+        setVerPassword(false);
+        setModalOpen(true);
+    };
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setForm((p) => ({ ...p, [name]: value }));
+        setErrores((p) => (p[name] ? { ...p, [name]: undefined } : p));
+    };
+
+    const handleSubmit = async () => {
+        const e = validar(form);
+        setErrores(e);
+        if (Object.keys(e).length > 0) return;
+        setErrorGuardar('');
+        setGuardando(true);
+        try {
+            await api.post('/email/cuentas', { ...form, puerto: Number(form.puerto), emailFrom: form.emailFrom.trim() });
             setModalOpen(false);
-            setFormData({
-                nombre: '',
-                host: '',
-                puerto: 587,
-                usuario: '',
-                password: '',
-                remitente: '',
-                emailFrom: ''
-            });
+            feedback.exito('Cuenta de email creada.');
             fetchCuentas();
         } catch (err) {
-            const msg = typeof err?.response?.data?.message === 'string'
-                ? err.response.data.message
-                : 'Error al crear cuenta SMTP';
-            console.error('Error SMTP:', msg);
-            setFeedback({ open: true, type: 'error', message: msg });
+            setErrorGuardar(mensajeDeError(err, 'No se pudo crear la cuenta de email.'));
         } finally {
-            setLoading(false);
+            setGuardando(false);
         }
     };
 
-    const getLabelTitle = (key) => {
-        switch (key) {
-            case 'spf': return 'SPF (Sender Policy Framework)';
-            case 'dkim': return 'DKIM (DomainKeys Identified Mail)';
-            case 'dmarc': return 'DMARC (Domain-based Message Authentication, Reporting & Conformance)';
-            default: return key.toUpperCase();
+    const eliminar = async () => {
+        setEliminando(true);
+        try {
+            await api.delete(`/email/cuentas/${porEliminar.id}`);
+            setCuentas((prev) => prev.filter((c) => c.id !== porEliminar.id));
+            actualizarPrueba(porEliminar.id, null);
+            feedback.exito('Cuenta de email eliminada.');
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo eliminar la cuenta.'));
+        } finally {
+            setEliminando(false);
+            setPorEliminar(null);
         }
     };
 
-    // ---- Skeleton card reutilizable
-    const SkeletonCard = () => (
-        <Card
-            variant="outlined"
-            sx={{
-                height: '100%',
-                width: '100%',
-                minHeight: CARD_MIN_HEIGHT,
-                borderRadius: 2,
-                boxShadow: 1,
-                px: 1.5,
-                py: 1,
-                overflow: 'hidden' // ⭐
-            }}
-        >
-            <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, height: '100%', minWidth: 0 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ minWidth: 0 }}>
-                    <Skeleton variant="text" width="50%" height={28} />
-                    <Skeleton variant="circular" width={24} height={24} />
-                </Box>
-                <Skeleton variant="text" width="90%" />
-                <Skeleton variant="text" width="85%" />
-                <Skeleton variant="text" width="95%" />
-                <Box sx={{ flexGrow: 1 }} />
-                <Skeleton variant="rounded" width={160} height={34} />
-            </CardContent>
-        </Card>
-    );
+    const sucio = JSON.stringify(form) !== JSON.stringify(FORM_VACIO);
 
     return (
-        <Box sx={{ maxWidth: '1400px', mx: 'auto', px: { xs: 2, md: 3, lg: 4 }, py: 3 }}>
-            <Box display="flex" justifyContent="space-between" mb={2} >
-                <Box display="flex" alignItems="center">
-                    <LinkIcon sx={{ fontSize: 32 }} />
-                    <Typography ml={1} variant="h5" fontWeight="bold">Cuentas SMTP</Typography>
+        <PageContainer>
+            <PageHeader
+                title="Cuentas de email"
+                subtitle="Las cuentas SMTP desde las que salen las campañas y los envíos manuales."
+                breadcrumbs={migasDe('/email/cuentas')}
+                actions={
+                    <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={abrirCrear}>
+                        Nueva cuenta
+                    </Button>
+                }
+            />
+
+            {estado === 'error' && <BloqueEstado estado="error" mensaje="No se pudieron cargar las cuentas." onReintentar={fetchCuentas} />}
+
+            {estado === 'cargando' && (
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>
+                    {[0, 1, 2].map((i) => (
+                        <Paper key={i} variant="outlined" sx={{ p: 2, borderRadius: '14px' }}>
+                            <Skeleton width="50%" height={28} />
+                            <Skeleton width="85%" />
+                            <Skeleton width="70%" />
+                            <Skeleton variant="rounded" width={140} height={36} sx={{ mt: 2 }} />
+                        </Paper>
+                    ))}
                 </Box>
-                <Button
-                    sx={{
-                        borderRadius: 2,
-                        textTransform: 'none',
-                        backgroundColor: '#075E54',
-                        '&:hover': { backgroundColor: '#0b7b65', transform: 'scale(1.03)', boxShadow: 4 },
-                    }}
-                    variant="contained" startIcon={<AddIcon />} onClick={() => setModalOpen(true)}
+            )}
+
+            {estado === 'listo' && cuentas.length === 0 && (
+                <SectionCard>
+                    <EmptyState
+                        icon={Mail}
+                        title="Todavía no hay cuentas de email"
+                        description="Agregá una cuenta SMTP para empezar a enviar campañas por correo electrónico."
+                        action={{ label: 'Nueva cuenta', onClick: abrirCrear }}
+                    />
+                </SectionCard>
+            )}
+
+            {estado === 'listo' && cuentas.length > 0 && (
+                <Box
+                    component="ul"
+                    sx={{ listStyle: 'none', m: 0, p: 0, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}
                 >
-                    Nueva cuenta
-                </Button>
-            </Box>
-
-            {loadingCuentas && <Box mb={2}><LinearProgress /></Box>}
-
-            {/* =========================
-          REEMPLAZO EL GRID por CSS GRID (3 columnas SIEMPRE)
-          ========================= */}
-            <Box
-                sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))' }, // ⭐ 3 por fila
-                    gap: 2
-                }}
-            >
-                {/* Estado vacío */}
-                {cuentas.length === 0 && !loadingCuentas && (
-                    <Box
-                        minHeight="25vh"
-                        textAlign="center"
-                        display="flex"
-                        flexDirection="column"
-                        alignItems="center"
-                        justifyContent="center"
-                        sx={{
-                            border: '2px dashed',
-                            borderColor: theme.palette.mode === 'dark' ? '#555' : '#ccc',
-                            borderRadius: 4,
-                            py: 5,
-                            px: 3,
-                            backgroundColor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#f9f9f9',
-                            color: theme.palette.text.secondary,
-                            gridColumn: '1 / -1' // ocupa todo el ancho de la grilla
-                        }}
-                    >
-                        <img
-                            src="https://cdn-icons-png.flaticon.com/512/4208/4208391.png"
-                            alt="Sin cuentas SMTP"
-                            width={100}
-                            style={{ marginBottom: 16, opacity: 0.6 }}
-                        />
-                        <Typography variant="h6" gutterBottom>No hay ninguna cuenta SMTP cargada</Typography>
-                        <Typography variant="body2">Agregá una cuenta para comenzar a enviar campañas por correo electrónico.</Typography>
-                        <Button
-                            variant="contained"
-                            onClick={() => setModalOpen(true)}
-                            sx={{
-                                mt: 3, px: 4, py: 1.3, borderRadius: 2, textTransform: 'none', fontSize: '0.9rem',
-                                backgroundColor: '#1976d2', transition: 'all 0.3s ease',
-                                '&:hover': { backgroundColor: '#115293', transform: 'scale(1.03)', boxShadow: 4 }
-                            }}
-                        >
-                            Nueva cuenta
-                        </Button>
-                    </Box>
-                )}
-
-                {/* Skeletons (3 por fila) */}
-                {loadingCuentas && Array.from({ length: 6 }).map((_, i) => (
-                    <Box key={`sk-${i}`} sx={{ display: 'flex', minWidth: 0 }}>
-                        <SkeletonCard />
-                    </Box>
-                ))}
-
-                {/* Cards reales */}
-                {cuentas.map((cuenta) => (
-                    <Box key={cuenta.id} sx={{ display: 'flex', minWidth: 0 }}>
-                        <Card
-                            variant="outlined"
-                            sx={{
-                                position: 'relative',
-                                display: 'flex',
-                                flexDirection: 'row',
-                                alignItems: 'flex-start',
-                                borderRadius: 2,
-                                boxShadow: 1,
-                                transition: 'box-shadow 0.25s ease, transform 0.1s ease',
-                                background: theme.palette.mode === 'light'
-                                    ? 'linear-gradient(180deg, #f7f9fc 0%, #eef3ff 100%)'
-                                    : '#2c2c2c',
-                                color: theme.palette.text.primary,
-                                '&:hover': { boxShadow: 6, transform: 'translateY(-1px)' },
-                                px: 1.5, py: 1,
-                                width: '100%',
-                                height: '100%',
-                                minHeight: CARD_MIN_HEIGHT,
-                                overflow: 'hidden', // ⭐
-                                minWidth: 0        // ⭐
-                            }}
-                        >
-                            <Tooltip
-                                title={
-                                    testResultados[cuenta.id] === 'ok'
-                                        ? 'Conexión exitosa'
-                                        : testResultados[cuenta.id] === 'error'
-                                            ? 'Error de conexión'
-                                            : 'Nunca probado'
-                                }
-                                arrow placement="left"
+                    {cuentas.map((cuenta) => {
+                        const dns = validaciones[cuenta.id];
+                        return (
+                            <Paper
+                                component="li"
+                                key={cuenta.id}
+                                variant="outlined"
+                                sx={{ borderRadius: '14px', p: 2, display: 'flex', flexDirection: 'column', gap: 1.25, minWidth: 0 }}
                             >
-                                <Box
-                                    sx={{
-                                        width: 12, height: 12, mt: 1, borderRadius: '50%',
-                                        bgcolor: testResultados[cuenta.id] === 'ok' ? 'green'
-                                            : testResultados[cuenta.id] === 'error' ? 'red' : 'gray',
-                                        mx: 1, flexShrink: 0, cursor: 'default',
-                                    }}
-                                />
-                            </Tooltip>
-
-                            <CardContent
-                                sx={{
-                                    pl: 1, pr: 2, py: 1.5,
-                                    width: '100%',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: 0.5,
-                                    minWidth: 0 // ⭐
-                                }}
-                            >
-                                <Box display="flex" justifyContent="space-between" alignItems="start" sx={{ gap: 1, minWidth: 0 /* ⭐ */ }}>
-                                    <Tooltip title={cuenta.nombre} arrow>
-                                        <Typography variant="subtitle1" fontWeight="bold" sx={ellipsis}>
-                                            {cuenta.nombre}
-                                        </Typography>
-                                    </Tooltip>
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => { setSelectedCuenta(cuenta); setDialogOpen(true); }}
-                                        sx={{ color: theme.palette.error.main, flexShrink: 0 }}
-                                    >
-                                        <DeleteOutlineIcon fontSize="small" />
-                                    </IconButton>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                                    <Typography component="h2" sx={{ fontWeight: 650, fontSize: 16, overflowWrap: 'anywhere' }}>
+                                        {cuenta.nombre}
+                                    </Typography>
+                                    <EstadoPrueba resultado={pruebas[cuenta.id]} />
                                 </Box>
 
-                                <Tooltip title={`Host: ${cuenta.host}:${cuenta.puerto}`} arrow>
-                                    <Typography variant="subtitle2" sx={ellipsis}>
-                                        {`Host: ${cuenta.host}:${cuenta.puerto}`}
-                                    </Typography>
-                                </Tooltip>
-
-                                <Tooltip title={`Usuario: ${cuenta.usuario}`} arrow>
-                                    <Typography variant="body2" color="text.secondary" sx={ellipsis}>
-                                        {`Usuario: ${cuenta.usuario}`}
-                                    </Typography>
-                                </Tooltip>
-
-                                <Tooltip title={`Remitente: ${cuenta.remitente} (${cuenta.emailFrom})`} arrow>
-                                    <Typography variant="body2" color="text.secondary" sx={ellipsis}>
-                                        {`Remitente: ${cuenta.remitente} (${cuenta.emailFrom})`}
-                                    </Typography>
-                                </Tooltip>
-
-                                {verificandoDominioMap[cuenta.id] ? (
-                                    <Box display="flex" alignItems="center" gap={1} mt={1}>
-                                        <CircularProgress size={16} />
-                                        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
-                                            Verificando dominio...
-                                        </Typography>
+                                <Box component="dl" sx={{ m: 0, display: 'grid', gap: 0.75, fontSize: 13.5 }}>
+                                    <Box>
+                                        <Box component="dt" sx={{ fontSize: 12, color: 'text.secondary' }}>Servidor</Box>
+                                        <Box component="dd" sx={{ m: 0, overflowWrap: 'anywhere' }}>{cuenta.host}:{cuenta.puerto}</Box>
                                     </Box>
-                                ) : validacionesDominio[cuenta.id] && (
-                                    <Box display="flex" alignItems="center" gap={1} mt={1} flexWrap="wrap" sx={{ minWidth: 0 /* ⭐ */ }}>
-                                        {['spf', 'dkim', 'dmarc'].map((tipo) => (
-                                            <Box key={tipo} display="flex" alignItems="center" gap={0.5} mr={1}>
-                                                <CheckCircleIcon
-                                                    fontSize="small"
-                                                    sx={{ color: validacionesDominio[cuenta.id][tipo]?.valido === true ? '#28a745' : 'gray' }}
-                                                />
-                                                <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
-                                                    {tipo.toUpperCase()}
-                                                </Typography>
-                                            </Box>
-                                        ))}
-                                        <Button
-                                            onClick={() => abrirModalVerificacion(cuenta.id)}
-                                            size="small"
-                                            sx={{ ml: 0.5, fontSize: '0.85rem', textTransform: 'none', color: '#1a73e8', '&:hover': { textDecoration: 'underline' } }}
-                                        >
-                                            Ver detalle
+                                    <Box>
+                                        <Box component="dt" sx={{ fontSize: 12, color: 'text.secondary' }}>Usuario</Box>
+                                        <Box component="dd" sx={{ m: 0, overflowWrap: 'anywhere' }}>{cuenta.usuario}</Box>
+                                    </Box>
+                                    <Box>
+                                        <Box component="dt" sx={{ fontSize: 12, color: 'text.secondary' }}>Remitente</Box>
+                                        <Box component="dd" sx={{ m: 0, overflowWrap: 'anywhere' }}>{cuenta.remitente} ({cuenta.emailFrom})</Box>
+                                    </Box>
+                                </Box>
+
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', minHeight: 28 }}>
+                                    {verificando[cuenta.id] ? (
+                                        <>
+                                            <CircularProgress size={14} />
+                                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>Verificando dominio…</Typography>
+                                        </>
+                                    ) : dns?.error && !dns.spf ? (
+                                        <StatusChip label="No se pudo verificar el dominio" tono="aviso" />
+                                    ) : dns ? (
+                                        ['spf', 'dkim', 'dmarc'].map((t) => (
+                                            <StatusChip
+                                                key={t}
+                                                label={`${t.toUpperCase()} ${dns[t]?.valido === true ? 'ok' : 'falta'}`}
+                                                tono={dns[t]?.valido === true ? 'ok' : 'aviso'}
+                                            />
+                                        ))
+                                    ) : null}
+                                </Box>
+
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, mt: 'auto', pt: 1, borderTop: 1, borderColor: 'divider', flexWrap: 'wrap' }}>
+                                    {dns && !verificando[cuenta.id] && (
+                                        <Button onClick={() => setDetalle({ cuenta, datos: dns })} sx={{ minHeight: { xs: 44, md: 36 } }}>
+                                            Ver detalle DNS
                                         </Button>
+                                    )}
+                                    <Button
+                                        variant="outlined"
+                                        onClick={() => probar(cuenta)}
+                                        disabled={probandoId === cuenta.id}
+                                        startIcon={probandoId === cuenta.id ? <CircularProgress size={16} /> : null}
+                                        sx={{ minHeight: { xs: 44, md: 36 } }}
+                                    >
+                                        {probandoId === cuenta.id ? 'Probando…' : 'Probar conexión'}
+                                    </Button>
+                                    <MenuMas items={[{ label: 'Eliminar', icon: Trash2, peligro: true, onClick: () => setPorEliminar(cuenta) }]} />
+                                </Box>
+                            </Paper>
+                        );
+                    })}
+                </Box>
+            )}
+
+            <ResponsiveDialog
+                open={modalOpen}
+                onClose={() => setModalOpen(false)}
+                sucio={sucio && !guardando}
+                title="Nueva cuenta de email"
+                actions={
+                    <>
+                        <Button onClick={() => setModalOpen(false)} disabled={guardando}>Cancelar</Button>
+                        <Button
+                            variant="contained"
+                            onClick={handleSubmit}
+                            disabled={guardando}
+                            startIcon={guardando ? <CircularProgress size={16} color="inherit" /> : null}
+                        >
+                            {guardando ? 'Guardando…' : 'Guardar cuenta'}
+                        </Button>
+                    </>
+                }
+            >
+                <Box component="form" noValidate autoComplete="off" onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+                    {errorGuardar && <Alert severity="error" role="alert">{errorGuardar}</Alert>}
+                    <TextField fullWidth label="Nombre" name="nombre" value={form.nombre} onChange={handleChange} required
+                        error={!!errores.nombre} helperText={errores.nombre ?? 'Para reconocerla en las campañas. Ej: Cobranzas'} />
+                    {/* Host y puerto: una columna en el celular, dos desde sm. */}
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 2fr) minmax(0, 1fr)' }, gap: 2 }}>
+                        <TextField fullWidth label="Host" name="host" value={form.host} onChange={handleChange} required
+                            error={!!errores.host} helperText={errores.host ?? 'Ej: smtp.empresa.com'} />
+                        <TextField fullWidth label="Puerto" name="puerto" type="number" value={form.puerto} onChange={handleChange} required
+                            error={!!errores.puerto} helperText={errores.puerto} slotProps={{ htmlInput: { inputMode: 'numeric', min: 1, max: 65535 } }} />
+                    </Box>
+                    <TextField fullWidth label="Usuario" name="usuario" value={form.usuario} onChange={handleChange} required
+                        error={!!errores.usuario} helperText={errores.usuario} slotProps={{ htmlInput: { autoCapitalize: 'off', autoCorrect: 'off' } }} />
+                    <TextField
+                        fullWidth
+                        label="Contraseña"
+                        name="password"
+                        type={verPassword ? 'text' : 'password'}
+                        value={form.password}
+                        onChange={handleChange}
+                        required
+                        error={!!errores.password}
+                        helperText={errores.password}
+                        slotProps={{
+                            input: {
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <IconButton onClick={() => setVerPassword((p) => !p)} edge="end" aria-label={verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} sx={{ width: 44, height: 44 }}>
+                                            {verPassword ? <EyeOff size={18} strokeWidth={1.75} aria-hidden /> : <Eye size={18} strokeWidth={1.75} aria-hidden />}
+                                        </IconButton>
+                                    </InputAdornment>
+                                ),
+                            },
+                        }}
+                    />
+                    <TextField fullWidth label="Nombre del remitente" name="remitente" value={form.remitente} onChange={handleChange} required
+                        error={!!errores.remitente} helperText={errores.remitente ?? 'Lo que ve quien recibe el correo como remitente.'} />
+                    <TextField fullWidth label="Email del remitente" name="emailFrom" type="email" value={form.emailFrom} onChange={handleChange} required
+                        error={!!errores.emailFrom} helperText={errores.emailFrom} slotProps={{ htmlInput: { inputMode: 'email', autoCapitalize: 'off' } }} />
+                </Box>
+            </ResponsiveDialog>
+
+            <ResponsiveDialog
+                open={!!detalle}
+                onClose={() => setDetalle(null)}
+                cerrarConFondo
+                title={`Dominio de ${detalle?.cuenta?.nombre ?? ''}`}
+                actions={<Button onClick={() => setDetalle(null)}>Cerrar</Button>}
+            >
+                {detalle?.datos?.error && !detalle.datos.spf ? (
+                    <Alert severity="error">{detalle.datos.error}</Alert>
+                ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                        {detalle?.datos?.dominio && (
+                            <Typography variant="body2"><b>Dominio:</b> {detalle.datos.dominio}</Typography>
+                        )}
+                        {['spf', 'dkim', 'dmarc'].map((key) => {
+                            const val = detalle?.datos?.[key];
+                            if (!val) return null;
+                            return (
+                                <Paper key={key} variant="outlined" sx={{ p: 2, borderRadius: '14px' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 0.5 }}>
+                                        <Typography sx={{ fontWeight: 650, fontSize: 14 }}>{NOMBRES_DNS[key]}</Typography>
+                                        <StatusChip label={val.valido ? 'Configurado' : 'Falta configurar'} tono={val.valido ? 'ok' : 'aviso'} />
                                     </Box>
-                                )}
-
-                                <Box sx={{ flexGrow: 1 }} />
-
-                                <Button
-                                    variant="outlined"
-                                    size="small"
-                                    sx={{ mt: 2, textTransform: 'none', minWidth: 140, alignSelf: 'flex-start' }}
-                                    onClick={async () => {
-                                        setProbandoId(cuenta.id);
-                                        actualizarResultado(cuenta.id, null);
-                                        try {
-                                            await api.get(`/email/cuentas/${cuenta.id}/test`);
-                                            actualizarResultado(cuenta.id, 'ok');
-                                            setFeedback({ open: true, type: 'success', message: 'Conexión SMTP exitosa.' });
-                                        } catch (error) {
-                                            const msg = typeof error?.response?.data?.message === 'string'
-                                                ? error.response.data.message
-                                                : 'Error al probar la conexión SMTP';
-                                            actualizarResultado(cuenta.id, 'error');
-                                            setFeedback({ open: true, type: 'error', message: msg });
-                                        } finally { setProbandoId(null); }
-                                    }}
-                                    disabled={probandoId === cuenta.id}
-                                >
-                                    {probandoId === cuenta.id ? <CircularProgress size={16} /> : 'Probar conexión'}
-                                </Button>
-                            </CardContent>
-                        </Card>
+                                    <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+                                        {val.valor || val.sugerencia || 'Sin información'}
+                                    </Typography>
+                                </Paper>
+                            );
+                        })}
                     </Box>
-                ))}
-            </Box>
+                )}
+            </ResponsiveDialog>
 
-            {/* ----- diálogo crear cuenta (sin cambios funcionales) ----- */}
-            <Dialog open={modalOpen} onClose={() => setModalOpen(false)} fullWidth maxWidth="sm">
-                <DialogTitle sx={{ fontWeight: 'bold', fontSize: '1.3rem', px: 3, py: 2 }}>Nueva cuenta SMTP</DialogTitle>
-                <DialogContent dividers>
-                    <Box component="form" noValidate autoComplete="off">
-                        <Box display="flex" flexDirection="column" gap={2}>
-                            <TextField fullWidth size="small" label="Nombre" name="nombre" value={formData.nombre}
-                                onChange={handleChange} InputProps={{ sx: { py: 0.5 } }} />
-                            <Box display="grid" gridTemplateColumns="repeat(2, 1fr)" gap={2}>
-                                <TextField fullWidth size="small" label="Puerto" name="puerto" type="number"
-                                    value={formData.puerto} onChange={handleChange} InputProps={{ sx: { py: 0.5 } }} />
-                                <TextField fullWidth size="small" label="Host" name="host" value={formData.host}
-                                    onChange={handleChange} InputProps={{ sx: { py: 0.5 } }} />
-                            </Box>
-                            <TextField fullWidth size="small" label="Usuario" name="usuario"
-                                value={formData.usuario} onChange={handleChange} InputProps={{ sx: { py: 0.5 } }} />
-                            <TextField fullWidth size="small" label="Contraseña" name="password"
-                                type={showPassword ? 'text' : 'password'} value={formData.password} onChange={handleChange}
-                                InputProps={{
-                                    sx: { py: 0.5 },
-                                    endAdornment: (
-                                        <InputAdornment position="end">
-                                            <IconButton onClick={togglePasswordVisibility} edge="end">
-                                                {showPassword ? <VisibilityOff /> : <Visibility />}
-                                            </IconButton>
-                                        </InputAdornment>
-                                    )
-                                }} />
-                            <TextField fullWidth size="small" label="Nombre del remitente" name="remitente"
-                                value={formData.remitente} onChange={handleChange} InputProps={{ sx: { py: 0.5 } }} />
-                            <TextField fullWidth size="small" label="Email del remitente" name="emailFrom" type="email"
-                                value={formData.emailFrom} onChange={handleChange} InputProps={{ sx: { py: 0.5 } }} />
-                            {error && <Typography color="error">{error}</Typography>}
-                        </Box>
-                    </Box>
-                </DialogContent>
-                <DialogActions sx={{ px: 3, py: 2 }}>
-                    <Button onClick={() => setModalOpen(false)} sx={{ textTransform: 'none', fontFamily: commonFont, borderRadius: 2, px: 3, py: 1.3, color: '#555' }}>
-                        Cancelar
-                    </Button>
-                    <Button onClick={handleSubmit} disabled={loading} variant="contained"
-                        sx={{
-                            fontFamily: commonFont, backgroundColor: '#075E54', textTransform: 'none',
-                            borderRadius: 2, px: 4, py: 1.3, fontWeight: 'bold',
-                            '&:hover': { backgroundColor: '#0b7b65', transform: 'scale(1.03)', boxShadow: 4 }
-                        }}
-                    >
-                        {loading ? <CircularProgress size={20} color="inherit" /> : 'Guardar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            <Dialog
-                open={modalVerificacionOpen}
-                onClose={() => { setModalVerificacionOpen(false); setResultadoVerificacion(null); }}
-                fullWidth maxWidth="sm"
-            >
-                <DialogTitle sx={{ fontWeight: 'bold' }}>Detalles de validacion de dominio</DialogTitle>
-                <DialogContent dividers>
-                    {!resultadoVerificacion ? (
-                        <Box textAlign="center" py={3}>
-                            <CircularProgress />
-                            <Typography mt={2}>Verificando registros DNS...</Typography>
-                        </Box>
-                    ) : resultadoVerificacion?.error ? (
-                        <Typography color="error">{resultadoVerificacion.error}</Typography>
-                    ) : (
-                        resultadoVerificacion && (
-                            <Box>
-                                {resultadoVerificacion.dominio && (<Typography><b>Dominio:</b> {resultadoVerificacion.dominio}</Typography>)}
-                                {['spf', 'dkim', 'dmarc'].map((key) => {
-                                    const val = resultadoVerificacion[key];
-                                    if (!val) return null;
-                                    const labels = {
-                                        spf: 'SPF (Sender Policy Framework)',
-                                        dkim: 'DKIM (DomainKeys Identified Mail)',
-                                        dmarc: 'DMARC (Domain-based Message Authentication, Reporting & Conformance)'
-                                    };
-                                    const valido = val.valido;
-                                    const texto = val.valor || val.sugerencia || 'Sin información';
-                                    return (
-                                        <Tooltip key={key} title={labels[key]} placement="top" arrow>
-                                            <Box
-                                                display="flex" alignItems="start" mt={2} p={2} borderRadius={2}
-                                                sx={{
-                                                    bgcolor: (theme) =>
-                                                        valido ? (theme.palette.mode === 'dark' ? '#1b5e20' : '#e8f5e9')
-                                                            : (theme.palette.mode === 'dark' ? '#5c0000' : '#ffebee'),
-                                                    color: (theme) =>
-                                                        valido ? (theme.palette.mode === 'dark' ? '#c8e6c9' : 'inherit')
-                                                            : (theme.palette.mode === 'dark' ? '#ffcdd2' : 'inherit')
-                                                }}
-                                            >
-                                                <Box component="span" fontSize="1.4rem" mr={2} color={valido ? 'lightgreen' : 'orange'}>
-                                                    {valido ? '✅' : '⚠️'}
-                                                </Box>
-                                                <Box>
-                                                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>{labels[key]}</Typography>
-                                                    <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>{texto}</Typography>
-                                                </Box>
-                                            </Box>
-                                        </Tooltip>
-                                    );
-                                })}
-                            </Box>
-                        )
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => { setModalVerificacionOpen(false); setResultadoVerificacion(null); }} sx={{ textTransform: 'none' }}>
-                        Cerrar
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            <Snackbar
-                open={feedback.open}
-                autoHideDuration={3000}
-                onClose={() => setFeedback({ ...feedback, open: false })}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <MuiAlert
-                    elevation={6}
-                    variant="filled"
-                    severity={feedback.type}
-                    onClose={() => setFeedback({ ...feedback, open: false })}
-                    icon={<CheckCircleIcon fontSize="inherit" />}
-                >
-                    {feedback.message}
-                </MuiAlert>
-            </Snackbar>
-
-            <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
-                <DialogTitle>¿Eliminar template?</DialogTitle>
-                <DialogContent>
-                    <Typography>
-                        ¿Esta seguro que desea eliminar la cuenta "{selectedCuenta?.usuario}"? Esta acción no se puede deshacer.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setDialogOpen(false)} color="secondary">Cancelar</Button>
-                    <Button
-                        sx={{
-                            px: 2, py: 1, borderRadius: 2, fontFamily: commonFont, textTransform: 'none',
-                            fontSize: '0.9rem', backgroundColor: '#075E54',
-                            transition: 'all 0.3s ease',
-                            '&:hover': { backgroundColor: '#0b7b65', transform: 'scale(1.03)', boxShadow: 4 },
-                        }}
-                        onClick={handleDelete} color="primary" variant="contained"
-                    >
-                        Confirmar
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        </Box>
+            <ConfirmDialog
+                open={!!porEliminar}
+                titulo="¿Eliminar la cuenta de email?"
+                mensaje={`Se elimina "${porEliminar?.nombre ?? ''}" (${porEliminar?.usuario ?? ''}). Las campañas que la usan van a necesitar otra cuenta. No se puede deshacer.`}
+                confirmarTexto="Eliminar"
+                peligro
+                cargando={eliminando}
+                onConfirmar={eliminar}
+                onCancelar={() => setPorEliminar(null)}
+            />
+        </PageContainer>
     );
 }

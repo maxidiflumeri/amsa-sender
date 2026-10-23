@@ -1,234 +1,138 @@
-import React from 'react';
-import {
-    Card,
-    CardContent,
-    Box,
-    Typography,
-    Chip,
-    Avatar,
-    Link,
-    useTheme,
-} from '@mui/material';
-import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import PhonelinkIcon from '@mui/icons-material/Phonelink';
-import EmailIcon from '@mui/icons-material/Email';
-import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
-import AdsClickIcon from '@mui/icons-material/AdsClick';
-import ChatIcon from '@mui/icons-material/Chat';
+import { useState } from 'react';
+import { Avatar, Box, Button, Link, Paper, Typography } from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import { AlertCircle, MailOpen, MousePointerClick } from 'lucide-react';
+import { StatusChip } from '../ui';
+import { CANALES } from './comunes';
 
 const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('es-AR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(date);
+    if (!dateString) return '—';
+    return new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(dateString));
 };
 
-const truncateText = (text, maxLength = 80) => {
-    if (!text) return '';
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + '...';
+// El backend manda los estados tal como los guarda cada canal ('open', 'delivered', 'read'…). Acá se traducen y se les
+// da su tono; lo que no se conoce se muestra con la primera en mayúscula, nunca crudo en minúsculas.
+const ESTADOS = {
+    enviado: ['Enviado', 'ok'],
+    sent: ['Enviado', 'ok'],
+    success: ['Enviado', 'ok'],
+    entregado: ['Entregado', 'ok'],
+    delivered: ['Entregado', 'ok'],
+    read: ['Leído', 'ok'],
+    leido: ['Leído', 'ok'],
+    pendiente: ['Pendiente', 'aviso'],
+    pending: ['Pendiente', 'aviso'],
+    fallido: ['Fallido', 'error'],
+    failed: ['Fallido', 'error'],
+    error: ['Con error', 'error'],
+    rebotado: ['Rebotó', 'error'],
+    bounced: ['Rebotó', 'error'],
+    queja: ['Queja', 'error'],
 };
 
-const getEstadoColor = (estado) => {
-    if (!estado) return 'default';
-    const estadoLower = estado.toLowerCase();
-    if (estadoLower === 'success' || estadoLower === 'enviado' || estadoLower === 'entregado' || estadoLower === 'delivered') return 'success';
-    if (estadoLower === 'fallido' || estadoLower === 'failed' || estadoLower === 'error') return 'error';
-    if (estadoLower === 'pending' || estadoLower === 'pendiente') return 'warning';
-    if (estadoLower === 'evento') return 'info';
-    return 'default';
-};
+const TIPOS = { envio: 'Envío', open: 'Apertura', click: 'Click', evento: 'Evento' };
 
-const getIconAndColor = (canal, tipo, theme) => {
-    if (canal === 'whatsapp') {
-        return {
-            icon: <PhonelinkIcon />,
-            color: '#7B1FA2',
-        };
-    }
-    if (canal === 'email') {
-        if (tipo === 'open') {
-            return {
-                icon: <MarkEmailReadIcon />,
-                color: theme.palette.info.main,
-            };
-        }
-        if (tipo === 'click') {
-            return {
-                icon: <AdsClickIcon />,
-                color: '#ff9800',
-            };
-        }
-        return {
-            icon: <EmailIcon />,
-            color: theme.palette.info.main,
-        };
-    }
-    if (canal === 'wapi') {
-        return {
-            icon: <WhatsAppIcon />,
-            color: '#25D366',
-        };
-    }
-    return {
-        icon: <ChatIcon />,
-        color: theme.palette.text.secondary,
-    };
-};
+const capitalize = (str) => (str ? str.charAt(0).toUpperCase() + str.slice(1) : '');
 
-const getCanalLabel = (canal) => {
-    if (canal === 'whatsapp') return 'WhatsApp Web';
-    if (canal === 'wapi') return 'WhatsApp Meta';
-    if (canal === 'email') return 'Email';
-    return canal;
-};
+function estadoDe(entry) {
+    const crudo = entry.detalle?.estado;
+    // Los eventos (apertura, click) ya dicen qué pasaron en el título: un chip "Evento" sobra.
+    if (!crudo || crudo.toLowerCase() === 'evento') return null;
+    const conocido = ESTADOS[crudo.toLowerCase()];
+    return conocido ? { label: conocido[0], tono: conocido[1] } : { label: capitalize(crudo), tono: 'neutro' };
+}
 
-const capitalize = (str) => {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1);
-};
+function iconoDe(entry) {
+    if (entry.canal === 'email' && entry.tipo === 'open') return MailOpen;
+    if (entry.canal === 'email' && entry.tipo === 'click') return MousePointerClick;
+    return CANALES[entry.canal]?.Icono ?? AlertCircle;
+}
 
-export default function TimelineEntry({ entry }) {
-    const theme = useTheme();
+const LARGO_CORTO = 140;
 
-    if (!entry) return null;
-
-    const { icon, color } = getIconAndColor(entry.canal, entry.tipo, theme);
-    const estadoColor = getEstadoColor(entry.detalle?.estado);
-
+/** Un texto largo se recorta a tres renglones y se expande con "Ver más" (antes se cortaba a 80 caracteres para siempre). */
+function TextoExpandible({ etiqueta, texto, error = false }) {
+    const [abierto, setAbierto] = useState(false);
+    const largo = texto.length > LARGO_CORTO || texto.split('\n').length > 3;
     return (
-        <Card
-            sx={{
-                mb: 2,
-                bgcolor: theme.palette.background.paper,
-                borderLeft: `4px solid ${color}`,
-                display: 'flex',
-                alignItems: 'flex-start',
-                boxShadow: theme.palette.mode === 'light'
-                    ? '0 1px 3px rgba(0,0,0,0.1)'
-                    : '0 1px 3px rgba(255,255,255,0.05)',
-            }}
-        >
-            <Box
+        <Box sx={{ mb: 0.75 }}>
+            <Typography
+                variant="body2"
+                component="div"
                 sx={{
-                    p: 2,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    color: error ? 'error.main' : 'text.primary',
+                    overflowWrap: 'anywhere',
+                    whiteSpace: 'pre-wrap',
+                    ...(!abierto && largo ? { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : null),
                 }}
             >
-                <Avatar
-                    sx={{
-                        bgcolor: color,
-                        width: 48,
-                        height: 48,
-                    }}
-                >
-                    {icon}
-                </Avatar>
-            </Box>
+                <Box component="span" sx={{ fontWeight: 600 }}>{etiqueta}: </Box>
+                {texto}
+            </Typography>
+            {largo && (
+                <Button size="small" onClick={() => setAbierto((v) => !v)} aria-expanded={abierto} sx={{ minHeight: { xs: 44, md: 28 }, px: 0.5, ml: -0.5 }}>
+                    {abierto ? 'Ver menos' : 'Ver más'}
+                </Button>
+            )}
+        </Box>
+    );
+}
 
-            <CardContent sx={{ flex: 1, py: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
-                    <Typography
-                        variant="body1"
-                        sx={{
-                            fontWeight: 'bold',
-                            color: theme.palette.text.primary,
-                        }}
-                    >
-                        {getCanalLabel(entry.canal)} · {capitalize(entry.tipo)}
+export default function TimelineEntry({ entry }) {
+    if (!entry) return null;
+
+    const canal = CANALES[entry.canal];
+    const Icono = iconoDe(entry);
+    const estado = estadoDe(entry);
+    const tipo = TIPOS[String(entry.tipo).toLowerCase()] ?? capitalize(entry.tipo);
+    const d = entry.detalle ?? {};
+
+    return (
+        <Paper variant="outlined" sx={{ borderRadius: '14px', p: { xs: 1.5, sm: 2 }, display: 'flex', gap: { xs: 1.25, sm: 2 }, alignItems: 'flex-start', minWidth: 0 }}>
+            <Avatar
+                sx={{
+                    width: { xs: 32, sm: 44 },
+                    height: { xs: 32, sm: 44 },
+                    bgcolor: (t) => alpha(t.palette.text.secondary, 0.12),
+                    color: canal?.color ?? 'text.secondary',
+                    flex: 'none',
+                }}
+            >
+                <Icono size={20} strokeWidth={1.75} aria-hidden />
+            </Avatar>
+
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography sx={{ fontWeight: 600, fontSize: 15, overflowWrap: 'anywhere' }}>
+                        {canal?.label ?? entry.canal} · {tipo}
                     </Typography>
-                    <Chip
-                        label={entry.detalle?.estado || 'desconocido'}
-                        color={estadoColor}
-                        size="small"
-                        sx={{ fontSize: '0.75rem' }}
-                    />
+                    {estado && <StatusChip label={estado.label} tono={estado.tono} />}
                 </Box>
-
-                <Typography
-                    variant="caption"
-                    sx={{
-                        color: theme.palette.text.secondary,
-                        display: 'block',
-                        mb: 1,
-                    }}
-                >
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                     {formatDate(entry.fecha)}
                 </Typography>
 
-                {entry.detalle?.asunto && (
-                    <Typography
-                        variant="body2"
-                        sx={{ color: theme.palette.text.primary, mb: 0.5 }}
-                    >
-                        <strong>Asunto:</strong> {truncateText(entry.detalle.asunto)}
+                {d.asunto && <TextoExpandible etiqueta="Asunto" texto={d.asunto} />}
+                {d.mensaje && <TextoExpandible etiqueta="Mensaje" texto={d.mensaje} />}
+                {d.templateNombre && (
+                    <Typography variant="body2" sx={{ mb: 0.75, overflowWrap: 'anywhere' }}>
+                        <Box component="span" sx={{ fontWeight: 600 }}>Plantilla: </Box>{d.templateNombre}
                     </Typography>
                 )}
-
-                {entry.detalle?.mensaje && (
-                    <Typography
-                        variant="body2"
-                        sx={{ color: theme.palette.text.primary, mb: 0.5 }}
-                    >
-                        <strong>Mensaje:</strong> {truncateText(entry.detalle.mensaje)}
+                {d.urlDestino && (
+                    <Typography variant="body2" sx={{ mb: 0.75, overflowWrap: 'anywhere' }}>
+                        <Box component="span" sx={{ fontWeight: 600 }}>Enlace: </Box>
+                        <Link href={d.urlDestino} target="_blank" rel="noopener noreferrer">{d.urlDestino}</Link>
                     </Typography>
                 )}
-
-                {entry.detalle?.templateNombre && (
-                    <Typography
-                        variant="body2"
-                        sx={{ color: theme.palette.text.primary, mb: 0.5 }}
-                    >
-                        <strong>Template:</strong> {entry.detalle.templateNombre}
-                    </Typography>
-                )}
-
-                {entry.detalle?.urlDestino && (
-                    <Typography
-                        variant="body2"
-                        sx={{ color: theme.palette.text.primary, mb: 0.5 }}
-                    >
-                        <strong>URL:</strong>{' '}
-                        <Link
-                            href={entry.detalle.urlDestino}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            sx={{ color: theme.palette.primary.main }}
-                        >
-                            {truncateText(entry.detalle.urlDestino, 50)}
-                        </Link>
-                    </Typography>
-                )}
-
-                {entry.detalle?.error && (
-                    <Typography
-                        variant="body2"
-                        sx={{ color: theme.palette.error.main, mb: 0.5 }}
-                    >
-                        <strong>Error:</strong> {truncateText(entry.detalle.error)}
-                    </Typography>
-                )}
+                {d.error && <TextoExpandible etiqueta="Error" texto={d.error} error />}
 
                 {entry.campaniaNombre && (
-                    <Typography
-                        variant="caption"
-                        sx={{
-                            color: theme.palette.text.secondary,
-                            display: 'block',
-                            mt: 1,
-                        }}
-                    >
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, overflowWrap: 'anywhere' }}>
                         Campaña: {entry.campaniaNombre}
                     </Typography>
                 )}
-            </CardContent>
-        </Card>
+            </Box>
+        </Paper>
     );
 }

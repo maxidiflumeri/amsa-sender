@@ -1,327 +1,155 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Box, Typography, IconButton, Chip, Button, Dialog,
-    DialogTitle, DialogContent, DialogActions, TextField, Tooltip,
-    CircularProgress, Alert, Checkbox, FormControlLabel, Divider,
-    LinearProgress, useTheme,
+    Alert, Box, Button, Checkbox, CircularProgress, FormControlLabel, LinearProgress, Paper, Skeleton, TextField, Typography,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import PeopleIcon from '@mui/icons-material/People';
-import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import MailIcon from '@mui/icons-material/Mail';
-import SettingsIcon from '@mui/icons-material/Settings';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
-import ShieldIcon from '@mui/icons-material/Shield';
-import ApiIcon from '@mui/icons-material/Api';
-import InboxIcon from '@mui/icons-material/Inbox';
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import {
+    Inbox, Landmark, Mail, MessageCircle, Pencil, Plus, Settings, Shield, ShieldCheck, Smartphone, Trash2, Users,
+} from 'lucide-react';
 import api from '../../api/axios';
+import { CATALOGO_PERMISOS, TOTAL_PERMISOS } from '../../permisos';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import {
+    BloqueEstado, ConfirmDialog, EmptyState, PageContainer, PageHeader, ResponsiveDialog, SectionCard, StatusChip,
+} from '../ui';
+import MenuMas from './MenuMas';
 
-const TODOS_LOS_PERMISOS = [
-    {
-        seccion: 'WhatsApp',
-        items: [
-            { key: 'whatsapp.sesiones', label: 'Sesiones' },
-            { key: 'whatsapp.conectar', label: 'Conectar' },
-            { key: 'whatsapp.campanias', label: 'Campañas' },
-            { key: 'whatsapp.templates', label: 'Templates' },
-            { key: 'whatsapp.reportes', label: 'Reportes' },
-            { key: 'whatsapp.metricas', label: 'Métricas' },
-        ],
-    },
-    {
-        seccion: 'Email',
-        items: [
-            { key: 'email.cuentas_smtp', label: 'Cuentas SMTP' },
-            { key: 'email.templates', label: 'Templates' },
-            { key: 'email.campanias', label: 'Campañas' },
-            { key: 'email.envio_manual', label: 'Envío Manual' },
-            { key: 'email.reportes', label: 'Reportes' },
-            { key: 'email.desuscripciones', label: 'Desuscripciones' },
-        ],
-    },
-    {
-        seccion: 'Configuración',
-        items: [
-            { key: 'config.tareas_programadas', label: 'Tareas programadas' },
-        ],
-    },
-    {
-        seccion: 'Admin',
-        items: [
-            { key: 'admin.usuarios', label: 'Usuarios y roles' },
-        ],
-    },
-    {
-        seccion: 'WhatsApp API',
-        items: [
-            { key: 'wapi.config', label: 'Configuración' },
-            { key: 'wapi.templates', label: 'Templates' },
-            { key: 'wapi.campanias', label: 'Campañas' },
-            { key: 'wapi.bajas', label: 'Bajas' },
-            { key: 'wapi.analitica', label: 'Analítica y reportes' },
-        ],
-    },
-    {
-        seccion: 'Inbox WA',
-        items: [
-            { key: 'wapi.inbox', label: 'Ver conversaciones propias' },
-            { key: 'wapi.inbox.admin', label: 'Admin inbox (todas + reasignar)' },
-            { key: 'wapi.respuestas_rapidas', label: 'Plantillas rápidas' },
-        ],
-    },
-    {
-        seccion: 'Deudores',
-        items: [
-            { key: 'deudores.ver', label: 'Buscar y ver fichas' },
-            { key: 'deudores.reportes', label: 'Reportes por empresa/remesa' },
-        ],
-    },
-];
+// Un ícono por sección del catálogo. Una sección que se sume y no esté acá cae en el escudo.
+const ICONOS_SECCION = {
+    Conversaciones: Inbox,
+    'WhatsApp API': MessageCircle,
+    Email: Mail,
+    'WhatsApp Web': Smartphone,
+    Deudores: Landmark,
+    Configuración: Settings,
+    Otros: Shield,
+};
 
-const TOTAL_PERMISOS = TODOS_LOS_PERMISOS.reduce((acc, s) => acc + s.items.length, 0);
+const CLAVES_CATALOGO = new Set(CATALOGO_PERMISOS.flatMap((s) => s.items.map((i) => i.key)));
+
+/** Las claves que tiene un rol y el catálogo no conoce (un permiso viejo o uno que el backend sumó antes que el front). */
+const clavesOtras = (permisos) => (permisos || []).filter((p) => !CLAVES_CATALOGO.has(p));
+
+/** El catálogo, más una sección "Otros" con las claves sueltas que traiga el rol, para que no queden invisibles. */
+function seccionesCon(permisos) {
+    const otras = clavesOtras(permisos);
+    return otras.length > 0
+        ? [...CATALOGO_PERMISOS, { seccion: 'Otros', items: otras.map((key) => ({ key, label: key })) }]
+        : CATALOGO_PERMISOS;
+}
 
 function PermisosEditor({ permisos, onChange }) {
-    const toggle = (key) => {
-        if (permisos.includes(key)) {
-            onChange(permisos.filter(p => p !== key));
-        } else {
-            onChange([...permisos, key]);
-        }
-    };
+    // Las "otras" se calculan sobre lo que el rol traía al abrir: si se destildan, la sección no desaparece de golpe.
+    const [secciones] = useState(() => seccionesCon(permisos));
+
+    const toggle = (key) => onChange(permisos.includes(key) ? permisos.filter((p) => p !== key) : [...permisos, key]);
 
     const toggleSeccion = (items) => {
-        const keys = items.map(i => i.key);
-        const allChecked = keys.every(k => permisos.includes(k));
-        if (allChecked) {
-            onChange(permisos.filter(p => !keys.includes(p)));
-        } else {
-            onChange([...new Set([...permisos, ...keys])]);
-        }
+        const keys = items.map((i) => i.key);
+        const todas = keys.every((k) => permisos.includes(k));
+        onChange(todas ? permisos.filter((p) => !keys.includes(p)) : [...new Set([...permisos, ...keys])]);
     };
 
     return (
-        <Box display="flex" flexDirection="column" gap={1.5}>
-            {TODOS_LOS_PERMISOS.map(({ seccion, items }) => {
-                const keys = items.map(i => i.key);
-                const allChecked = keys.every(k => permisos.includes(k));
-                const someChecked = keys.some(k => permisos.includes(k));
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {secciones.map(({ seccion, items }) => {
+                const keys = items.map((i) => i.key);
+                const marcadas = keys.filter((k) => permisos.includes(k)).length;
+                const todas = marcadas === keys.length;
                 return (
-                    <Box key={seccion}>
+                    <Paper key={seccion} variant="outlined" sx={{ borderRadius: '14px', overflow: 'hidden' }}>
                         <FormControlLabel
+                            sx={{ m: 0, px: 1.5, minHeight: 48, width: '100%', bgcolor: 'action.hover', borderBottom: 1, borderColor: 'divider' }}
                             control={
                                 <Checkbox
-                                    checked={allChecked}
-                                    indeterminate={someChecked && !allChecked}
+                                    checked={todas}
+                                    indeterminate={marcadas > 0 && !todas}
                                     onChange={() => toggleSeccion(items)}
-                                    size="small"
+                                    sx={{ p: 1.25 }}
                                 />
                             }
-                            label={<Typography fontWeight="bold" fontSize={14}>{seccion}</Typography>}
+                            label={
+                                <Typography sx={{ fontWeight: 650, fontSize: 14.5 }}>
+                                    {seccion} <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary', fontSize: 13 }}>({marcadas}/{keys.length})</Box>
+                                </Typography>
+                            }
                         />
-                        <Box display="flex" flexWrap="wrap" gap={0.5} pl={3}>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' } }}>
                             {items.map(({ key, label }) => (
                                 <FormControlLabel
                                     key={key}
-                                    control={
-                                        <Checkbox
-                                            checked={permisos.includes(key)}
-                                            onChange={() => toggle(key)}
-                                            size="small"
-                                        />
-                                    }
-                                    label={<Typography fontSize={13}>{label}</Typography>}
-                                    sx={{ mr: 1 }}
+                                    sx={{ m: 0, pl: 3, pr: 1.5, minHeight: 44 }}
+                                    control={<Checkbox checked={permisos.includes(key)} onChange={() => toggle(key)} sx={{ p: 1.25 }} />}
+                                    label={<Typography sx={{ fontSize: 14, overflowWrap: 'anywhere' }}>{label}</Typography>}
                                 />
                             ))}
                         </Box>
-                        <Divider sx={{ mt: 1 }} />
-                    </Box>
+                    </Paper>
                 );
             })}
         </Box>
     );
 }
 
-const SECCION_META = [
-    {
-        key: 'whatsapp',
-        label: 'WhatsApp',
-        icon: <WhatsAppIcon sx={{ fontSize: 13 }} />,
-        color: '#4caf50',
-        bg: '#E8F5E9',
-        permisos: ['whatsapp.sesiones', 'whatsapp.conectar', 'whatsapp.campanias', 'whatsapp.templates', 'whatsapp.reportes', 'whatsapp.metricas'],
-    },
-    {
-        key: 'email',
-        label: 'Email',
-        icon: <MailIcon sx={{ fontSize: 13 }} />,
-        color: '#1976d2',
-        bg: '#E3F2FD',
-        permisos: ['email.cuentas_smtp', 'email.templates', 'email.campanias', 'email.envio_manual', 'email.reportes', 'email.desuscripciones'],
-    },
-    {
-        key: 'wapi',
-        label: 'WA API',
-        icon: <ApiIcon sx={{ fontSize: 13 }} />,
-        color: '#00695C',
-        bg: '#E0F2F1',
-        permisos: ['wapi.config', 'wapi.templates', 'wapi.campanias', 'wapi.bajas', 'wapi.analitica'],
-    },
-    {
-        key: 'inbox',
-        label: 'Inbox WA',
-        icon: <InboxIcon sx={{ fontSize: 13 }} />,
-        color: '#E65100',
-        bg: '#FFF3E0',
-        permisos: ['wapi.inbox', 'wapi.inbox.admin', 'wapi.respuestas_rapidas'],
-    },
-    {
-        key: 'deudores',
-        label: 'Deudores',
-        icon: <AccountBalanceIcon sx={{ fontSize: 13 }} />,
-        color: '#7B1FA2',
-        bg: '#F3E5F5',
-        permisos: ['deudores.ver', 'deudores.reportes'],
-    },
-    {
-        key: 'config',
-        label: 'Config',
-        icon: <SettingsIcon sx={{ fontSize: 13 }} />,
-        color: '#607d8b',
-        bg: '#ECEFF1',
-        permisos: ['config.tareas_programadas'],
-    },
-    {
-        key: 'admin',
-        label: 'Admin',
-        icon: <AdminPanelSettingsIcon sx={{ fontSize: 13 }} />,
-        color: '#c2185b',
-        bg: '#FCE4EC',
-        permisos: ['admin.usuarios'],
-    },
-];
-
 function RolCard({ rol, onEditar, onEliminar }) {
-    const theme = useTheme();
-    const isDark = theme.palette.mode === 'dark';
     const permisos = rol.permisos || [];
-    const pct = Math.min(100, Math.round((permisos.length / TOTAL_PERMISOS) * 100));
-    const accentColor = pct === 100 ? '#4caf50' : pct >= 60 ? '#1976d2' : pct >= 25 ? '#f59e0b' : '#607d8b';
+    const enCatalogo = permisos.filter((p) => CLAVES_CATALOGO.has(p)).length;
+    const otras = clavesOtras(permisos).length;
+    const pct = Math.min(100, Math.round((enCatalogo / TOTAL_PERMISOS) * 100));
+    const tono = pct === 100 ? 'ok' : pct >= 60 ? 'acento' : pct >= 25 ? 'aviso' : 'neutro';
+    const usuarios = rol.cantidadUsuarios ?? 0;
 
     return (
-        <Box sx={{
-            borderRadius: 3,
-            overflow: 'hidden',
-            border: '1px solid',
-            borderColor: 'divider',
-            backgroundColor: 'background.paper',
-            boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 12px rgba(0,0,0,0.08)',
-            transition: 'box-shadow 0.2s ease, transform 0.15s ease',
-            '&:hover': {
-                boxShadow: isDark ? '0 6px 24px rgba(0,0,0,0.45)' : '0 6px 24px rgba(0,0,0,0.14)',
-                transform: 'translateY(-2px)',
-            },
-            display: 'flex',
-            flexDirection: 'column',
-        }}>
-            {/* Barra de acento superior */}
-            <Box sx={{
-                height: 7,
-                background: `linear-gradient(90deg, ${accentColor}, ${accentColor}88)`,
-            }} />
-
-            <Box sx={{ p: { xs: 2, sm: 2.5 }, flexGrow: 1 }}>
-                {/* Nombre + chip contador */}
-                <Box display="flex" alignItems="flex-start" justifyContent="space-between" mb={2.5} gap={1}>
-                    <Box display="flex" alignItems="center" gap={1.5}>
-                        <Box sx={{
-                            width: 46, height: 46, borderRadius: 2.5, flexShrink: 0,
-                            background: `linear-gradient(135deg, ${accentColor}28, ${accentColor}10)`,
-                            border: `1.5px solid ${accentColor}35`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                            <ShieldIcon sx={{ color: accentColor, fontSize: 24 }} />
+        <Paper component="li" variant="outlined" sx={{ borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <Box sx={{ p: 2, flexGrow: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+                        <Box sx={{ width: 40, height: 40, borderRadius: '12px', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover', color: 'primary.main' }}>
+                            <ShieldCheck size={20} strokeWidth={1.75} aria-hidden />
                         </Box>
-                        <Box>
-                            <Typography fontWeight={700} fontSize={17} sx={{ textTransform: 'capitalize', lineHeight: 1.25 }}>
-                                {rol.nombre}
-                            </Typography>
-                            <Box display="flex" alignItems="center" gap={0.5} mt={0.25}>
-                                <PeopleIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
-                                <Typography variant="caption" color="text.disabled" fontSize={11}>
-                                    {rol.cantidadUsuarios} {rol.cantidadUsuarios === 1 ? 'usuario' : 'usuarios'}
+                        <Box sx={{ minWidth: 0 }}>
+                            <Typography component="h2" sx={{ fontWeight: 650, fontSize: 16, lineHeight: 1.25, overflowWrap: 'anywhere' }}>{rol.nombre}</Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary', mt: 0.25 }}>
+                                <Users size={14} strokeWidth={1.75} aria-hidden />
+                                <Typography variant="body2" sx={{ fontSize: 13 }}>
+                                    {usuarios} {usuarios === 1 ? 'usuario' : 'usuarios'}
                                 </Typography>
                             </Box>
                         </Box>
                     </Box>
-                    <Chip
-                        label={`${permisos.length} / ${TOTAL_PERMISOS}`}
-                        size="small"
-                        sx={{
-                            fontWeight: 700, fontSize: 12, height: 26, flexShrink: 0,
-                            background: `linear-gradient(135deg, ${accentColor}22, ${accentColor}0d)`,
-                            color: accentColor,
-                            border: `1px solid ${accentColor}45`,
-                        }}
-                    />
+                    <StatusChip label={`${enCatalogo} / ${TOTAL_PERMISOS}`} tono={tono} />
                 </Box>
 
-                {/* Barra de progreso total */}
-                <Box mb={2.5}>
-                    <LinearProgress
-                        variant="determinate"
-                        value={pct}
-                        sx={{
-                            height: 7, borderRadius: 4,
-                            backgroundColor: isDark ? '#2a2a2a' : '#eeeeee',
-                            '& .MuiLinearProgress-bar': {
-                                background: `linear-gradient(90deg, ${accentColor}, ${accentColor}bb)`,
-                                borderRadius: 4,
-                            },
-                        }}
-                    />
-                    <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5, display: 'block', fontSize: 11 }}>
-                        {pct}% de acceso total
-                    </Typography>
-                </Box>
+                <LinearProgress
+                    variant="determinate"
+                    value={pct}
+                    aria-label={`${pct}% de los permisos`}
+                    sx={{ height: 6, borderRadius: 3, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 3 } }}
+                />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5, fontSize: 12.5 }}>
+                    {pct}% de los permisos{otras > 0 ? ` · ${otras} fuera del catálogo` : ''}
+                </Typography>
 
-                {/* Grid de secciones */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75 }}>
-                    {SECCION_META.map((s) => {
-                        const habilitados = s.permisos.filter(p => permisos.includes(p)).length;
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 0.75 }}>
+                    {CATALOGO_PERMISOS.map((s) => {
+                        const habilitados = s.items.filter((i) => permisos.includes(i.key)).length;
                         const activo = habilitados > 0;
+                        const Icono = ICONOS_SECCION[s.seccion] ?? Shield;
                         return (
                             <Box
-                                key={s.key}
+                                key={s.seccion}
                                 sx={{
-                                    display: 'flex', alignItems: 'center', gap: 1,
-                                    px: 1, py: 0.75, borderRadius: 1.5,
-                                    bgcolor: activo
-                                        ? (isDark ? s.color + '1a' : s.bg)
-                                        : (isDark ? '#1e1e1e' : '#f5f5f5'),
-                                    border: '1px solid',
-                                    borderColor: activo ? s.color + '40' : 'transparent',
-                                    transition: 'all 0.2s',
-                                    minWidth: 0,
+                                    display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.75, minWidth: 0, borderRadius: '10px',
+                                    border: 1, borderColor: activo ? 'primary.main' : 'divider',
+                                    color: activo ? 'text.primary' : 'text.secondary',
                                 }}
                             >
-                                <Box sx={{
-                                    flexShrink: 0, width: 20, height: 20, borderRadius: 1,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: activo ? s.color : 'text.disabled',
-                                }}>
-                                    {s.icon}
+                                <Box sx={{ flex: 'none', display: 'flex', color: activo ? 'primary.main' : 'text.disabled' }}>
+                                    <Icono size={16} strokeWidth={1.75} aria-hidden />
                                 </Box>
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                    <Typography fontSize={11} fontWeight={activo ? 600 : 400} color={activo ? 'text.primary' : 'text.disabled'} noWrap>
-                                        {s.label}
-                                    </Typography>
-                                    <Typography fontSize={10} sx={{ color: activo ? s.color : 'text.disabled' }}>
-                                        {habilitados}/{s.permisos.length}
-                                    </Typography>
+                                <Box sx={{ minWidth: 0 }}>
+                                    <Typography noWrap sx={{ fontSize: 12.5, fontWeight: activo ? 600 : 400 }}>{s.seccion}</Typography>
+                                    <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{habilitados}/{s.items.length}</Typography>
                                 </Box>
                             </Box>
                         );
@@ -329,77 +157,72 @@ function RolCard({ rol, onEditar, onEliminar }) {
                 </Box>
             </Box>
 
-            {/* Footer con acciones */}
-            <Box sx={{
-                borderTop: '1px solid', borderColor: 'divider',
-                px: 2, py: 1,
-                display: 'flex', justifyContent: 'flex-end', gap: 0.5,
-                backgroundColor: isDark ? '#141414' : '#fafafa',
-            }}>
-                <Tooltip title="Editar rol">
-                    <IconButton size="small" onClick={() => onEditar(rol)}>
-                        <EditIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
-                <Tooltip title="Eliminar rol">
-                    <IconButton size="small" color="error" onClick={() => onEliminar(rol)}>
-                        <DeleteIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
+            <Box sx={{ borderTop: 1, borderColor: 'divider', px: 2, py: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
+                <Button variant="outlined" startIcon={<Pencil size={16} strokeWidth={1.75} aria-hidden />} onClick={() => onEditar(rol)} sx={{ minHeight: { xs: 44, md: 36 } }}>
+                    Editar
+                </Button>
+                <MenuMas items={[{ label: 'Eliminar', icon: Trash2, peligro: true, onClick: () => onEliminar(rol) }]} />
             </Box>
-        </Box>
+        </Paper>
     );
 }
 
 export default function GestionRoles() {
+    const feedback = useFeedback();
     const [roles, setRoles] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    const [estado, setEstado] = useState('cargando');
 
     const [crearOpen, setCrearOpen] = useState(false);
     const [crearNombre, setCrearNombre] = useState('');
     const [crearPermisos, setCrearPermisos] = useState([]);
+    const [crearErrorNombre, setCrearErrorNombre] = useState('');
     const [crearError, setCrearError] = useState('');
     const [crearLoading, setCrearLoading] = useState(false);
 
-    const [editarOpen, setEditarOpen] = useState(false);
     const [editarRol, setEditarRol] = useState(null);
     const [editarNombre, setEditarNombre] = useState('');
     const [editarPermisos, setEditarPermisos] = useState([]);
+    const [editarErrorNombre, setEditarErrorNombre] = useState('');
     const [editarError, setEditarError] = useState('');
     const [editarLoading, setEditarLoading] = useState(false);
 
-    const [eliminarOpen, setEliminarOpen] = useState(false);
     const [eliminarRol, setEliminarRol] = useState(null);
     const [eliminarLoading, setEliminarLoading] = useState(false);
     const [eliminarError, setEliminarError] = useState('');
 
-    const cargar = async () => {
+    const cargar = useCallback(async () => {
+        setEstado((e) => (e === 'listo' ? e : 'cargando'));
         try {
-            setLoading(true);
             const res = await api.get('/roles');
-            setRoles(res.data);
+            setRoles(Array.isArray(res.data) ? res.data : []);
+            setEstado('listo');
         } catch {
-            setError('Error al cargar roles');
-        } finally {
-            setLoading(false);
+            setEstado('error');
         }
+    }, []);
+
+    useEffect(() => { cargar(); }, [cargar]);
+
+    const abrirCrear = () => {
+        setCrearNombre('');
+        setCrearPermisos([]);
+        setCrearErrorNombre('');
+        setCrearError('');
+        setCrearOpen(true);
     };
 
-    useEffect(() => { cargar(); }, []);
-
     const handleCrear = async () => {
+        if (!crearNombre.trim()) { setCrearErrorNombre('Poné un nombre para el rol.'); return; }
+        setCrearErrorNombre('');
         setCrearError('');
-        if (!crearNombre.trim()) { setCrearError('El nombre es obligatorio.'); return; }
         setCrearLoading(true);
         try {
             await api.post('/roles', { nombre: crearNombre.trim(), permisos: crearPermisos });
             setCrearOpen(false);
-            setCrearNombre('');
-            setCrearPermisos([]);
+            feedback.exito('Rol creado.');
             await cargar();
         } catch (e) {
-            setCrearError(e.response?.data?.message || 'Error al crear rol');
+            setCrearError(mensajeDeError(e, 'No se pudo crear el rol.'));
         } finally {
             setCrearLoading(false);
         }
@@ -409,31 +232,32 @@ export default function GestionRoles() {
         setEditarRol(r);
         setEditarNombre(r.nombre);
         setEditarPermisos(r.permisos || []);
+        setEditarErrorNombre('');
         setEditarError('');
-        setEditarOpen(true);
     };
 
+    const sucioEditar = useMemo(() => {
+        if (!editarRol) return false;
+        const a = [...(editarRol.permisos || [])].sort().join('|');
+        const b = [...editarPermisos].sort().join('|');
+        return a !== b || editarNombre !== editarRol.nombre;
+    }, [editarRol, editarNombre, editarPermisos]);
+
     const handleEditar = async () => {
+        if (!editarNombre.trim()) { setEditarErrorNombre('Poné un nombre para el rol.'); return; }
+        setEditarErrorNombre('');
         setEditarError('');
         setEditarLoading(true);
         try {
-            await api.patch(`/roles/${editarRol.id}`, {
-                nombre: editarNombre.trim(),
-                permisos: editarPermisos,
-            });
-            setEditarOpen(false);
+            await api.patch(`/roles/${editarRol.id}`, { nombre: editarNombre.trim(), permisos: editarPermisos });
+            setEditarRol(null);
+            feedback.exito('Rol actualizado.');
             await cargar();
         } catch (e) {
-            setEditarError(e.response?.data?.message || 'Error al actualizar rol');
+            setEditarError(mensajeDeError(e, 'No se pudo actualizar el rol.'));
         } finally {
             setEditarLoading(false);
         }
-    };
-
-    const abrirEliminar = (r) => {
-        setEliminarRol(r);
-        setEliminarError('');
-        setEliminarOpen(true);
     };
 
     const handleEliminar = async () => {
@@ -441,118 +265,143 @@ export default function GestionRoles() {
         setEliminarLoading(true);
         try {
             await api.delete(`/roles/${eliminarRol.id}`);
-            setEliminarOpen(false);
+            setEliminarRol(null);
+            feedback.exito('Rol eliminado.');
             await cargar();
         } catch (e) {
-            setEliminarError(e.response?.data?.message || 'Error al eliminar rol');
+            setEliminarError(mensajeDeError(e, 'No se pudo eliminar el rol.'));
         } finally {
             setEliminarLoading(false);
         }
     };
 
-    if (loading) return <Box display="flex" justifyContent="center" mt={6}><CircularProgress /></Box>;
+    const botonesDialogo = (cancelar, guardar, cargando, textoCargando, texto) => (
+        <>
+            <Button onClick={cancelar} disabled={cargando}>Cancelar</Button>
+            <Button
+                variant="contained"
+                onClick={guardar}
+                disabled={cargando}
+                startIcon={cargando ? <CircularProgress size={16} color="inherit" /> : null}
+            >
+                {cargando ? textoCargando : texto}
+            </Button>
+        </>
+    );
 
     return (
-        <Box py={3} sx={{ width: '100%' }}>
-            <Box
-                display="flex"
-                justifyContent="space-between"
-                alignItems={{ xs: 'flex-start', sm: 'center' }}
-                flexDirection={{ xs: 'column', sm: 'row' }}
-                gap={1.5}
-                mb={3}
-            >
-                <Typography variant="h5" fontWeight="bold">Gestión de roles</Typography>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCrearError(''); setCrearOpen(true); }}>
-                    Nuevo rol
-                </Button>
-            </Box>
-
-            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-            <Box sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1fr 1fr', lg: '1fr 1fr 1fr' },
-                gap: 2.5,
-                width: '100%',
-            }}>
-                {roles.map((r) => (
-                    <RolCard key={r.id} rol={r} onEditar={abrirEditar} onEliminar={abrirEliminar} />
-                ))}
-                {roles.length === 0 && (
-                    <Box sx={{ gridColumn: '1 / -1' }}>
-                        <Typography color="text.secondary" textAlign="center">No hay roles configurados</Typography>
-                    </Box>
-                )}
-            </Box>
-
-            {/* Dialog Crear */}
-            <Dialog open={crearOpen} onClose={() => setCrearOpen(false)} maxWidth="sm" fullWidth>
-                <DialogTitle>Nuevo rol</DialogTitle>
-                <DialogContent>
-                    <Box display="flex" flexDirection="column" gap={2} mt={1}>
-                        {crearError && <Alert severity="error">{crearError}</Alert>}
-                        <TextField
-                            label="Nombre del rol"
-                            value={crearNombre}
-                            onChange={(e) => setCrearNombre(e.target.value)}
-                            fullWidth
-                        />
-                        <Typography fontWeight="bold" variant="body2">Permisos</Typography>
-                        <PermisosEditor permisos={crearPermisos} onChange={setCrearPermisos} />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setCrearOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleCrear} disabled={crearLoading}>
-                        {crearLoading ? <CircularProgress size={18} /> : 'Crear'}
+        <PageContainer>
+            <PageHeader
+                title="Roles"
+                subtitle="Qué puede hacer cada grupo de usuarios."
+                breadcrumbs={migasDe('/admin/roles')}
+                actions={
+                    <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={abrirCrear}>
+                        Nuevo rol
                     </Button>
-                </DialogActions>
-            </Dialog>
+                }
+            />
 
-            {/* Dialog Editar */}
-            <Dialog open={editarOpen} onClose={() => setEditarOpen(false)} maxWidth="sm" fullWidth>
-                <DialogTitle>Editar rol</DialogTitle>
-                <DialogContent>
-                    <Box display="flex" flexDirection="column" gap={2} mt={1}>
-                        {editarError && <Alert severity="error">{editarError}</Alert>}
+            {estado === 'error' && <BloqueEstado estado="error" mensaje="No se pudieron cargar los roles." onReintentar={cargar} />}
+
+            {estado === 'cargando' && (
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>
+                    {[0, 1, 2].map((i) => (
+                        <Paper key={i} variant="outlined" sx={{ p: 2, borderRadius: '14px' }}>
+                            <Skeleton width="50%" height={28} />
+                            <Skeleton variant="rounded" height={6} sx={{ my: 1.5 }} />
+                            <Skeleton height={60} />
+                        </Paper>
+                    ))}
+                </Box>
+            )}
+
+            {estado === 'listo' && roles.length === 0 && (
+                <SectionCard>
+                    <EmptyState compact icon={Shield} title="Todavía no hay roles" action={{ label: 'Nuevo rol', onClick: abrirCrear }} />
+                </SectionCard>
+            )}
+
+            {estado === 'listo' && roles.length > 0 && (
+                <Box
+                    component="ul"
+                    sx={{ listStyle: 'none', m: 0, p: 0, display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}
+                >
+                    {roles.map((r) => (
+                        <RolCard key={r.id} rol={r} onEditar={abrirEditar} onEliminar={(rol) => { setEliminarError(''); setEliminarRol(rol); }} />
+                    ))}
+                </Box>
+            )}
+
+            <ResponsiveDialog
+                open={crearOpen}
+                onClose={() => setCrearOpen(false)}
+                maxWidth="md"
+                sucio={(!!crearNombre || crearPermisos.length > 0) && !crearLoading}
+                title="Nuevo rol"
+                actions={botonesDialogo(() => setCrearOpen(false), handleCrear, crearLoading, 'Creando…', 'Crear rol')}
+            >
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+                    {crearError && <Alert severity="error" role="alert">{crearError}</Alert>}
+                    <TextField
+                        label="Nombre del rol"
+                        value={crearNombre}
+                        onChange={(e) => { setCrearNombre(e.target.value); setCrearErrorNombre(''); }}
+                        fullWidth
+                        required
+                        error={!!crearErrorNombre}
+                        helperText={crearErrorNombre}
+                    />
+                    <Typography component="h3" sx={{ fontWeight: 650, fontSize: 15 }}>Permisos</Typography>
+                    <PermisosEditor permisos={crearPermisos} onChange={setCrearPermisos} />
+                </Box>
+            </ResponsiveDialog>
+
+            <ResponsiveDialog
+                open={!!editarRol}
+                onClose={() => setEditarRol(null)}
+                maxWidth="md"
+                sucio={sucioEditar && !editarLoading}
+                title={`Editar rol${editarRol ? `: ${editarRol.nombre}` : ''}`}
+                actions={botonesDialogo(() => setEditarRol(null), handleEditar, editarLoading, 'Guardando…', 'Guardar')}
+            >
+                {editarRol && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+                        {editarError && <Alert severity="error" role="alert">{editarError}</Alert>}
                         <TextField
                             label="Nombre del rol"
                             value={editarNombre}
-                            onChange={(e) => setEditarNombre(e.target.value)}
+                            onChange={(e) => { setEditarNombre(e.target.value); setEditarErrorNombre(''); }}
                             fullWidth
+                            required
+                            error={!!editarErrorNombre}
+                            helperText={editarErrorNombre}
                         />
-                        <Typography fontWeight="bold" variant="body2">Permisos</Typography>
+                        <Typography component="h3" sx={{ fontWeight: 650, fontSize: 15 }}>Permisos</Typography>
                         <PermisosEditor permisos={editarPermisos} onChange={setEditarPermisos} />
                     </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setEditarOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleEditar} disabled={editarLoading}>
-                        {editarLoading ? <CircularProgress size={18} /> : 'Guardar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                )}
+            </ResponsiveDialog>
 
-            {/* Dialog Eliminar */}
-            <Dialog open={eliminarOpen} onClose={() => setEliminarOpen(false)} maxWidth="xs" fullWidth>
-                <DialogTitle>Eliminar rol</DialogTitle>
-                <DialogContent>
-                    {eliminarError && <Alert severity="error" sx={{ mb: 1 }}>{eliminarError}</Alert>}
-                    <Typography>
-                        ¿Seguro que querés eliminar el rol <strong>{eliminarRol?.nombre}</strong>?
+            <ConfirmDialog
+                open={!!eliminarRol}
+                titulo="¿Eliminar el rol?"
+                mensaje={
+                    <>
+                        Se elimina el rol <strong>{eliminarRol?.nombre}</strong>. Esta acción no se puede deshacer.
                         {eliminarRol?.cantidadUsuarios > 0 && (
-                            <> Tiene <strong>{eliminarRol.cantidadUsuarios}</strong> usuario(s) asignado(s).</>
+                            <> Tiene <strong>{eliminarRol.cantidadUsuarios}</strong> {eliminarRol.cantidadUsuarios === 1 ? 'usuario asignado' : 'usuarios asignados'}.</>
                         )}
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setEliminarOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" color="error" onClick={handleEliminar} disabled={eliminarLoading}>
-                        {eliminarLoading ? <CircularProgress size={18} /> : 'Eliminar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        </Box>
+                    </>
+                }
+                confirmarTexto="Eliminar"
+                peligro
+                cargando={eliminarLoading}
+                onConfirmar={handleEliminar}
+                onCancelar={() => setEliminarRol(null)}
+            >
+                {eliminarError && <Alert severity="error" role="alert">{eliminarError}</Alert>}
+            </ConfirmDialog>
+        </PageContainer>
     );
 }

@@ -1,492 +1,531 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-    Box, Button, Paper, Typography, Table, TableHead, TableRow,
-    TableCell, TableBody, Chip, IconButton, Tooltip, LinearProgress,
-    TextField, Tabs, Tab, TablePagination, CircularProgress,
-    Dialog, DialogTitle, DialogContent, DialogActions, Alert,
-    Snackbar, Stack, useMediaQuery, Skeleton,
+    Box, Button, CircularProgress, FormControlLabel, IconButton, InputAdornment, LinearProgress, ListItemIcon,
+    ListItemText, Menu, MenuItem, MenuList, Radio, RadioGroup, Tab, Tabs, TablePagination, TextField, Typography,
 } from '@mui/material';
-import MuiAlert from '@mui/material/Alert';
-import { useTheme } from '@mui/material/styles';
-import AddIcon from '@mui/icons-material/Add';
-import SendIcon from '@mui/icons-material/Send';
-import EventIcon from '@mui/icons-material/Event';
-import DeleteIcon from '@mui/icons-material/Delete';
-import BlockIcon from '@mui/icons-material/Block';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import CampaignIcon from '@mui/icons-material/Campaign';
-import InboxIcon from '@mui/icons-material/Inbox';
-import TerminalIcon from '@mui/icons-material/Terminal';
-import PauseIcon from '@mui/icons-material/Pause';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import LiveTvIcon from '@mui/icons-material/LiveTv';
-import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { es } from 'date-fns/locale';
-import { io } from 'socket.io-client';
+import { Ban, CalendarClock, CheckCircle2, Megaphone, MoreVertical, Pause, Plus, Radio as RadioIcon, Search, Terminal, Trash2 } from 'lucide-react';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { useAlReanudar, useEventoSocket } from '../../context/SocketContext';
+import { migasDe } from '../layout/navConfig';
+import {
+    BloqueEstado, ConfirmDialog, DataTableResponsive, EmptyState, PageHeader, ResponsiveDialog, SectionCard, StatusChip,
+} from '../ui';
+import { PESTANIAS_CAMPANIAS, estadoCampania } from '../campanias/estados';
+import { cargarLineas, nombreDeLinea, pedirAvance, porcentaje } from '../campanias/wapi/datos';
+import SalaEnVivo from '../campanias/wapi/SalaEnVivo';
+import AgendarCampaniaDialog from '../campanias/wapi/AgendarCampaniaDialog';
 import SubirCampaniaWapiModal from './SubirCampaniaWapiModal';
 import CampañaLogModal from '../CampañaLogModal';
 
-const ESTADO_CHIP = {
-    pendiente:   { label: 'Pendiente',   color: 'default' },
-    agendada:    { label: 'Agendada',    color: 'info' },
-    procesando:  { label: 'Procesando',  color: 'info' },
-    pausada:     { label: 'Pausada',     color: 'warning' },
-    finalizada:  { label: 'Finalizada',  color: 'success' },
-    error:       { label: 'Error',       color: 'error' },
-};
+const EN_CURSO = ['procesando', 'pausada'];
+const POR_PAGINA = [10, 25, 50];
+// Detalles (línea de cada campaña) que se piden por pestaña: la lista del backend no trae la línea.
+const MAX_DETALLES = 100;
 
-const SkeletonRow = () => (
-    <TableRow>
-        {[200, 80, 120, 120, 100, 140, 120].map((w, i) => (
-            <TableCell key={i}><Skeleton variant="text" width={w} /></TableCell>
-        ))}
-    </TableRow>
-);
+const formatoFecha = (valor) => (valor
+    ? new Date(valor).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : null);
+
+const numero = (n) => (n ?? 0).toLocaleString('es-AR');
 
 export default function VerCampaniasWapi() {
-    const theme = useTheme();
-    const isMobile = useMediaQuery('(max-width:768px)');
     const navigate = useNavigate();
+    const feedback = useFeedback();
+    const { hasPermiso } = useAuth();
+    const puedeVerReporte = hasPermiso('wapi.analitica');
+    const [params, setParams] = useSearchParams();
 
     const [campanias, setCampanias] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [tab, setTab] = useState(0);
-    const [filtro, setFiltro] = useState('');
-    const [page, setPage] = useState(0);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState(false);
+    const [avances, setAvances] = useState({}); // { [id]: { procesados, total } }
+    const [detalles, setDetalles] = useState({}); // { [id]: { configId } }
+    const [lineas, setLineas] = useState([]);
+    const [pagina, setPagina] = useState(0);
+    const [porPagina, setPorPagina] = useState(10);
 
     const [modalNueva, setModalNueva] = useState(false);
-    const [feedback, setFeedback] = useState({ open: false, message: '', type: 'success' });
-    const [progresos, setProgresos] = useState({});
     const [modalLog, setModalLog] = useState(null); // { id, nombre }
+    const [agendar, setAgendar] = useState(null);
+    const [detalle, setDetalle] = useState(null);
+    const [confirmar, setConfirmar] = useState(null); // { tipo: 'enviar'|'pausar'|'cierre'|'eliminar', c }
+    const [estadoCierre, setEstadoCierre] = useState('finalizada');
+    const [menu, setMenu] = useState(null); // { ancla, c }
+    const [accionando, setAccionando] = useState(false);
 
-    // Dialogs
-    const [confirmarEliminar, setConfirmarEliminar] = useState(null);
-    const [confirmarCierre, setConfirmarCierre] = useState(null);
-    const [agendarDialog, setAgendarDialog] = useState(null); // campaña seleccionada
-    const [agendarFecha, setAgendarFecha] = useState(null);
-    const [accionLoading, setAccionLoading] = useState(false);
+    const tabInicial = useRef(null);
+    const recargaPendiente = useRef(null);
 
-    const cargar = async (silent = false) => {
-        if (!silent) setLoading(true);
+    // ── Carga ────────────────────────────────────────────────────────────────
+
+    // El avance de lo que está en curso sale de la base (no del socket): una campaña pausada no emite nada.
+    const refrescarAvances = useCallback((lista) => {
+        lista.filter((c) => EN_CURSO.includes(c.estado)).forEach(async (c) => {
+            try {
+                const a = await pedirAvance(c.id);
+                setAvances((prev) => ({
+                    ...prev,
+                    [c.id]: { procesados: Math.max(prev[c.id]?.procesados ?? 0, a.procesados), total: c.contactosCount },
+                }));
+            } catch { /* el avance queda en "—"; el resto de la fila sigue sirviendo */ }
+        });
+    }, []);
+
+    const cargar = useCallback(async (silencioso = false) => {
+        if (!silencioso) setCargando(true);
         try {
             const res = await api.get('/wapi/campanias');
-            setCampanias(res.data.map(c => ({
-                ...c,
-                contactosCount: c._count?.contactos ?? 0,
-            })));
-        } catch {
-            mostrarFeedback('Error al cargar campañas.', 'error');
+            const lista = res.data.map((c) => ({ ...c, contactosCount: c._count?.contactos ?? 0 }));
+            setCampanias(lista);
+            setErrorCarga(false);
+            refrescarAvances(lista);
+        } catch (err) {
+            // Una recarga silenciosa que falla no tapa la lista que ya se ve.
+            if (!silencioso) setErrorCarga(true);
+            else feedback.error(mensajeDeError(err, 'No se pudieron actualizar las campañas.'));
         } finally {
-            if (!silent) setLoading(false);
+            if (!silencioso) setCargando(false);
         }
-    };
+    }, [feedback, refrescarAvances]);
 
-    useEffect(() => { cargar(); }, []);
+    // Varios eventos juntos (arranca una, termina otra) son una sola recarga.
+    const recargarPronto = useCallback(() => {
+        clearTimeout(recargaPendiente.current);
+        recargaPendiente.current = setTimeout(() => cargar(true), 600);
+    }, [cargar]);
 
+    useEffect(() => { cargar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => () => clearTimeout(recargaPendiente.current), []);
+    useEffect(() => { cargarLineas().then(setLineas); }, []);
+
+    // El Inicio enlaza a /wapi/campanias?nueva=1: abre el asistente y deja la URL limpia.
     useEffect(() => {
-        const socket = io(import.meta.env.VITE_HOST_SOCKET);
+        if (params.get('nueva') === '1') {
+            setModalNueva(true);
+            const sig = new URLSearchParams(params);
+            sig.delete('nueva');
+            setParams(sig, { replace: true });
+        }
+    }, [params, setParams]);
 
-        campanias.forEach(c => {
-            if (c.estado === 'procesando') {
-                socket.emit('join_campaña', c.id);
+    // ── Tiempo real ──────────────────────────────────────────────────────────
+
+    useEventoSocket('progreso', ({ campañaId, enviados, total }) => {
+        setAvances((prev) => ({ ...prev, [campañaId]: { procesados: enviados, total } }));
+    });
+    // Estos eventos son globales, llegan con el id solo y los ids se repiten entre canales (la campaña de email 57 no es
+    // la de WhatsApp API 57): no se aplica el estado que traen, se recarga la lista, que dice el estado real.
+    useEventoSocket('campania_estado', recargarPronto);
+    useEventoSocket('campania_finalizada', recargarPronto);
+    useEventoSocket('campania_error', recargarPronto);
+    useAlReanudar(() => cargar(true));
+
+    // ── Pestañas, búsqueda y filtro (todo en la URL) ───────────────────────────
+
+    const conteos = useMemo(() => Object.fromEntries(
+        PESTANIAS_CAMPANIAS.map((p) => [p.id, campanias.filter((c) => p.estados.includes(c.estado)).length]),
+    ), [campanias]);
+
+    // La pestaña por defecto es la primera con campañas, calculada una sola vez para que no salte sola.
+    if (tabInicial.current === null && !cargando) {
+        tabInicial.current = PESTANIAS_CAMPANIAS.find((p) => conteos[p.id] > 0)?.id ?? PESTANIAS_CAMPANIAS[0].id;
+    }
+    const tabId = PESTANIAS_CAMPANIAS.some((p) => p.id === params.get('tab')) ? params.get('tab') : (tabInicial.current ?? PESTANIAS_CAMPANIAS[0].id);
+    const pestania = PESTANIAS_CAMPANIAS.find((p) => p.id === tabId);
+    const busqueda = params.get('q') ?? '';
+    const filtroLinea = params.get('linea') ?? '';
+
+    const cambiarParam = (clave, valor) => {
+        const sig = new URLSearchParams(params);
+        if (valor) sig.set(clave, valor);
+        else sig.delete(clave);
+        setParams(sig, { replace: clave !== 'tab' });
+        setPagina(0);
+    };
+
+    const delTab = useMemo(() => campanias.filter((c) => pestania.estados.includes(c.estado)), [campanias, pestania]);
+
+    // La línea de cada campaña no viene en la lista: se pide el detalle de las que se ven en la pestaña.
+    useEffect(() => {
+        const faltan = delTab.filter((c) => c.configId === undefined && detalles[c.id] === undefined).slice(0, MAX_DETALLES);
+        if (faltan.length === 0) return undefined;
+        let activo = true;
+        (async () => {
+            for (const c of faltan) {
+                try {
+                    const { data } = await api.get(`/wapi/campanias/${c.id}`);
+                    if (activo) setDetalles((prev) => ({ ...prev, [c.id]: { configId: data.configId ?? null } }));
+                } catch { /* sin línea para esa fila */ }
             }
-        });
+        })();
+        return () => { activo = false; };
+    }, [delTab, detalles]);
 
-        socket.on('progreso', ({ enviados, total, campañaId }) => {
-            setProgresos(prev => ({ ...prev, [campañaId]: { enviados, total } }));
-        });
+    const configIdDe = (c) => c.configId ?? detalles[c.id]?.configId ?? null;
+    const lineaDe = (c) => nombreDeLinea(lineas, configIdDe(c));
 
-        socket.on('campania_finalizada', () => cargar(true));
-        socket.on('campania_estado', () => cargar(true));
-        socket.on('campania_error', () => cargar(true));
+    const visibles = delTab.filter((c) => {
+        if (busqueda && !c.nombre.toLowerCase().includes(busqueda.toLowerCase())) return false;
+        if (filtroLinea && String(configIdDe(c)) !== filtroLinea) return false;
+        return true;
+    });
+    const paginaSegura = Math.min(pagina, Math.max(Math.ceil(visibles.length / porPagina) - 1, 0));
+    const filas = visibles.slice(paginaSegura * porPagina, paginaSegura * porPagina + porPagina);
 
-        return () => socket.disconnect();
-    }, [campanias]);
+    // ── Acciones ─────────────────────────────────────────────────────────────
 
-    const mostrarFeedback = (message, type = 'success') =>
-        setFeedback({ open: true, message, type });
+    const ejecutar = async (peticion, mensajeOk, mensajeError) => {
+        setAccionando(true);
+        try {
+            await peticion();
+            if (mensajeOk) feedback.exito(mensajeOk);
+            setConfirmar(null);
+            cargar(true);
+            return true;
+        } catch (err) {
+            feedback.error(mensajeDeError(err, mensajeError));
+            return false;
+        } finally {
+            setAccionando(false);
+        }
+    };
 
-    // Tabs
-    const porTab = [
-        campanias.filter(c => c.estado === 'pendiente'),
-        campanias.filter(c => c.estado === 'agendada'),
-        campanias.filter(c => ['procesando', 'pausada'].includes(c.estado)),
-        campanias.filter(c => c.estado === 'finalizada'),
-        campanias.filter(c => c.estado === 'error'),
-    ];
-    const tabLabels = ['Pendientes', 'Agendadas', 'Procesando', 'Finalizadas', 'Error'];
-    const visibles = (porTab[tab] ?? []).filter(c =>
-        c.nombre.toLowerCase().includes(filtro.toLowerCase())
+    const enviar = (c) => ejecutar(() => api.post(`/wapi/campanias/${c.id}/enviar`), 'Envío iniciado.', 'No se pudo iniciar el envío.');
+    const pausar = (c) => ejecutar(() => api.post(`/wapi/campanias/${c.id}/pausar`), 'Campaña en pausa.', 'No se pudo pausar la campaña.');
+    const reanudar = (c) => ejecutar(() => api.post(`/wapi/campanias/${c.id}/reanudar`), 'Envío reanudado.', 'No se pudo reanudar la campaña.');
+    const eliminar = (c) => ejecutar(() => api.delete(`/wapi/campanias/${c.id}`), 'Campaña eliminada.', 'No se pudo eliminar la campaña.');
+    const cerrar = (c) => ejecutar(
+        () => api.post(`/wapi/campanias/${c.id}/forzar-cierre`, { estado: estadoCierre }),
+        `Campaña marcada como ${estadoCierre === 'finalizada' ? 'terminada' : 'con error'}.`,
+        'No se pudo cerrar la campaña.',
     );
-    const paginadas = visibles.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
-    // Acciones
-    const handleEnviar = async (c) => {
-        setAccionLoading(true);
-        try {
-            await api.post(`/wapi/campanias/${c.id}/enviar`);
-            mostrarFeedback('Envío iniciado correctamente.');
-            cargar(true);
-        } catch (err) {
-            mostrarFeedback(err.response?.data?.message || 'Error al iniciar envío.', 'error');
-        } finally {
-            setAccionLoading(false);
+    const pedirConfirmacion = (tipo, c) => {
+        if (tipo === 'cierre') setEstadoCierre(c.estado === 'error' ? 'finalizada' : 'error');
+        setConfirmar({ tipo, c });
+    };
+
+    // Lo que falta enviar, para decir cuánto se corta o se manda.
+    const faltantes = (c) => {
+        const a = avances[c.id];
+        return a ? Math.max(c.contactosCount - a.procesados, 0) : null;
+    };
+
+    const accionPrincipal = (c) => {
+        switch (c.estado) {
+            case 'pendiente': return { texto: 'Enviar', onClick: () => pedirConfirmacion('enviar', c), variant: 'contained' };
+            case 'agendada': return { texto: 'Ver', onClick: () => setDetalle(c) };
+            case 'procesando': return { texto: 'Ver en vivo', onClick: () => navigate(`/wapi/live?campania=${c.id}`) };
+            case 'pausada': return { texto: 'Reanudar', onClick: () => reanudar(c), variant: 'contained', bloquea: true };
+            default:
+                return puedeVerReporte
+                    ? { texto: 'Ver reporte', onClick: () => navigate('/wapi/analitica') }
+                    : { texto: 'Ver log', onClick: () => setModalLog({ id: c.id, nombre: c.nombre }) };
         }
     };
 
-    const handleAgendar = async () => {
-        if (!agendarFecha) return;
-        setAccionLoading(true);
-        try {
-            await api.post(`/wapi/campanias/${agendarDialog.id}/agendar`, {
-                agendadoAt: agendarFecha.toISOString(),
-            });
-            mostrarFeedback('Campaña agendada correctamente.');
-            setAgendarDialog(null);
-            cargar(true);
-        } catch (err) {
-            mostrarFeedback(err.response?.data?.message || 'Error al agendar.', 'error');
-        } finally {
-            setAccionLoading(false);
-        }
+    const columnas = [
+        {
+            key: 'nombre',
+            label: 'Campaña',
+            primary: true,
+            render: (c) => (
+                <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{c.nombre}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: 12.5, overflowWrap: 'anywhere' }}>
+                        {c.template?.metaNombre ?? 'Sin plantilla'}
+                    </Typography>
+                </Box>
+            ),
+        },
+        { key: 'linea', label: 'Línea', render: (c) => lineaDe(c) ?? '—' },
+        { key: 'contactos', label: 'Contactos', align: 'right', render: (c) => numero(c.contactosCount) },
+        {
+            key: 'avance',
+            label: 'Avance',
+            render: (c) => {
+                if (!EN_CURSO.includes(c.estado)) return '—';
+                const a = avances[c.id];
+                const pct = porcentaje(a?.procesados, c.contactosCount);
+                if (pct === null) return '—';
+                return (
+                    <Box sx={{ minWidth: 100 }}>
+                        <LinearProgress
+                            variant="determinate"
+                            value={pct}
+                            color={c.estado === 'pausada' ? 'warning' : 'primary'}
+                            aria-label={`Avance de ${c.nombre}`}
+                            sx={{ height: 6, borderRadius: 3, mb: 0.5 }}
+                        />
+                        <Typography variant="caption" sx={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                            {pct}% · {numero(a.procesados)}/{numero(c.contactosCount)}
+                        </Typography>
+                    </Box>
+                );
+            },
+        },
+        {
+            key: 'estado',
+            label: 'Estado',
+            render: (c) => {
+                const e = estadoCampania(c.estado);
+                return <StatusChip label={e.label} tono={e.tono} vivo={e.vivo} />;
+            },
+        },
+        {
+            key: 'inicio',
+            label: 'Inicio o agenda',
+            hideBelow: 'lg',
+            render: (c) => {
+                if (c.estado === 'agendada') return formatoFecha(c.agendadoAt) ?? '—';
+                if (c.estado === 'pendiente') return `Creada ${formatoFecha(c.createdAt) ?? ''}`.trim();
+                return formatoFecha(c.enviadoAt ?? c.createdAt) ?? '—';
+            },
+        },
+    ];
+
+    const acciones = (c) => {
+        const p = accionPrincipal(c);
+        return (
+            <>
+                <Button
+                    size="small"
+                    variant={p.variant ?? 'outlined'}
+                    onClick={p.onClick}
+                    disabled={p.bloquea && accionando}
+                    startIcon={p.bloquea && accionando ? <CircularProgress size={14} color="inherit" /> : undefined}
+                >
+                    {p.texto}
+                </Button>
+                <IconButton
+                    aria-label={`Más acciones de ${c.nombre}`}
+                    aria-haspopup="menu"
+                    onClick={(e) => setMenu({ ancla: e.currentTarget, c })}
+                    sx={{ width: { xs: 44, md: 36 }, height: { xs: 44, md: 36 } }}
+                >
+                    <MoreVertical size={18} strokeWidth={1.75} aria-hidden />
+                </IconButton>
+            </>
+        );
     };
 
-    const handleEliminar = async () => {
-        setAccionLoading(true);
-        try {
-            await api.delete(`/wapi/campanias/${confirmarEliminar.id}`);
-            mostrarFeedback('Campaña eliminada.');
-            setConfirmarEliminar(null);
-            cargar(true);
-        } catch {
-            mostrarFeedback('Error al eliminar.', 'error');
-        } finally {
-            setAccionLoading(false);
-        }
+    // El menú "Más": todo lo que no es la acción principal de la fila.
+    const itemsMenu = (c) => {
+        const items = [];
+        if (c.estado === 'pendiente') items.push({ texto: 'Agendar', Icono: CalendarClock, onClick: () => setAgendar(c) });
+        if (!['pendiente', 'agendada'].includes(c.estado)) items.push({ texto: 'Ver log', Icono: Terminal, onClick: () => setModalLog({ id: c.id, nombre: c.nombre }) });
+        if (c.estado === 'procesando') items.push({ texto: 'Pausar', Icono: Pause, onClick: () => pedirConfirmacion('pausar', c) });
+        if (c.estado === 'procesando') items.push({ texto: 'Forzar cierre', Icono: Ban, peligro: true, onClick: () => pedirConfirmacion('cierre', c) });
+        if (c.estado === 'error') items.push({ texto: 'Marcar como terminada', Icono: CheckCircle2, onClick: () => pedirConfirmacion('cierre', c) });
+        if (c.estado !== 'procesando') items.push({ texto: 'Eliminar', Icono: Trash2, peligro: true, onClick: () => pedirConfirmacion('eliminar', c) });
+        return items;
     };
 
-    const handlePausar = async (campania) => {
-        setAccionLoading(true);
-        try {
-            await api.post(`/wapi/campanias/${campania.id}/pausar`);
-            mostrarFeedback('Campaña pausada.');
-            cargar(true);
-        } catch {
-            mostrarFeedback('Error al pausar la campaña.', 'error');
-        } finally {
-            setAccionLoading(false);
-        }
-    };
-
-    const handleReanudar = async (campania) => {
-        setAccionLoading(true);
-        try {
-            await api.post(`/wapi/campanias/${campania.id}/reanudar`);
-            mostrarFeedback('Campaña reanudada.');
-            cargar(true);
-        } catch (err) {
-            mostrarFeedback(err.response?.data?.message || 'Error al reanudar la campaña.', 'error');
-        } finally {
-            setAccionLoading(false);
-        }
-    };
-
-    const handleForzarCierre = async (estado) => {
-        setAccionLoading(true);
-        try {
-            await api.post(`/wapi/campanias/${confirmarCierre.id}/forzar-cierre`, { estado });
-            mostrarFeedback(`Campaña marcada como "${estado}".`);
-            setConfirmarCierre(null);
-            cargar(true);
-        } catch {
-            mostrarFeedback('Error al forzar cierre.', 'error');
-        } finally {
-            setAccionLoading(false);
-        }
-    };
+    const lineasUsadas = lineas.filter((l) => l.activo !== false);
+    const c = confirmar?.c;
+    const lineaConfirmar = c ? lineaDe(c) : null;
 
     return (
         <>
-            <Box py={3}>
-                <Paper elevation={3} sx={{ p: { xs: 2, md: 4 } }}>
-                    {/* Header */}
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={2}>
-                        <Box display="flex" alignItems="center" gap={1}>
-                            <CampaignIcon sx={{ fontSize: 32 }} />
-                            <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight="bold">
-                                Campañas WhatsApp API
-                            </Typography>
-                        </Box>
-                        <Stack direction="row" spacing={1}>
-                            <Tooltip title="Refrescar">
-                                <IconButton onClick={() => cargar()}><RefreshIcon /></IconButton>
-                            </Tooltip>
-                            <Button
-                                variant="contained"
-                                startIcon={<AddIcon />}
-                                onClick={() => setModalNueva(true)}
-                            >
-                                Nueva campaña
-                            </Button>
-                        </Stack>
-                    </Box>
+            {/* Una sala por cada campaña que se está enviando: así llega el avance sin recrear el socket */}
+            {campanias.filter((x) => x.estado === 'procesando').map((x) => <SalaEnVivo key={x.id} id={x.id} />)}
 
-                    {/* Tabs */}
-                    <Tabs
-                        value={tab}
-                        onChange={(_, v) => { setTab(v); setPage(0); }}
-                        variant="scrollable"
-                        allowScrollButtonsMobile
-                        sx={{ '& .MuiTab-root': { textTransform: 'none', fontSize: 13, minHeight: 40 } }}
+            <PageHeader
+                title="Campañas"
+                subtitle="Envíos con plantillas aprobadas por Meta, por línea."
+                breadcrumbs={migasDe('/wapi/campanias')}
+                actions={(
+                    <>
+                        <Button variant="outlined" startIcon={<RadioIcon size={18} strokeWidth={1.75} aria-hidden />} onClick={() => navigate('/wapi/live')}>
+                            Monitor en vivo
+                        </Button>
+                        <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={() => setModalNueva(true)}>
+                            Nueva campaña
+                        </Button>
+                    </>
+                )}
+            />
+
+            <Tabs
+                value={tabId}
+                onChange={(_, v) => cambiarParam('tab', v)}
+                variant="scrollable"
+                scrollButtons="auto"
+                allowScrollButtonsMobile
+                aria-label="Estados de campaña"
+                sx={{ mb: 2, minHeight: 44, '& .MuiTab-root': { minHeight: 44, textTransform: 'none' } }}
+            >
+                {PESTANIAS_CAMPANIAS.map((p) => (
+                    <Tab key={p.id} value={p.id} label={`${p.label} (${conteos[p.id]})`} />
+                ))}
+            </Tabs>
+
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5, mb: 2 }}>
+                <TextField
+                    size="small"
+                    placeholder="Buscar por nombre"
+                    value={busqueda}
+                    onChange={(e) => cambiarParam('q', e.target.value)}
+                    inputProps={{ 'aria-label': 'Buscar campaña por nombre' }}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><Search size={18} strokeWidth={1.75} aria-hidden /></InputAdornment> }}
+                    sx={{ flex: 1, maxWidth: { sm: 360 } }}
+                />
+                {lineasUsadas.length > 1 && (
+                    <TextField
+                        select
+                        size="small"
+                        label="Línea"
+                        value={filtroLinea}
+                        onChange={(e) => cambiarParam('linea', e.target.value)}
+                        sx={{ minWidth: { sm: 200 } }}
                     >
-                        {tabLabels.map((label, i) => (
-                            <Tab key={label} label={`${label} (${porTab[i].length})`} />
-                        ))}
-                    </Tabs>
-
-                    {loading && <LinearProgress sx={{ mt: 1 }} />}
-
-                    <Box my={2}>
-                        <TextField
-                            fullWidth
-                            size="small"
-                            label="Buscar por nombre"
-                            value={filtro}
-                            onChange={e => setFiltro(e.target.value)}
-                        />
-                    </Box>
-
-                    <Box sx={{ overflowX: 'auto', border: `1px solid ${theme.palette.divider}`, borderRadius: 2 }}>
-                        <Table stickyHeader size={isMobile ? 'small' : 'medium'} sx={{ minWidth: 650 }}>
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>Nombre</TableCell>
-                                    <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Contactos</TableCell>
-                                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Template</TableCell>
-                                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Creado</TableCell>
-                                    <TableCell>Estado</TableCell>
-                                    <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Agendado</TableCell>
-                                    <TableCell>Acciones</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {loading
-                                    ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
-                                    : paginadas.map(c => {
-                                        const chip = ESTADO_CHIP[c.estado] ?? { label: c.estado, color: 'default' };
-                                        return (
-                                            <TableRow key={c.id} hover>
-                                                <TableCell>
-                                                    <Typography variant="body2" fontWeight={600} noWrap sx={{ maxWidth: 200 }}>
-                                                        {c.nombre}
-                                                    </Typography>
-                                                    {c.estado === 'procesando' && (
-                                                        <Box sx={{ mt: 0.5, minWidth: 120 }}>
-                                                            <LinearProgress
-                                                                variant={progresos[c.id] ? 'determinate' : 'indeterminate'}
-                                                                value={progresos[c.id] ? (progresos[c.id].enviados / progresos[c.id].total) * 100 : 0}
-                                                                sx={{ height: 4, borderRadius: 2 }}
-                                                            />
-                                                            {progresos[c.id] && (
-                                                                <Typography variant="caption" color="text.secondary">
-                                                                    {progresos[c.id].enviados}/{progresos[c.id].total}
-                                                                </Typography>
-                                                            )}
-                                                        </Box>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                                                    {c.contactosCount}
-                                                </TableCell>
-                                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                                                    <Typography variant="body2" noWrap sx={{ maxWidth: 160 }}>
-                                                        {c.template?.metaNombre ?? '—'}
-                                                    </Typography>
-                                                </TableCell>
-                                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                                                    {c.createdAt ? new Date(c.createdAt).toLocaleString('es-AR') : '—'}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Chip label={chip.label} color={chip.color} size="small" />
-                                                </TableCell>
-                                                <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
-                                                    {c.agendadoAt ? new Date(c.agendadoAt).toLocaleString('es-AR') : '—'}
-                                                </TableCell>
-                                                <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                                                    {c.estado === 'pendiente' && <>
-                                                        <Tooltip title="Enviar ahora">
-                                                            <IconButton color="primary" size="small" onClick={() => handleEnviar(c)}>
-                                                                <SendIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                        <Tooltip title="Agendar">
-                                                            <IconButton color="secondary" size="small" onClick={() => { setAgendarFecha(null); setAgendarDialog(c); }}>
-                                                                <EventIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    </>}
-                                                    {c.estado === 'procesando' && (<>
-                                                        <Tooltip title="Monitor en vivo">
-                                                            <IconButton color="success" size="small" onClick={() => navigate('/wapi/live')}>
-                                                                <LiveTvIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                        <Tooltip title="Ver logs en tiempo real">
-                                                            <IconButton color="info" size="small" onClick={() => setModalLog({ id: c.id, nombre: c.nombre })}>
-                                                                <TerminalIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                        <Tooltip title="Pausar campaña">
-                                                            <IconButton color="warning" size="small" disabled={accionLoading} onClick={() => handlePausar(c)}>
-                                                                <PauseIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                        <Tooltip title="Forzar cierre">
-                                                            <IconButton color="error" size="small" onClick={() => setConfirmarCierre(c)}>
-                                                                <BlockIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    </>)}
-                                                    {c.estado === 'pausada' && (<>
-                                                        <Tooltip title="Monitor en vivo">
-                                                            <IconButton color="success" size="small" onClick={() => navigate('/wapi/live')}>
-                                                                <LiveTvIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                        <Tooltip title="Reanudar campaña">
-                                                            <IconButton color="success" size="small" disabled={accionLoading} onClick={() => handleReanudar(c)}>
-                                                                <PlayArrowIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    </>)}
-                                                    {c.estado === 'error' && (
-                                                        <Tooltip title="Marcar finalizada">
-                                                            <IconButton color="success" size="small" onClick={() => setConfirmarCierre(c)}>
-                                                                <CheckCircleOutlineIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    )}
-                                                    {['pendiente', 'agendada', 'finalizada', 'pausada', 'error'].includes(c.estado) && (
-                                                        <Tooltip title="Eliminar">
-                                                            <IconButton color="error" size="small" onClick={() => setConfirmarEliminar(c)}>
-                                                                <DeleteIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })
-                                }
-                                {!loading && paginadas.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={7}>
-                                            <Box textAlign="center" py={6} color="text.secondary">
-                                                <InboxIcon sx={{ fontSize: 56, mb: 1 }} />
-                                                <Typography>No hay campañas en esta sección.</Typography>
-                                            </Box>
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </Box>
-
-                    <TablePagination
-                        rowsPerPageOptions={[5, 10, 25]}
-                        component="div"
-                        count={visibles.length}
-                        rowsPerPage={rowsPerPage}
-                        page={page}
-                        onPageChange={(_, p) => setPage(p)}
-                        onRowsPerPageChange={e => { setRowsPerPage(+e.target.value); setPage(0); }}
-                    />
-                </Paper>
+                        <MenuItem value="">Todas las líneas</MenuItem>
+                        {lineasUsadas.map((l) => <MenuItem key={l.id} value={String(l.id)}>{l.nombre ?? `Línea ${l.id}`}</MenuItem>)}
+                    </TextField>
+                )}
             </Box>
 
-            {/* Modal nueva campaña */}
-            <Dialog open={modalNueva} onClose={() => setModalNueva(false)} maxWidth="sm" fullWidth>
-                <DialogTitle>Nueva campaña WhatsApp API</DialogTitle>
-                <DialogContent dividers>
-                    <SubirCampaniaWapiModal
-                        onCreado={(data) => {
-                            setModalNueva(false);
-                            mostrarFeedback(`Campaña creada: ${data.totalContactos} contactos${data.omitidosPorBaja ? `, ${data.omitidosPorBaja} omitidos por baja` : ''}.`);
-                            cargar(true);
-                        }}
-                    />
-                </DialogContent>
-            </Dialog>
-
-            {/* Confirmar eliminar */}
-            <Dialog open={!!confirmarEliminar} onClose={() => setConfirmarEliminar(null)} maxWidth="xs" fullWidth>
-                <DialogTitle>¿Eliminar campaña?</DialogTitle>
-                <DialogContent>
-                    <Typography>
-                        ¿Eliminar <strong>"{confirmarEliminar?.nombre}"</strong>? Los reportes se conservarán.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setConfirmarEliminar(null)}>Cancelar</Button>
-                    <Button variant="contained" color="error" onClick={handleEliminar} disabled={accionLoading}>
-                        {accionLoading ? <CircularProgress size={18} /> : 'Eliminar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Forzar cierre */}
-            <Dialog open={!!confirmarCierre} onClose={() => setConfirmarCierre(null)} maxWidth="xs" fullWidth>
-                <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <WarningAmberIcon color="warning" />
-                    Forzar cierre
-                </DialogTitle>
-                <DialogContent>
-                    <Typography>
-                        Campaña <strong>"{confirmarCierre?.nombre}"</strong>.
-                        Elegí el estado final.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setConfirmarCierre(null)}>Cancelar</Button>
-                    <Button color="success" variant="outlined" onClick={() => handleForzarCierre('finalizada')} disabled={accionLoading}>
-                        Finalizada
-                    </Button>
-                    <Button color="error" variant="contained" onClick={() => handleForzarCierre('error')} disabled={accionLoading}>
-                        Error
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Agendar */}
-            <Dialog open={!!agendarDialog} onClose={() => setAgendarDialog(null)} maxWidth="xs" fullWidth>
-                <DialogTitle>Agendar campaña</DialogTitle>
-                <DialogContent>
-                    <Box pt={1}>
-                        <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
-                            <DateTimePicker
-                                label="Fecha y hora de envío"
-                                value={agendarFecha}
-                                onChange={setAgendarFecha}
-                                slotProps={{ textField: { fullWidth: true } }}
-                                disablePast
+            {errorCarga ? (
+                <BloqueEstado estado="error" mensaje="No se pudieron cargar las campañas." onReintentar={() => cargar()} />
+            ) : (
+                <SectionCard noPadding>
+                    <DataTableResponsive
+                        ariaLabel={`Campañas: ${pestania.label}`}
+                        columns={columnas}
+                        rows={filas}
+                        loading={cargando}
+                        acciones={acciones}
+                        empty={(
+                            <EmptyState
+                                icon={Megaphone}
+                                title={busqueda || filtroLinea ? 'Ninguna campaña coincide con la búsqueda' : `No hay campañas en «${pestania.label}»`}
+                                description={busqueda || filtroLinea ? 'Probá con otro nombre o con otra línea.' : undefined}
+                                compact
                             />
-                        </LocalizationProvider>
+                        )}
+                    />
+                    {!cargando && visibles.length > POR_PAGINA[0] && (
+                        <TablePagination
+                            component="div"
+                            rowsPerPageOptions={POR_PAGINA}
+                            count={visibles.length}
+                            rowsPerPage={porPagina}
+                            page={paginaSegura}
+                            onPageChange={(_, p) => setPagina(p)}
+                            onRowsPerPageChange={(e) => { setPorPagina(Number(e.target.value)); setPagina(0); }}
+                            labelRowsPerPage="Por página"
+                            labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+                            sx={{ '.MuiTablePagination-selectLabel, .MuiTablePagination-input': { display: { xs: 'none', sm: 'flex' } } }}
+                        />
+                    )}
+                </SectionCard>
+            )}
+
+            {/* Menú "Más" */}
+            <Menu anchorEl={menu?.ancla} open={!!menu} onClose={() => setMenu(null)}>
+                <MenuList dense={false} sx={{ py: 0 }}>
+                    {menu && itemsMenu(menu.c).map(({ texto, Icono, onClick, peligro }) => (
+                        <MenuItem
+                            key={texto}
+                            disabled={accionando}
+                            onClick={() => { setMenu(null); onClick(); }}
+                            sx={{ minHeight: 44, color: peligro ? 'error.main' : undefined }}
+                        >
+                            <ListItemIcon sx={{ color: 'inherit' }}><Icono size={18} strokeWidth={1.75} aria-hidden /></ListItemIcon>
+                            <ListItemText>{texto}</ListItemText>
+                        </MenuItem>
+                    ))}
+                </MenuList>
+            </Menu>
+
+            {/* Asistente de nueva campaña */}
+            <SubirCampaniaWapiModal
+                open={modalNueva}
+                onClose={() => setModalNueva(false)}
+                onCreado={(data) => {
+                    setModalNueva(false);
+                    const base = `Campaña creada con ${numero(data.totalContactos)} contactos`;
+                    if (data.omitidosPorBaja) feedback.aviso(`${base}. Se omitieron ${numero(data.omitidosPorBaja)} por estar dados de baja.`);
+                    else feedback.exito(`${base}.`);
+                    cargar(true);
+                }}
+            />
+
+            <AgendarCampaniaDialog campania={agendar} onClose={() => setAgendar(null)} onAgendada={() => cargar(true)} />
+
+            {/* Lo agendado no tiene pantalla propia: acá se ve de dónde sale y cuándo */}
+            <ResponsiveDialog
+                open={!!detalle}
+                onClose={() => setDetalle(null)}
+                title={detalle?.nombre ?? ''}
+                maxWidth="xs"
+                cerrarConFondo
+                actions={<Button onClick={() => setDetalle(null)}>Cerrar</Button>}
+            >
+                {detalle && (
+                    <Box component="dl" sx={{ m: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 2, rowGap: 1 }}>
+                        {[
+                            ['Envío agendado', formatoFecha(detalle.agendadoAt) ?? '—'],
+                            ['Línea', lineaDe(detalle) ?? '—'],
+                            ['Plantilla', detalle.template?.metaNombre ?? '—'],
+                            ['Contactos', numero(detalle.contactosCount)],
+                        ].map(([k, v]) => (
+                            <React.Fragment key={k}>
+                                <Typography component="dt" variant="body2" color="text.secondary">{k}</Typography>
+                                <Typography component="dd" variant="body2" sx={{ m: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>{v}</Typography>
+                            </React.Fragment>
+                        ))}
                     </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setAgendarDialog(null)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleAgendar} disabled={!agendarFecha || accionLoading}>
-                        {accionLoading ? <CircularProgress size={18} /> : 'Agendar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                )}
+            </ResponsiveDialog>
+
+            {/* Confirmaciones: dicen qué y cuánto */}
+            <ConfirmDialog
+                open={confirmar?.tipo === 'enviar'}
+                titulo="Enviar la campaña ahora"
+                mensaje={c ? `Se van a enviar ${numero(c.contactosCount)} mensajes${lineaConfirmar ? ` desde la línea ${lineaConfirmar}` : ''}. Una vez que arranca, se puede pausar pero no deshacer lo ya enviado.` : ''}
+                confirmarTexto="Enviar ahora"
+                cargando={accionando}
+                onCancelar={() => setConfirmar(null)}
+                onConfirmar={() => enviar(c)}
+            />
+            <ConfirmDialog
+                open={confirmar?.tipo === 'pausar'}
+                titulo="Pausar la campaña"
+                mensaje={c ? `Se deja de enviar «${c.nombre}»${faltantes(c) !== null ? `: quedan ${numero(faltantes(c))} mensajes sin enviar` : ''}. Podés reanudarla cuando quieras.` : ''}
+                confirmarTexto="Pausar"
+                cargando={accionando}
+                onCancelar={() => setConfirmar(null)}
+                onConfirmar={() => pausar(c)}
+            />
+            <ConfirmDialog
+                open={confirmar?.tipo === 'cierre'}
+                titulo="Forzar el cierre"
+                peligro
+                mensaje={c ? `«${c.nombre}» deja de enviar${faltantes(c) ? ` y quedan ${numero(faltantes(c))} mensajes sin mandar` : ''}. Elegí cómo queda registrada.` : ''}
+                confirmarTexto="Cerrar campaña"
+                cargando={accionando}
+                onCancelar={() => setConfirmar(null)}
+                onConfirmar={() => cerrar(c)}
+            >
+                <RadioGroup value={estadoCierre} onChange={(e) => setEstadoCierre(e.target.value)} aria-label="Estado final">
+                    <FormControlLabel value="finalizada" control={<Radio />} label="Terminada" sx={{ minHeight: 44 }} />
+                    <FormControlLabel value="error" control={<Radio />} label="Con error" sx={{ minHeight: 44 }} />
+                </RadioGroup>
+            </ConfirmDialog>
+            <ConfirmDialog
+                open={confirmar?.tipo === 'eliminar'}
+                titulo="Eliminar la campaña"
+                peligro
+                mensaje={c ? `Se elimina «${c.nombre}» con sus ${numero(c.contactosCount)} contactos. Los reportes de lo que ya se envió se conservan.` : ''}
+                confirmarTexto="Eliminar"
+                cargando={accionando}
+                onCancelar={() => setConfirmar(null)}
+                onConfirmar={() => eliminar(c)}
+            />
 
             <CampañaLogModal
                 open={!!modalLog}
@@ -494,26 +533,11 @@ export default function VerCampaniasWapi() {
                 campañaId={modalLog?.id}
                 campañaNombre={modalLog?.nombre}
                 tipo="wapi"
-                estadoCampaña={campanias.find(c => c.id === modalLog?.id)?.estado}
-                progreso={progresos[modalLog?.id] ?? null}
-                onForzarCierre={modalLog ? () => setConfirmarCierre(campanias.find(c => c.id === modalLog.id)) : null}
+                estadoCampaña={campanias.find((x) => x.id === modalLog?.id)?.estado}
+                progreso={modalLog && avances[modalLog.id] ? { enviados: avances[modalLog.id].procesados, total: avances[modalLog.id].total } : null}
+                onPausar={modalLog ? () => { const x = campanias.find((y) => y.id === modalLog.id); if (x) pausar(x); } : null}
+                onForzarCierre={modalLog ? () => { const x = campanias.find((y) => y.id === modalLog.id); if (x) pedirConfirmacion('cierre', x); } : null}
             />
-
-            <Snackbar
-                open={feedback.open}
-                autoHideDuration={5000}
-                onClose={() => setFeedback(p => ({ ...p, open: false }))}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <MuiAlert
-                    onClose={() => setFeedback(p => ({ ...p, open: false }))}
-                    severity={feedback.type}
-                    variant="filled"
-                    elevation={6}
-                >
-                    {feedback.message}
-                </MuiAlert>
-            </Snackbar>
         </>
     );
 }

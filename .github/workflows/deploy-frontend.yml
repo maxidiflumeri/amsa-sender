@@ -56,13 +56,22 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 1) Assets hasheados con cache largo (excluye index.html)
+      # 1) Assets con hash en el nombre (assets/): cache largo. Sin --delete: una pestaña que quedó con la versión
+      #    anterior todavía puede pedir sus pantallas (cada una es un archivo aparte desde v2).
       - name: Sync assets (long cache)
+        run: |
+          aws s3 sync "$OUT_DIR/assets" "s3://${{ secrets.S3_BUCKET }}/assets/" \
+            --cache-control "public,max-age=31536000,immutable"
+
+      # 1b) Lo que no lleva hash (sw.js, manifest, íconos): sin cache. Con cache de un año, el edge seguía sirviendo el
+      #     service worker viejo y nadie recibía la versión nueva.
+      - name: Sync root files (no-cache)
         run: |
           aws s3 sync "$OUT_DIR" "s3://${{ secrets.S3_BUCKET }}/" \
             --delete \
+            --exclude "assets/*" \
             --exclude "index.html" \
-            --cache-control "public,max-age=31536000,immutable"
+            --cache-control "no-cache"
 
       # 2) index.html sin cache
       - name: Upload index.html (no-cache)
@@ -77,4 +86,4 @@ jobs:
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${{ secrets.CF_DISTRIBUTION_ID }}" \
-            --paths "/index.html" "/"
+            --paths "/index.html" "/" "/sw.js" "/manifest.webmanifest" "/favicon.svg" "/favicon-32.png" "/apple-touch-icon.png" "/badge-96.png" "/icon-*"

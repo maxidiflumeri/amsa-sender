@@ -1,22 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-    Box, Typography, Paper, TextField, IconButton, Table, TableBody, TableCell,
-    TableContainer, TableHead, TableRow, TablePagination, Button, Dialog,
-    DialogTitle, DialogContent, DialogActions, InputAdornment, Chip,
-    CircularProgress, Alert, Tooltip,
+    Alert, Box, Button, CircularProgress, IconButton, InputAdornment, TablePagination, TextField, Typography,
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import BlockIcon from '@mui/icons-material/Block';
+import { Plus, Search, ShieldOff, Trash2, X } from 'lucide-react';
 import api from '../../api/axios';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import {
+    ConfirmDialog, DataTableResponsive, EmptyState, PageContainer, PageHeader, ResponsiveDialog, SectionCard, StatusChip,
+} from '../ui';
+import BloqueEstado from '../ui/BloqueEstado';
 
 const formatFecha = (ts) => {
-    if (!ts) return '-';
+    if (!ts) return '—';
     return new Date(ts).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
+// Formato internacional sin "+": sólo dígitos. El rango deja pasar números de cualquier país.
+const NUMERO_RE = /^\d{8,15}$/;
+
 export default function WapiBajas() {
+    const feedback = useFeedback();
     const [rows, setRows] = useState([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(0);
@@ -25,15 +29,14 @@ export default function WapiBajas() {
     const [busquedaActiva, setBusquedaActiva] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
 
-    // Dialog agregar manual
     const [dialogOpen, setDialogOpen] = useState(false);
     const [nuevoNumero, setNuevoNumero] = useState('');
+    const [errorNumero, setErrorNumero] = useState('');
+    const [errorAgregar, setErrorAgregar] = useState('');
     const [agregando, setAgregando] = useState(false);
 
-    // Dialog confirmar eliminación
-    const [dialogEliminar, setDialogEliminar] = useState(null); // número a eliminar
+    const [dialogEliminar, setDialogEliminar] = useState(null);
     const [eliminando, setEliminando] = useState(false);
 
     const cargar = useCallback(async () => {
@@ -43,10 +46,11 @@ export default function WapiBajas() {
             const { data } = await api.get('/wapi/bajas', {
                 params: { page: page + 1, size: rowsPerPage, q: busquedaActiva || undefined },
             });
-            setRows(data.items ?? data);
-            setTotal(data.total ?? (data.items?.length ?? data.length));
-        } catch {
-            setError('Error cargando la lista de bajas');
+            const items = data.items ?? data;
+            setRows(items);
+            setTotal(data.total ?? items.length);
+        } catch (err) {
+            setError(mensajeDeError(err, 'No se pudo cargar la lista de bajas.'));
         } finally {
             setLoading(false);
         }
@@ -54,22 +58,54 @@ export default function WapiBajas() {
 
     useEffect(() => { cargar(); }, [cargar]);
 
-    const buscar = () => {
+    // Busca al tipear con una pequeña espera (o al instante con Enter): no se pide en cada tecla.
+    useEffect(() => {
+        const t = setTimeout(() => {
+            const q = busqueda.trim();
+            setBusquedaActiva((prev) => {
+                if (prev === q) return prev;
+                setPage(0);
+                return q;
+            });
+        }, 400);
+        return () => clearTimeout(t);
+    }, [busqueda]);
+
+    const buscarYa = () => {
         setPage(0);
-        setBusquedaActiva(busqueda);
+        setBusquedaActiva(busqueda.trim());
+    };
+
+    const limpiar = () => {
+        setBusqueda('');
+        setBusquedaActiva('');
+        setPage(0);
+    };
+
+    const abrirAgregar = () => {
+        setNuevoNumero('');
+        setErrorNumero('');
+        setErrorAgregar('');
+        setDialogOpen(true);
     };
 
     const agregarManual = async () => {
-        if (!nuevoNumero.trim()) return;
+        const numero = nuevoNumero.trim();
+        if (!NUMERO_RE.test(numero)) {
+            setErrorNumero('Escribí solo dígitos, con código de país y sin "+" (de 8 a 15). Ej: 5491112345678');
+            return;
+        }
+        setErrorNumero('');
+        setErrorAgregar('');
         setAgregando(true);
         try {
-            await api.post('/wapi/bajas', { numero: nuevoNumero.trim() });
-            setSuccess(`${nuevoNumero.trim()} agregado a bajas`);
-            setNuevoNumero('');
+            await api.post('/wapi/bajas', { numero });
+            feedback.exito(`${numero} se agregó a la lista de bajas.`);
             setDialogOpen(false);
             cargar();
         } catch (e) {
-            setError(e?.response?.data?.message || 'Error al agregar baja');
+            // Dentro del diálogo: es lo que la persona está mirando.
+            setErrorAgregar(mensajeDeError(e, 'No se pudo agregar el número a bajas.'));
         } finally {
             setAgregando(false);
         }
@@ -80,154 +116,176 @@ export default function WapiBajas() {
         setEliminando(true);
         try {
             await api.delete(`/wapi/bajas/${encodeURIComponent(dialogEliminar)}`);
-            setSuccess(`${dialogEliminar} eliminado de bajas`);
+            feedback.exito(`${dialogEliminar} salió de la lista de bajas.`);
             setDialogEliminar(null);
             cargar();
-        } catch {
-            setError('Error al eliminar baja');
+        } catch (e) {
+            feedback.error(mensajeDeError(e, 'No se pudo quitar el número de bajas.'));
+            setDialogEliminar(null);
         } finally {
             setEliminando(false);
         }
     };
 
+    const columns = [
+        { key: 'numero', label: 'Número', primary: true, render: (r) => <Box component="span" sx={{ fontWeight: 600 }}>{r.numero}</Box> },
+        { key: 'creadoAt', label: 'Fecha', secondary: true, render: (r) => formatFecha(r.creadoAt) },
+        { key: 'campañaNombre', label: 'Campaña', render: (r) => r.campañaNombre ?? '—' },
+        { key: 'templateNombre', label: 'Plantilla', hideBelow: 'lg', render: (r) => r.templateNombre ?? '—' },
+        {
+            key: 'buttonPayload',
+            label: 'Botón tocado',
+            hideBelow: 'lg',
+            render: (r) => (r.buttonPayload ? <StatusChip label={r.buttonPayload} tono="neutro" /> : <Typography variant="body2" color="text.secondary" component="span">Carga manual</Typography>),
+        },
+        {
+            key: 'confirmacionEnviada',
+            label: 'Confirmación',
+            render: (r) => <StatusChip label={r.confirmacionEnviada ? 'Enviada' : 'No enviada'} tono={r.confirmacionEnviada ? 'ok' : 'neutro'} />,
+        },
+    ];
+
+    const hayBusqueda = !!busquedaActiva;
+
     return (
-        <Box sx={{ py: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5, mb: 3 }}>
-                <BlockIcon color="error" />
-                <Typography variant="h5" fontWeight={700} sx={{ fontSize: { xs: '1.1rem', sm: '1.5rem' } }}>Lista de Bajas — WhatsApp API</Typography>
-            </Box>
-
-            {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
-            {success && <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>{success}</Alert>}
-
-            {/* Barra de búsqueda + agregar */}
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-                <TextField
-                    size="small"
-                    placeholder="Buscar por número..."
-                    value={busqueda}
-                    onChange={(e) => setBusqueda(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && buscar()}
-                    InputProps={{
-                        startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
-                    }}
-                    sx={{ flex: '1 1 200px', maxWidth: 340 }}
-                />
-                <Button variant="outlined" onClick={buscar}>Buscar</Button>
-                <Box sx={{ flex: 1 }} />
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
-                    Agregar manual
-                </Button>
-            </Box>
-
-            {/* Tabla */}
-            <TableContainer component={Paper} elevation={2} sx={{ overflowX: 'auto' }}>
-                <Table size="small" sx={{ minWidth: { xs: 400, sm: 600 } }}>
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Número</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Campaña</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Template</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Payload botón</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Confirmación</TableCell>
-                            <TableCell>Fecha</TableCell>
-                            <TableCell align="center">Acciones</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow>
-                                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                                    <CircularProgress size={28} />
-                                </TableCell>
-                            </TableRow>
-                        ) : rows.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                                    Sin resultados
-                                </TableCell>
-                            </TableRow>
-                        ) : rows.map((row) => (
-                            <TableRow key={row.id} hover>
-                                <TableCell sx={{ fontWeight: 600 }}>{row.numero}</TableCell>
-                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{row.campañaNombre ?? '-'}</TableCell>
-                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{row.templateNombre ?? '-'}</TableCell>
-                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                                    {row.buttonPayload
-                                        ? <Chip label={row.buttonPayload} size="small" variant="outlined" />
-                                        : <Typography variant="caption" color="text.secondary">Manual</Typography>
-                                    }
-                                </TableCell>
-                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                                    <Chip
-                                        label={row.confirmacionEnviada ? 'Enviada' : 'No'}
-                                        color={row.confirmacionEnviada ? 'success' : 'default'}
-                                        size="small"
-                                    />
-                                </TableCell>
-                                <TableCell sx={{ fontSize: 12 }}>{formatFecha(row.creadoAt)}</TableCell>
-                                <TableCell align="center">
-                                    <Tooltip title="Quitar de bajas">
-                                        <IconButton size="small" color="error" onClick={() => setDialogEliminar(row.numero)}>
-                                            <DeleteIcon fontSize="small" />
-                                        </IconButton>
-                                    </Tooltip>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-
-            <TablePagination
-                component="div"
-                count={total}
-                page={page}
-                onPageChange={(_, p) => setPage(p)}
-                rowsPerPage={rowsPerPage}
-                onRowsPerPageChange={(e) => { setRowsPerPage(+e.target.value); setPage(0); }}
-                rowsPerPageOptions={[25, 50, 100]}
-                labelRowsPerPage="Filas:"
-                labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+        <PageContainer>
+            <PageHeader
+                title="Bajas de WhatsApp"
+                subtitle="Los números que pidieron no recibir más mensajes. No se les envía ninguna campaña."
+                breadcrumbs={migasDe('/wapi/bajas')}
+                actions={
+                    <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={abrirAgregar}>
+                        Agregar número
+                    </Button>
+                }
             />
 
-            {/* Dialog agregar manual */}
-            <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth>
-                <DialogTitle>Agregar número a bajas</DialogTitle>
-                <DialogContent>
+            <Box sx={{ mb: 2, maxWidth: { sm: 420 } }}>
+                <TextField
+                    fullWidth
+                    placeholder="Buscar por número"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && buscarYa()}
+                    slotProps={{
+                        htmlInput: { 'aria-label': 'Buscar por número', inputMode: 'search' },
+                        input: {
+                            startAdornment: <InputAdornment position="start"><Search size={18} strokeWidth={1.75} aria-hidden /></InputAdornment>,
+                            endAdornment: busqueda ? (
+                                <InputAdornment position="end">
+                                    <IconButton aria-label="Limpiar la búsqueda" onClick={limpiar} edge="end" sx={{ width: 44, height: 44 }}>
+                                        <X size={18} strokeWidth={1.75} aria-hidden />
+                                    </IconButton>
+                                </InputAdornment>
+                            ) : undefined,
+                        },
+                    }}
+                />
+            </Box>
+
+            {error ? (
+                <BloqueEstado estado="error" mensaje={error} onReintentar={cargar} />
+            ) : (
+                <SectionCard noPadding>
+                    <DataTableResponsive
+                        ariaLabel="Números dados de baja"
+                        columns={columns}
+                        rows={rows}
+                        rowKey={(r) => r.id}
+                        loading={loading}
+                        acciones={(row) => (
+                            <Button
+                                color="error"
+                                startIcon={<Trash2 size={16} strokeWidth={1.75} aria-hidden />}
+                                onClick={() => setDialogEliminar(row.numero)}
+                            >
+                                Quitar de bajas
+                            </Button>
+                        )}
+                        empty={
+                            hayBusqueda ? (
+                                <EmptyState
+                                    compact
+                                    icon={Search}
+                                    title="Sin resultados"
+                                    description={`No hay ningún número de baja que coincida con "${busquedaActiva}".`}
+                                    action={{ label: 'Limpiar la búsqueda', onClick: limpiar }}
+                                />
+                            ) : (
+                                <EmptyState
+                                    compact
+                                    icon={ShieldOff}
+                                    title="No hay bajas"
+                                    description="Cuando alguien pida no recibir más mensajes, su número va a aparecer acá. También podés cargar uno a mano."
+                                />
+                            )
+                        }
+                    />
+                    {!loading && total > 0 && (
+                        <TablePagination
+                            component="div"
+                            count={total}
+                            page={page}
+                            onPageChange={(_, p) => setPage(p)}
+                            rowsPerPage={rowsPerPage}
+                            onRowsPerPageChange={(e) => { setRowsPerPage(+e.target.value); setPage(0); }}
+                            rowsPerPageOptions={[25, 50, 100]}
+                            labelRowsPerPage="Filas:"
+                            labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+                        />
+                    )}
+                </SectionCard>
+            )}
+
+            <ResponsiveDialog
+                open={dialogOpen}
+                onClose={() => setDialogOpen(false)}
+                maxWidth="xs"
+                sucio={!!nuevoNumero && !agregando}
+                title="Agregar número a bajas"
+                actions={
+                    <>
+                        <Button onClick={() => setDialogOpen(false)} disabled={agregando}>Cancelar</Button>
+                        <Button
+                            variant="contained"
+                            onClick={agregarManual}
+                            disabled={agregando}
+                            startIcon={agregando ? <CircularProgress size={16} color="inherit" /> : null}
+                        >
+                            {agregando ? 'Agregando…' : 'Agregar'}
+                        </Button>
+                    </>
+                }
+            >
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+                    {errorAgregar && <Alert severity="error" role="alert">{errorAgregar}</Alert>}
                     <TextField
                         autoFocus
                         fullWidth
-                        label="Número (ej: 5491112345678)"
+                        label="Número"
                         value={nuevoNumero}
-                        onChange={(e) => setNuevoNumero(e.target.value)}
+                        onChange={(e) => { setNuevoNumero(e.target.value); setErrorNumero(''); }}
                         onKeyDown={(e) => e.key === 'Enter' && agregarManual()}
-                        sx={{ mt: 1 }}
-                        helperText="Formato internacional sin + (ej: 5491112345678)"
+                        error={!!errorNumero}
+                        helperText={errorNumero || 'Formato internacional sin "+". Ej: 5491112345678'}
+                        slotProps={{ htmlInput: { inputMode: 'numeric' } }}
                     />
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setDialogOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={agregarManual} disabled={!nuevoNumero.trim() || agregando}>
-                        {agregando ? <CircularProgress size={20} /> : 'Agregar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                    <Typography variant="body2" color="text.secondary">
+                        Desde ese momento no va a recibir más campañas de WhatsApp.
+                    </Typography>
+                </Box>
+            </ResponsiveDialog>
 
-            {/* Dialog confirmar eliminación */}
-            <Dialog open={!!dialogEliminar} onClose={() => setDialogEliminar(null)} maxWidth="xs" fullWidth>
-                <DialogTitle>Quitar de bajas</DialogTitle>
-                <DialogContent>
-                    <Typography>¿Eliminar <strong>{dialogEliminar}</strong> de la lista de bajas?</Typography>
-                    <Typography variant="caption" color="text.secondary">El número podrá recibir mensajes nuevamente.</Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setDialogEliminar(null)}>Cancelar</Button>
-                    <Button variant="contained" color="error" onClick={eliminar} disabled={eliminando}>
-                        {eliminando ? <CircularProgress size={20} /> : 'Eliminar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        </Box>
+            <ConfirmDialog
+                open={!!dialogEliminar}
+                titulo="¿Quitar de la lista de bajas?"
+                mensaje={<>El número <strong>{dialogEliminar}</strong> va a poder recibir mensajes nuevamente en las próximas campañas.</>}
+                confirmarTexto="Quitar de bajas"
+                peligro
+                cargando={eliminando}
+                onConfirmar={eliminar}
+                onCancelar={() => setDialogEliminar(null)}
+            />
+        </PageContainer>
     );
 }
