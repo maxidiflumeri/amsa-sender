@@ -7,10 +7,11 @@ import {
     ShieldCheck,
     SlidersHorizontal,
     Smartphone,
+    UserRound,
     Users,
 } from 'lucide-react';
 
-/** Los íconos de Lucide que puede pedir `navConfig` (campo `icon`). */
+/** Los íconos de Lucide que puede pedir `navConfig` (campo `icon`), y el buscador para Mi perfil. */
 const iconosNav = {
     House,
     MessagesSquare,
@@ -21,6 +22,7 @@ const iconosNav = {
     SlidersHorizontal,
     ShieldCheck,
     Send,
+    UserRound,
 };
 
 export default function IconoNav({ nombre, size = 20 }) {

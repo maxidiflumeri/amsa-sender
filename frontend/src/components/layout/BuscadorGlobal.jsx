@@ -1,285 +1,485 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Alert,
     Box,
     Button,
     ButtonBase,
     CircularProgress,
     Dialog,
+    DialogTitle,
     IconButton,
     InputBase,
     Tooltip,
     Typography,
     useMediaQuery,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
-import { ArrowRight, MessagesSquare, Search, User, X } from 'lucide-react';
+import { alpha, useTheme } from '@mui/material/styles';
+import { visuallyHidden } from '@mui/utils';
+import { CornerDownLeft, MessagesSquare, Search, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import IconoNav from './IconoNav';
 import { filtrarItemsPorPermisos, navConfig, pantallasDelMenu } from './navConfig';
 
-// El buscador de la barra, como el de AMSA Gestión: Ctrl+K (Cmd+K) desde cualquier pantalla o un toque en la barra.
-// Busca pantallas del menú (al instante), deudores (`GET /deudores/buscar`) y conversaciones
-// (`GET /wapi/inbox/buscar`), según los permisos. Patrón combobox + listbox, flechas con vuelta, Enter abre, Esc cierra.
+// El buscador de la barra, el mismo de AMSA Gestión (components/layout/AppShell/BuscadorGlobal.tsx): misma ventana,
+// mismo orden y mismas teclas. Lo propio de Sender es qué busca además de las pantallas: deudores
+// (`GET /deudores/buscar`) y conversaciones (`GET /wapi/inbox/buscar`), según los permisos.
 
-const sinTildes = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-/** Coincide si lo escrito es el comienzo de alguna palabra ("camp" encuentra "Campañas", "ñas" no). */
-const empiezaPalabra = (texto, q) => sinTildes(texto).split(/[\s/·-]+/).some((p) => p.startsWith(q));
-
-const EXTRAS = [
-    { label: 'Mi perfil', path: '/perfil', claves: ['perfil', 'cuenta', 'tema', 'notificaciones'] },
-    { label: 'Inicio', path: '/', claves: ['inicio'] },
+/**
+ * Pantallas que no están en el menú pero se buscan igual. Mi perfil se abre desde la foto; acá también se encuentra por
+ * lo que tiene adentro ("tema", "notificaciones", "atajos").
+ */
+const PANTALLAS_FUERA_DEL_MENU = [
+    {
+        item: { label: 'Mi perfil', path: '/perfil', icon: 'UserRound' },
+        grupo: null,
+        detalle: 'Tus datos, el tema y las notificaciones',
+        palabras: ['cuenta', 'tema', 'oscuro', 'claro', 'notificaciones', 'atajos', 'sesion'],
+    },
 ];
 
-function hayAlgoModalAbierto(propio) {
-    return [...document.querySelectorAll('.MuiModal-root, .MuiPopover-root')].some(
-        (el) => !el.classList.contains('MuiModal-hidden') && el !== propio && !propio?.contains(el),
-    );
-}
+/** Desde cuántas letras se buscan deudores y conversaciones (las pantallas se filtran desde la primera). */
+const MIN_LETRAS = 2;
+const POR_BUSQUEDA = 6;
+const ESPERA_MS = 300;
 
-export default function BuscadorGlobal() {
+const ES_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+const ATAJO = `${ES_MAC ? '⌘' : 'Ctrl'} K`;
+
+/** Sin tildes ni mayúsculas: "campanas" encuentra "Campañas". */
+const normalizar = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+/**
+ * Una pantalla coincide si lo escrito empieza una de sus palabras ("camp" → Campañas, "monitor en" → Monitor en vivo).
+ * Por el medio no: un apellido como "Ríos" encontraría otras cosas, quedaría primero y Enter llevaría ahí.
+ */
+const empiezaPalabra = (texto, q) => ` ${normalizar(texto)}`.includes(` ${q}`);
+
+const ID_LISTA = 'buscador-global-lista';
+const idOpcion = (i) => `buscador-global-opcion-${i}`;
+
+/** El diálogo en sí. Se monta al abrirse, así cada vez arranca vacío. */
+function DialogoBuscador({ onCerrar }) {
     const theme = useTheme();
     const navigate = useNavigate();
     const { hasPermiso } = useAuth();
-    const desdeMd = useMediaQuery(theme.breakpoints.up('md'));
-    const [abierto, setAbierto] = useState(false);
-    const [q, setQ] = useState('');
-    const [marcado, setMarcado] = useState(0);
-    const [remoto, setRemoto] = useState({ deudores: [], conversaciones: [], cargando: false, error: false });
+    const puedeDeudores = hasPermiso('deudores.ver');
+    const puedeConversaciones = hasPermiso('wapi.inbox');
+    const buscaAlgoMas = puedeDeudores || puedeConversaciones;
+    const [texto, setTexto] = useState('');
+    const [activo, setActivo] = useState(0);
+    const [remoto, setRemoto] = useState({ estado: 'inactivo' });
     const [intento, setIntento] = useState(0);
-    const campo = useRef(null);
-    const dialogo = useRef(null);
-    const verDeudores = hasPermiso('deudores.ver');
-    const verConversaciones = hasPermiso('wapi.inbox');
+    const entradaRef = useRef(null);
 
-    const abrir = useCallback(() => setAbierto(true), []);
-    const cerrar = () => {
-        setAbierto(false);
-        setQ('');
-        setRemoto({ deudores: [], conversaciones: [], cargando: false, error: false });
-    };
+    // El foco va al campo cuando el diálogo ya se montó: `autoFocus` solo no alcanza en modo estricto (el FocusTrap de
+    // MUI se lo devuelve a lo que estaba enfocado). Con letra de 16 px, iOS no hace zoom al enfocarlo.
+    useEffect(() => {
+        const id = window.setTimeout(() => entradaRef.current?.focus(), 0);
+        return () => window.clearTimeout(id);
+    }, []);
 
+    // Con el buscador abierto, Ctrl+K vuelve al campo (si no, el navegador manda el foco a su barra de direcciones).
     useEffect(() => {
         const alTeclear = (e) => {
-            if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k') return;
-            if (abierto) {
-                e.preventDefault();
-                campo.current?.focus();
-                return;
-            }
-            if (hayAlgoModalAbierto(dialogo.current)) return;
+            if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'k') return;
             e.preventDefault();
-            abrir();
+            entradaRef.current?.focus();
+            entradaRef.current?.select();
         };
         window.addEventListener('keydown', alTeclear);
         return () => window.removeEventListener('keydown', alTeclear);
-    }, [abierto, abrir]);
+    }, []);
 
-    const pantallas = useMemo(() => {
-        const items = filtrarItemsPorPermisos(navConfig, hasPermiso);
-        const delMenu = pantallasDelMenu(items).map(({ item, grupo }) => ({
-            label: item.label,
-            detalle: grupo ? grupo.label : '',
-            path: item.path,
-            claves: [],
-        }));
-        return [...delMenu, ...EXTRAS.filter((x) => !delMenu.some((d) => d.path === x.path)).map((x) => ({ ...x, detalle: '' }))];
-    }, [hasPermiso]);
+    const termino = texto.trim();
+    const buscaRemoto = buscaAlgoMas && termino.length >= MIN_LETRAS;
 
-    const termino = sinTildes(q.trim());
-    const pantallasFiltradas = termino
-        ? pantallas.filter((p) => empiezaPalabra(`${p.label} ${p.detalle}`, termino) || p.claves.some((c) => c.startsWith(termino))).slice(0, 6)
-        : [];
-
-    // Deudores y conversaciones: desde 2 letras, 300 ms después de dejar de escribir, cancelando el pedido anterior.
     useEffect(() => {
-        if (!abierto || q.trim().length < 2 || (!verDeudores && !verConversaciones)) {
-            setRemoto((r) => ({ ...r, deudores: [], conversaciones: [], cargando: false, error: false }));
+        if (!buscaRemoto) {
+            setRemoto({ estado: 'inactivo' });
             return undefined;
         }
-        const ctrl = new AbortController();
-        setRemoto((r) => ({ ...r, cargando: true, error: false }));
-        const t = setTimeout(async () => {
-            const texto = q.trim();
+        setRemoto({ estado: 'cargando' });
+        const control = new AbortController();
+        const espera = setTimeout(async () => {
             const [d, c] = await Promise.allSettled([
-                verDeudores ? api.get('/deudores/buscar', { params: { q: texto, page: 0, size: 5 }, signal: ctrl.signal }) : Promise.resolve({ data: { data: [] } }),
-                verConversaciones ? api.get('/wapi/inbox/buscar', { params: { q: texto }, signal: ctrl.signal }) : Promise.resolve({ data: { items: [] } }),
+                puedeDeudores
+                    ? api.get('/deudores/buscar', { params: { q: termino, page: 0, size: POR_BUSQUEDA }, signal: control.signal })
+                    : Promise.resolve({ data: { data: [], total: 0 } }),
+                puedeConversaciones
+                    ? api.get('/wapi/inbox/buscar', { params: { q: termino }, signal: control.signal })
+                    : Promise.resolve({ data: { items: [], total: 0 } }),
             ]);
-            if (ctrl.signal.aborted) return;
+            if (control.signal.aborted) return;
+            if ((!puedeDeudores || d.status === 'rejected') && (!puedeConversaciones || c.status === 'rejected')) {
+                setRemoto({ estado: 'error' });
+                return;
+            }
+            const deudores = d.status === 'fulfilled' && Array.isArray(d.value.data?.data) ? d.value.data.data : [];
+            const conversaciones = c.status === 'fulfilled' && Array.isArray(c.value.data?.items) ? c.value.data.items : [];
             setRemoto({
-                deudores: d.status === 'fulfilled' ? (d.value.data?.data ?? []).slice(0, 5) : [],
-                conversaciones: c.status === 'fulfilled' ? (c.value.data?.items ?? []).slice(0, 5) : [],
-                cargando: false,
-                error: (verDeudores && d.status === 'rejected') || (verConversaciones && c.status === 'rejected'),
+                estado: 'listo',
+                deudores: deudores.slice(0, POR_BUSQUEDA),
+                totalDeudores: Number(d.status === 'fulfilled' ? d.value.data?.total ?? deudores.length : 0),
+                conversaciones: conversaciones.slice(0, POR_BUSQUEDA),
+                totalConversaciones: Number(c.status === 'fulfilled' ? c.value.data?.total ?? conversaciones.length : 0),
+                fallo: d.status === 'rejected' || c.status === 'rejected',
             });
-        }, 300);
+        }, ESPERA_MS);
         return () => {
-            clearTimeout(t);
-            ctrl.abort();
+            clearTimeout(espera);
+            control.abort();
         };
-    }, [q, abierto, verDeudores, verConversaciones, intento]);
+    }, [buscaRemoto, termino, intento, puedeDeudores, puedeConversaciones]);
 
-    const resultados = [
-        ...pantallasFiltradas.map((p) => ({ tipo: 'pantalla', id: `p-${p.path}`, titulo: p.label, detalle: p.detalle || 'Pantalla', ir: p.path })),
-        ...remoto.deudores.map((d) => ({ tipo: 'deudor', id: `d-${d.id}`, titulo: d.nombre || 'Sin nombre', detalle: [d.documento ? `Doc. ${d.documento}` : null, d.empresa ? `Empresa ${d.empresa}` : null].filter(Boolean).join(' · '), ir: `/deudores/${d.id}` })),
-        ...remoto.conversaciones.map((c) => ({ tipo: 'conversacion', id: `c-${c.id}`, titulo: c.nombre || c.numero, detalle: [c.nombre ? c.numero : null, `#${c.id}`, c.config?.nombre].filter(Boolean).join(' · '), ir: `/wapi/inbox?c=${c.id}` })),
-    ];
+    const pantallas = useMemo(
+        () => [...pantallasDelMenu(filtrarItemsPorPermisos(navConfig, hasPermiso)), ...PANTALLAS_FUERA_DEL_MENU],
+        [hasPermiso],
+    );
+    const q = normalizar(texto);
+    const pantallasQueCoinciden = useMemo(() => {
+        if (!q) return pantallas;
+        const coinciden = pantallas.filter(({ item, grupo, palabras }) =>
+            empiezaPalabra(item.label, q) || (!!grupo && empiezaPalabra(grupo.label, q)) || (palabras ?? []).some((pal) => empiezaPalabra(pal, q)));
+        // Primero las que empiezan con lo escrito.
+        return [...coinciden].sort((a, b) => Number(!normalizar(a.item.label).startsWith(q)) - Number(!normalizar(b.item.label).startsWith(q)));
+    }, [pantallas, q]);
 
-    useEffect(() => setMarcado(0), [q]);
+    const dePantallas = pantallasQueCoinciden.map(({ item, grupo, detalle }) => ({
+        tipo: 'pantalla',
+        clave: `p:${item.path}`,
+        titulo: item.label,
+        detalle: detalle ?? grupo?.label ?? null,
+        icono: (grupo ?? item).icon,
+        path: item.path,
+    }));
+    const deDeudores = remoto.estado === 'listo'
+        ? remoto.deudores.map((x) => ({
+            tipo: 'deudor',
+            clave: `d:${x.id}`,
+            titulo: x.nombre || `Deudor ${x.id}`,
+            detalle: [x.documento ? `Doc. ${x.documento}` : 'Sin documento', x.empresa ? `Empresa ${x.empresa}` : null, x.remesa ? `Remesa ${x.remesa}` : null].filter(Boolean).join(' · '),
+            path: `/deudores/${x.id}`,
+        }))
+        : [];
+    const deConversaciones = remoto.estado === 'listo'
+        ? remoto.conversaciones.map((x) => ({
+            tipo: 'conversacion',
+            clave: `c:${x.id}`,
+            titulo: x.nombre || x.numero,
+            detalle: [x.nombre ? x.numero : null, `#${x.id}`, x.config?.nombre].filter(Boolean).join(' · '),
+            path: `/wapi/inbox?c=${x.id}`,
+        }))
+        : [];
+    // Las pantallas van primero porque salen al instante: si lo del servidor llegara arriba, lo marcado se correría.
+    const grupos = [
+        { id: 'pantallas', titulo: 'Pantallas', opciones: dePantallas },
+        { id: 'deudores', titulo: 'Deudores', opciones: deDeudores },
+        { id: 'conversaciones', titulo: 'Conversaciones', opciones: deConversaciones },
+    ].filter((g) => g.opciones.length > 0);
+    const opciones = grupos.flatMap((g) => g.opciones);
+    const indice = opciones.length === 0 ? -1 : Math.min(activo, opciones.length - 1);
+
     useEffect(() => {
-        if (marcado >= resultados.length) setMarcado(0);
-    }, [resultados.length, marcado]);
+        if (indice < 0) return;
+        const el = document.getElementById(idOpcion(indice));
+        if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' });
+    }, [indice]);
 
-    const elegir = (r) => {
-        if (!r) return;
-        cerrar();
-        navigate(r.ir);
+    const elegir = (op) => {
+        onCerrar();
+        navigate(op.path);
     };
 
     const alTeclear = (e) => {
-        if (e.key === 'ArrowDown' && resultados.length) {
+        const n = opciones.length;
+        if (e.key === 'ArrowDown' && n > 0) {
             e.preventDefault();
-            setMarcado((m) => (m + 1) % resultados.length);
-        } else if (e.key === 'ArrowUp' && resultados.length) {
+            setActivo((indice + 1) % n);
+        } else if (e.key === 'ArrowUp' && n > 0) {
             e.preventDefault();
-            setMarcado((m) => (m - 1 + resultados.length) % resultados.length);
-        } else if (e.key === 'Enter') {
+            setActivo((indice - 1 + n) % n);
+        } else if (e.key === 'Enter' && indice >= 0) {
             e.preventDefault();
-            elegir(resultados[marcado]);
+            elegir(opciones[indice]);
         }
     };
 
-    const placeholder = verDeudores ? 'Buscar deudor, conversación o pantalla' : verConversaciones ? 'Buscar conversación o pantalla' : 'Buscar una pantalla';
-    const grupos = [
-        { tipo: 'pantalla', titulo: 'Pantallas' },
-        { tipo: 'deudor', titulo: 'Deudores' },
-        { tipo: 'conversacion', titulo: 'Conversaciones' },
-    ];
-    const IconoTipo = { pantalla: ArrowRight, deudor: User, conversacion: MessagesSquare };
+    const queBusca = [puedeDeudores && 'un deudor (nombre o documento)', puedeConversaciones && 'una conversación (nombre, teléfono o #id)'].filter(Boolean);
+    let estado = null;
+    if (!termino) {
+        estado = queBusca.length ? `Escribí ${queBusca.join(', ')} o el nombre de una pantalla.` : 'Escribí el nombre de una pantalla.';
+    } else if (buscaAlgoMas && termino.length < MIN_LETRAS) {
+        estado = puedeDeudores ? 'Seguí escribiendo para buscar deudores.' : 'Seguí escribiendo para buscar conversaciones.';
+    } else if (remoto.estado === 'cargando') {
+        estado = (
+            <>
+                <CircularProgress size={12} sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Buscando…
+            </>
+        );
+    } else if (remoto.estado === 'error' || (remoto.estado === 'listo' && remoto.fallo)) {
+        estado = (
+            <>
+                {remoto.estado === 'error' ? 'No se pudo buscar.' : 'Parte de la búsqueda no respondió.'}
+                <Button size="small" onClick={() => setIntento((n) => n + 1)} sx={{ ml: 1, py: 0, minWidth: 0 }}>
+                    Reintentar
+                </Button>
+            </>
+        );
+    } else if (remoto.estado === 'listo' && deDeudores.length === 0 && deConversaciones.length === 0) {
+        estado = dePantallas.length ? 'Ningún deudor ni conversación coincide.' : `Nada coincide con «${termino}».`;
+    } else if (remoto.estado === 'listo' && (remoto.totalDeudores > deDeudores.length || remoto.totalConversaciones > deConversaciones.length)) {
+        estado = 'Hay más resultados: seguí escribiendo para afinar.';
+    } else if (opciones.length === 0) {
+        estado = `Ninguna pantalla coincide con «${termino}».`;
+    }
+
+    const marcado = alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.1);
+    let n = -1;
+
+    return (
+        <Dialog
+            open
+            onClose={onCerrar}
+            fullWidth
+            maxWidth="sm"
+            aria-labelledby="buscador-global-titulo"
+            sx={{ '& .MuiDialog-container': { alignItems: 'flex-start' } }}
+            PaperProps={{
+                sx: {
+                    mt: { xs: 'calc(12px + env(safe-area-inset-top))', sm: '12vh' },
+                    mx: { xs: 1.5, sm: 4 },
+                    width: { xs: 'calc(100% - 24px)', sm: 'calc(100% - 64px)' },
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                },
+            }}
+        >
+            <DialogTitle id="buscador-global-titulo" sx={visuallyHidden}>
+                Buscar en AMSA Sender
+            </DialogTitle>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, borderBottom: 1, borderColor: 'divider', color: 'text.secondary' }}>
+                <Search size={20} strokeWidth={1.75} aria-hidden />
+                <InputBase
+                    inputRef={entradaRef}
+                    autoFocus
+                    fullWidth
+                    value={texto}
+                    onChange={(e) => {
+                        setTexto(e.target.value);
+                        setActivo(0);
+                    }}
+                    onKeyDown={alTeclear}
+                    placeholder={buscaAlgoMas ? 'Buscar un deudor, una conversación o una pantalla' : 'Buscar una pantalla'}
+                    inputProps={{
+                        role: 'combobox',
+                        'aria-label': buscaAlgoMas ? 'Buscar un deudor, una conversación o una pantalla' : 'Buscar una pantalla',
+                        'aria-expanded': opciones.length > 0,
+                        'aria-controls': ID_LISTA,
+                        'aria-autocomplete': 'list',
+                        'aria-activedescendant': indice >= 0 ? idOpcion(indice) : undefined,
+                        autoComplete: 'off',
+                        spellCheck: false,
+                        enterKeyHint: 'search',
+                    }}
+                    sx={{ py: 1.75, fontSize: '1rem', color: 'text.primary' }}
+                />
+            </Box>
+
+            <Typography
+                role="status"
+                variant="caption"
+                component="div"
+                color="text.secondary"
+                sx={{ px: 2.5, pt: 1.25, pb: estado ? 0.5 : 0, minHeight: estado ? undefined : 0 }}
+            >
+                {estado}
+            </Typography>
+
+            <Box id={ID_LISTA} role="listbox" aria-label="Resultados" sx={{ maxHeight: { xs: '60vh', sm: '50vh' }, overflowY: 'auto', py: 1 }}>
+                {grupos.map((g) => (
+                    <Box key={g.id} role="group" aria-labelledby={`buscador-global-grupo-${g.id}`} sx={{ mb: 0.5 }}>
+                        <Typography
+                            id={`buscador-global-grupo-${g.id}`}
+                            role="presentation"
+                            component="div"
+                            sx={{ px: 2.5, pt: 1, pb: 0.5, fontSize: '0.6875rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'text.secondary' }}
+                        >
+                            {g.titulo}
+                        </Typography>
+                        {g.opciones.map((op) => {
+                            n += 1;
+                            const i = n;
+                            const sel = i === indice;
+                            return (
+                                <Box
+                                    key={op.clave}
+                                    id={idOpcion(i)}
+                                    role="option"
+                                    aria-selected={sel}
+                                    data-tipo={op.tipo}
+                                    onMouseMove={() => i !== indice && setActivo(i)}
+                                    onClick={() => elegir(op)}
+                                    sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 1.5,
+                                        mx: 1,
+                                        px: 1.5,
+                                        py: 0.875,
+                                        minHeight: { xs: 48, md: 0 },
+                                        borderRadius: '10px',
+                                        cursor: 'pointer',
+                                        bgcolor: sel ? marcado : 'transparent',
+                                    }}
+                                >
+                                    <Box
+                                        sx={{
+                                            width: 32,
+                                            height: 32,
+                                            flex: 'none',
+                                            borderRadius: '8px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            bgcolor: 'action.hover',
+                                            color: sel ? 'primary.main' : 'text.secondary',
+                                        }}
+                                    >
+                                        {op.tipo === 'pantalla' && <IconoNav nombre={op.icono} size={18} />}
+                                        {op.tipo === 'deudor' && <UserRound size={18} strokeWidth={1.75} aria-hidden />}
+                                        {op.tipo === 'conversacion' && <MessagesSquare size={18} strokeWidth={1.75} aria-hidden />}
+                                    </Box>
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Typography variant="body2" fontWeight={500} noWrap>
+                                            {op.titulo}
+                                        </Typography>
+                                        {op.detalle && (
+                                            <Typography variant="caption" component="div" color="text.secondary" noWrap>
+                                                {op.detalle}
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                    {sel && (
+                                        <Box sx={{ color: 'text.secondary', display: { xs: 'none', md: 'flex' } }}>
+                                            <CornerDownLeft size={16} strokeWidth={1.75} aria-hidden />
+                                        </Box>
+                                    )}
+                                </Box>
+                            );
+                        })}
+                    </Box>
+                ))}
+            </Box>
+
+            <Box
+                aria-hidden
+                sx={{ display: { xs: 'none', sm: 'flex' }, gap: 2, px: 2.5, py: 1, borderTop: 1, borderColor: 'divider', color: 'text.secondary', fontSize: '0.75rem' }}
+            >
+                <span>↑ ↓ para moverte</span>
+                <span>Enter para abrir</span>
+                <span>Esc para cerrar</span>
+            </Box>
+        </Dialog>
+    );
+}
+
+/**
+ * Hay algo modal abierto (un diálogo, un menú, un Select desplegado): el atajo no le abre el buscador encima. Los cajones
+ * que quedan montados cerrados (`keepMounted`, como el menú del celular) llevan `MuiModal-hidden`.
+ */
+const hayOtroModal = () =>
+    Array.from(document.querySelectorAll('.MuiModal-root, [role="dialog"]')).some((m) => {
+        const raiz = m.closest('.MuiModal-root') ?? m;
+        return !raiz.classList.contains('MuiModal-hidden') && raiz.style.visibility !== 'hidden';
+    });
+
+/**
+ * El buscador de la barra superior: pantallas del menú (según los permisos), deudores y conversaciones. Se abre con un
+ * clic o con Ctrl+K / Cmd+K desde cualquier pantalla.
+ */
+export default function BuscadorGlobal() {
+    const theme = useTheme();
+    // Debajo de `md` va solo el ícono: en el celular y en la tablet la barra no tiene lugar para el campo.
+    const chico = useMediaQuery(theme.breakpoints.down('md'));
+    const { hasPermiso } = useAuth();
+    const buscaAlgoMas = hasPermiso('deudores.ver') || hasPermiso('wapi.inbox');
+    const [abierto, setAbierto] = useState(false);
+    const etiqueta = buscaAlgoMas ? 'Buscar deudor, conversación o pantalla' : 'Buscar una pantalla';
+
+    useEffect(() => {
+        if (abierto) return undefined;
+        const alTeclear = (e) => {
+            if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'k') return;
+            if (hayOtroModal()) return;
+            e.preventDefault();
+            setAbierto(true);
+        };
+        window.addEventListener('keydown', alTeclear);
+        return () => window.removeEventListener('keydown', alTeclear);
+    }, [abierto]);
+
+    const abrir = () => setAbierto(true);
 
     return (
         <>
-            {desdeMd ? (
+            {chico ? (
+                <Tooltip title="Buscar">
+                    <IconButton onClick={abrir} aria-label={etiqueta} aria-keyshortcuts="Control+K Meta+K" sx={{ color: 'text.secondary', width: 44, height: 44 }}>
+                        <Search size={20} strokeWidth={1.75} aria-hidden />
+                    </IconButton>
+                </Tooltip>
+            ) : (
                 <ButtonBase
                     onClick={abrir}
-                    aria-label={`${placeholder} (Ctrl K)`}
-                    sx={(t) => ({
+                    aria-label={etiqueta}
+                    aria-keyshortcuts="Control+K Meta+K"
+                    sx={{
                         width: '100%',
-                        maxWidth: 560,
+                        maxWidth: { md: 560 },
                         height: 40,
+                        justifyContent: 'flex-start',
+                        gap: 1.25,
+                        px: 1.5,
                         borderRadius: '12px',
                         border: 1,
                         borderColor: 'divider',
                         bgcolor: 'background.paper',
                         color: 'text.secondary',
-                        justifyContent: 'flex-start',
-                        gap: 1.25,
-                        px: 1.5,
-                        fontSize: '0.84375rem',
+                        transition: theme.transitions.create('border-color', { duration: theme.transitions.duration.shortest }),
                         '&:hover': { borderColor: 'primary.main' },
-                        '&.Mui-focusVisible': { outline: `2px solid ${t.palette.primary.main}`, outlineOffset: 2 },
-                    })}
+                        '&.Mui-focusVisible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
+                    }}
                 >
                     <Search size={18} strokeWidth={1.75} aria-hidden />
-                    <Box component="span" sx={{ flex: 1, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{placeholder}</Box>
-                    <Box component="kbd" sx={{ fontFamily: 'inherit', fontSize: 11, fontWeight: 600, px: 0.875, py: 0.5, borderRadius: '6px', border: 1, borderColor: 'divider', bgcolor: 'background.default' }}>Ctrl K</Box>
+                    <Typography variant="body2" color="inherit" noWrap sx={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                        {etiqueta}
+                    </Typography>
+                    <Box
+                        component="kbd"
+                        aria-hidden
+                        sx={{
+                            flex: 'none',
+                            fontFamily: 'inherit',
+                            fontSize: '0.6875rem',
+                            fontWeight: 600,
+                            lineHeight: 1,
+                            px: 0.875,
+                            py: 0.625,
+                            borderRadius: '6px',
+                            border: 1,
+                            borderColor: 'divider',
+                            bgcolor: 'background.default',
+                            color: 'text.secondary',
+                        }}
+                    >
+                        {ATAJO}
+                    </Box>
                 </ButtonBase>
-            ) : (
-                <Tooltip title="Buscar">
-                    <IconButton aria-label={placeholder} onClick={abrir} sx={{ color: 'text.secondary', width: 44, height: 44 }}>
-                        <Search size={20} strokeWidth={1.75} aria-hidden />
-                    </IconButton>
-                </Tooltip>
             )}
 
-            <Dialog
-                ref={dialogo}
-                open={abierto}
-                onClose={cerrar}
-                fullWidth
-                maxWidth="sm"
-                fullScreen={!desdeMd && window.innerWidth < 600}
-                TransitionProps={{ onEntered: () => campo.current?.focus() }}
-                slotProps={{ paper: { sx: { alignSelf: { sm: 'flex-start' }, mt: { sm: 10 }, borderRadius: { sm: '16px' } } } }}
-            >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, borderBottom: 1, borderColor: 'divider', pt: { xs: 'calc(8px + env(safe-area-inset-top))', sm: 1 } }}>
-                    <Search size={20} strokeWidth={1.75} aria-hidden style={{ flex: 'none', opacity: 0.7 }} />
-                    <InputBase
-                        inputRef={campo}
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                        onKeyDown={alTeclear}
-                        placeholder={placeholder}
-                        fullWidth
-                        inputProps={{
-                            role: 'combobox',
-                            'aria-expanded': resultados.length > 0,
-                            'aria-controls': 'buscador-resultados',
-                            'aria-activedescendant': resultados[marcado] ? `buscador-${resultados[marcado].id}` : undefined,
-                            'aria-label': placeholder,
-                            autoComplete: 'off',
-                            enterKeyHint: 'search',
-                        }}
-                        sx={{ fontSize: 16, minHeight: 44 }}
-                    />
-                    {remoto.cargando && <CircularProgress size={18} />}
-                    <IconButton aria-label="Cerrar el buscador" onClick={cerrar} sx={{ width: 44, height: 44 }}>
-                        <X size={20} strokeWidth={1.75} aria-hidden />
-                    </IconButton>
-                </Box>
-
-                <Box id="buscador-resultados" role="listbox" aria-label="Resultados" sx={{ maxHeight: { sm: 440 }, overflowY: 'auto', py: 1 }}>
-                    {!q.trim() && (
-                        <Typography variant="body2" color="text.secondary" sx={{ px: 2.5, py: 2 }}>
-                            {verDeudores ? 'Escribí un nombre, un documento, un teléfono o el nombre de una pantalla.' : 'Escribí el nombre de una pantalla.'}
-                        </Typography>
-                    )}
-                    {remoto.error && (
-                        <Alert severity="error" variant="outlined" sx={{ mx: 2, my: 1 }} action={<Button color="inherit" size="small" onClick={() => setIntento((n) => n + 1)}>Reintentar</Button>}>
-                            No se pudo buscar en el servidor.
-                        </Alert>
-                    )}
-                    {q.trim() && !remoto.cargando && resultados.length === 0 && !remoto.error && (
-                        <Typography variant="body2" color="text.secondary" sx={{ px: 2.5, py: 2 }}>
-                            No encontramos nada con «{q.trim()}».
-                        </Typography>
-                    )}
-                    {grupos.map(({ tipo, titulo }) => {
-                        const deEste = resultados.filter((r) => r.tipo === tipo);
-                        if (deEste.length === 0) return null;
-                        const Icono = IconoTipo[tipo];
-                        return (
-                            <Box key={tipo} role="group" aria-label={titulo}>
-                                <Typography component="div" aria-hidden sx={{ px: 2.5, pt: 1, pb: 0.5, fontSize: '0.6875rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'text.secondary' }}>
-                                    {titulo}
-                                </Typography>
-                                {deEste.map((r) => {
-                                    const i = resultados.indexOf(r);
-                                    const on = i === marcado;
-                                    return (
-                                        <Box
-                                            key={r.id}
-                                            id={`buscador-${r.id}`}
-                                            role="option"
-                                            aria-selected={on}
-                                            onMouseEnter={() => setMarcado(i)}
-                                            onClick={() => elegir(r)}
-                                            sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mx: 1, px: 1.5, minHeight: 48, borderRadius: '10px', cursor: 'pointer', bgcolor: on ? 'action.selected' : 'transparent' }}
-                                        >
-                                            <Icono size={18} strokeWidth={1.75} aria-hidden style={{ flex: 'none', opacity: 0.7 }} />
-                                            <Box sx={{ minWidth: 0, flex: 1 }}>
-                                                <Typography variant="body2" fontWeight={600} noWrap>{r.titulo}</Typography>
-                                                {r.detalle && <Typography variant="caption" color="text.secondary" noWrap component="div">{r.detalle}</Typography>}
-                                            </Box>
-                                        </Box>
-                                    );
-                                })}
-                            </Box>
-                        );
-                    })}
-                </Box>
-            </Dialog>
+            {abierto && <DialogoBuscador onCerrar={() => setAbierto(false)} />}
         </>
     );
 }
