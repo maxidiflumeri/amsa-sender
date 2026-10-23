@@ -1,44 +1,52 @@
-// src/pages/VistaEmail.jsx
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Box } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Typography } from '@mui/material';
+import { VistaPreviaEmail } from '../ui';
+import PaginaPublica from '../plantillas/PaginaPublica';
+import { mensajePublico } from '../plantillas/mensajePublico';
 
-function VistaPublicaEmail() {
+/**
+ * El mail tal como se mandó, para quien toca «Ver en el navegador». Va en el iframe aislado de `VistaPreviaEmail`: el
+ * HTML del mail no puede tocar la página ni ejecutar nada.
+ */
+export default function VistaPublicaEmail() {
     const { id } = useParams(); // ID del ReporteEmail
     const [html, setHtml] = useState('');
-    const [loading, setLoading] = useState(true);
+    const [cargando, setCargando] = useState(true);
+    const [error, setError] = useState('');
 
-    const obtenerHtml = async () => {
+    const cargar = useCallback(async () => {
+        setCargando(true);
+        setError('');
         try {
             const res = await axios.get(`${import.meta.env.VITE_API_URL}/mailing/vista/${id}`);
-            setHtml(res.data.html);
-        } catch (error) {
-            console.error('Error al obtener el HTML:', error);
-            setHtml('<p>Error al cargar el contenido.</p>');
+            // Los links del mail se abren en otra pestaña: dentro del iframe quedarían atrapados.
+            setHtml(`<base target="_blank">${res.data.html ?? ''}`);
+        } catch (err) {
+            setError(mensajePublico(err, 'No pudimos cargar este mensaje. Probá de nuevo en unos minutos.'));
         } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        try {
-            obtenerHtml()
-        } catch (error) {
-            console.error('Error al obtener el HTML:', error);
-            setHtml('<p>Error al cargar el contenido.</p>');
-        } finally {
-            setLoading(false)
+            // Recién cuando terminó el pedido (antes el `finally` corría antes y apagaba la carga de entrada).
+            setCargando(false);
         }
     }, [id]);
 
-    if (loading) return <p>Cargando vista previa...</p>;
+    useEffect(() => { cargar(); }, [cargar]);
 
     return (
-        <Box sx={{ p: 2 }}>
-            <Box dangerouslySetInnerHTML={{ __html: html }} />
-        </Box>
+        <PaginaPublica ancho={680} centrado={false}>
+            {cargando && (
+                <Box role="status" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 8, color: 'text.secondary' }}>
+                    <CircularProgress size={22} />
+                    <Typography variant="body2">Cargando el mensaje…</Typography>
+                </Box>
+            )}
+            {error && (
+                <Alert severity="error" action={<Button color="inherit" size="small" onClick={cargar} sx={{ minHeight: 44 }}>Reintentar</Button>}>
+                    {error}
+                </Alert>
+            )}
+            {!cargando && !error && <VistaPreviaEmail html={html} titulo="Mensaje de email" />}
+        </PaginaPublica>
     );
 }
-
-export default VistaPublicaEmail;

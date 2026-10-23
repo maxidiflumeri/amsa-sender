@@ -1,34 +1,43 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Box, Paper, Typography, Button, IconButton, Chip, Table, TableHead, TableRow, TableCell, TableBody,
-    TablePagination, Tooltip, Divider, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
-    FormControlLabel, Switch, Stack, CircularProgress, LinearProgress, Snackbar, Alert, Autocomplete,
-    TableContainer, useMediaQuery
+    Alert, Autocomplete, Box, Button, Chip, CircularProgress, Divider, FormControlLabel, MenuItem, Stack,
+    Switch, TablePagination, TextField, Typography,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import PauseIcon from '@mui/icons-material/Pause';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import DeleteIcon from '@mui/icons-material/Delete';
-import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite';
-import HistoryIcon from '@mui/icons-material/History';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import dayjs from 'dayjs';
+import { History, Pause, Pencil, Play, Plus, RefreshCw, Timer, Trash2, Zap } from 'lucide-react';
 import api from '../api/axios';
+import { mensajeDeError, useFeedback } from '../context/FeedbackContext';
+import { migasDe } from './layout/navConfig';
+import {
+    BloqueEstado, ConfirmDialog, DataTableResponsive, EmptyState, PageContainer, PageHeader, ResponsiveDialog, SectionCard, StatusChip,
+} from './ui';
+import MenuMas from './admin/MenuMas';
 import HtmlTemplateEditor from './utils/HTMLTemplateEditor';
 
 const TZ_DEFAULT = 'America/Argentina/Buenos_Aires';
-const TIPOS = [
-    { value: 'REPORTE_EMAIL_DIARIO', label: 'Reporte Email Diario' },
-    { value: 'REPORTE_EMAIL_SEMANAL', label: 'Reporte Email Semanal' },
-    { value: 'REPORTE_WHATSAPP_DIARIO', label: 'Reporte WhatsApp Diario' },
-    // agrega los que maneje tu backend
-];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function humanEstado(activa) { return activa ? 'activa' : 'pausada'; }
-function chipEstado(activa) {
-    return <Chip size="small" label={activa ? 'Activa' : 'Pausada'} color={activa ? 'success' : 'default'} variant={activa ? 'filled' : 'outlined'} />;
-}
+// El backend (CrearTareaDto) hoy solo acepta este tipo: ofrecer otros terminaba en un error 400 al guardar.
+const TIPOS = [{ value: 'REPORTE_EMAIL_DIARIO', label: 'Reporte de email diario' }];
+const NOMBRE_TIPO = {
+    REPORTE_EMAIL_DIARIO: 'Reporte de email diario',
+    REPORTE_EMAIL_SEMANAL: 'Reporte de email semanal',
+    REPORTE_WHATSAPP_DIARIO: 'Reporte de WhatsApp diario',
+};
+const nombreTipo = (t) => NOMBRE_TIPO[t] ?? t;
+
+const ESTADO_EJECUCION = {
+    queued: { label: 'En cola', tono: 'neutro' },
+    running: { label: 'Ejecutando', tono: 'info' },
+    completed: { label: 'Completada', tono: 'ok' },
+    failed: { label: 'Falló', tono: 'error' },
+    retrying: { label: 'Reintentando', tono: 'aviso' },
+};
+
+const DIAS = { 0: 'domingos', 1: 'lunes', 2: 'martes', 3: 'miércoles', 4: 'jueves', 5: 'viernes', 6: 'sábados' };
+
+const fecha = (v) => (v
+    ? new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '—');
 
 function buildCronFromPreset(preset, { cadaMin = 5, hora = '08', minuto = '00', diaSemana = '1', diaMes = '1', customCron = '0 8 * * *' }) {
     switch (preset) {
@@ -41,20 +50,50 @@ function buildCronFromPreset(preset, { cadaMin = 5, hora = '08', minuto = '00', 
         default: return customCron || '0 8 * * *';
     }
 }
-function describePreset(preset, p) {
-    const { cadaMin, hora, minuto, diaSemana, diaMes, customCron } = p;
-    const dowMap = { '0': 'Dom', '1': 'Lun', '2': 'Mar', '3': 'Mié', '4': 'Jue', '5': 'Vie', '6': 'Sáb' };
+
+const dosDigitos = (v) => String(v).padStart(2, '0');
+
+function describePreset(preset, { cadaMin, hora, minuto, diaSemana, diaMes, customCron }) {
+    const hm = `${dosDigitos(hora)}:${dosDigitos(minuto)}`;
     switch (preset) {
-        case 'cada_x_minutos': return `Cada ${cadaMin} min`;
-        case 'cada_hora_al_minuto': return `Cada hora al minuto ${minuto}`;
-        case 'diario_hora': return `Diario ${hora.padStart(2, '0')}:${minuto.padStart(2, '0')}`;
-        case 'semanal_dow_hora': return `Semanal (${dowMap[diaSemana] || diaSemana}) ${hora.padStart(2, '0')}:${minuto.padStart(2, '0')}`;
-        case 'mensual_dom_hora': return `Mensual (día ${diaMes}) ${hora.padStart(2, '0')}:${minuto.padStart(2, '0')}`;
-        case 'custom': return `Cron: ${customCron}`;
-        default: return '';
+        case 'cada_x_minutos': return `Cada ${cadaMin} minutos`;
+        case 'cada_hora_al_minuto': return `Cada hora, al minuto ${minuto}`;
+        case 'diario_hora': return `Todos los días a las ${hm}`;
+        case 'semanal_dow_hora': return `Los ${DIAS[diaSemana] ?? diaSemana} a las ${hm}`;
+        case 'mensual_dom_hora': return `El día ${diaMes} de cada mes a las ${hm}`;
+        default: return `Cron personalizado: ${customCron}`;
     }
 }
 
+/**
+ * Deduce el preset a partir de la expresión cron. El backend no guarda el preset (la tabla tiene solo el cron), así
+ * que al editar se lo reconstruye: sin esto, toda tarea caía en "Cron personalizado".
+ */
+function inferirPreset(cron) {
+    const base = { preset: 'custom', cadaMin: 5, hora: '08', minuto: '00', diaSemana: '1', diaMes: '1', customCron: cron || '0 8 * * *' };
+    const p = String(cron || '').trim().split(/\s+/);
+    if (p.length !== 5) return base;
+    const [m, h, dom, mon, dow] = p;
+    const num = (s) => /^\d+$/.test(s);
+    if (mon !== '*') return base;
+    let r;
+    if (/^\*\/\d+$/.test(m) && h === '*' && dom === '*' && dow === '*') {
+        r = { preset: 'cada_x_minutos', cadaMin: Number(m.slice(2)) };
+    } else if (num(m) && h === '*' && dom === '*' && dow === '*') {
+        r = { preset: 'cada_hora_al_minuto', minuto: dosDigitos(m) };
+    } else if (num(m) && num(h) && dom === '*' && dow === '*') {
+        r = { preset: 'diario_hora', hora: dosDigitos(h), minuto: dosDigitos(m) };
+    } else if (num(m) && num(h) && dom === '*' && /^[0-6]$/.test(dow)) {
+        r = { preset: 'semanal_dow_hora', hora: dosDigitos(h), minuto: dosDigitos(m), diaSemana: dow };
+    } else if (num(m) && num(h) && num(dom) && dow === '*') {
+        r = { preset: 'mensual_dom_hora', hora: dosDigitos(h), minuto: dosDigitos(m), diaMes: String(Number(dom)) };
+    } else {
+        return base;
+    }
+    return { ...base, ...r };
+}
+
+/** Lo que se guarda: el backend rechaza campos que no conoce, así que la descripción va dentro de `configuracion`. */
 function sanitizeCreateOrUpdate(raw) {
     return {
         nombre: String(raw.nombre || '').trim(),
@@ -70,536 +109,526 @@ function sanitizeCreateOrUpdate(raw) {
             },
             asuntoTpl: raw?.configuracion?.asuntoTpl ?? '',
             htmlTpl: raw?.configuracion?.htmlTpl ?? '',
+            descripcion: String(raw.descripcion || '').trim(),
         },
     };
 }
 
-// --- Dialogo Crear/Editar con configuracion y destinatarios
-function TareaDialog({ open, onClose, onSubmit, initial }) {
-    const isMobile = useMediaQuery('(max-width:768px)');
+const descripcionDe = (t) => t?.configuracion?.descripcion || t?.descripcion || '';
+
+function formInicial(t) {
+    const cron = t?.expresionCron || t?.cron || '0 8 * * *';
+    return {
+        nombre: t?.nombre || '',
+        descripcion: descripcionDe(t),
+        tipo: t?.tipo || 'REPORTE_EMAIL_DIARIO',
+        tz: t?.zonaHoraria || t?.tz || TZ_DEFAULT,
+        habilitada: t?.habilitada ?? t?.activa ?? true,
+        ...inferirPreset(cron),
+        destinatarios: Array.isArray(t?.destinatarios) ? t.destinatarios : [],
+        asuntoTpl: t?.configuracion?.asuntoTpl || '',
+        htmlTpl: t?.configuracion?.htmlTpl || '',
+        repRebotes: t?.configuracion?.reportes?.rebotes ?? true,
+        repAcciones: t?.configuracion?.reportes?.acciones ?? true,
+    };
+}
+
+// --- Diálogo crear / editar
+function TareaDialog({ open, onClose, onSubmit, initial, guardando, error }) {
     const isEdit = Boolean(initial?.id);
-    // Campos base
-    const [nombre, setNombre] = useState(initial?.nombre || '');
-    const [descripcion, setDescripcion] = useState(initial?.descripcion || '');
-    const [tipo, setTipo] = useState(initial?.tipo || 'REPORTE_EMAIL_DIARIO');
-    const [tz, setTz] = useState(initial?.zonaHoraria || initial?.tz || TZ_DEFAULT);
-    const [habilitada, setHabilitada] = useState(initial?.habilitada ?? initial?.activa ?? true);
+    const [f, setF] = useState(() => formInicial(initial));
+    const base = useRef(JSON.stringify(f));
+    const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
 
-    // Presets cron
-    const [preset, setPreset] = useState(initial?.preset || 'diario_hora');
-    const [cadaMin, setCadaMin] = useState(initial?.cadaMin || 5);
-    const [hora, setHora] = useState(initial?.hora || '08');
-    const [minuto, setMinuto] = useState(initial?.minuto || '00');
-    const [diaSemana, setDiaSemana] = useState(initial?.diaSemana || '1');
-    const [diaMes, setDiaMes] = useState(initial?.diaMes || '1');
-    const [customCron, setCustomCron] = useState(initial?.expresionCron || initial?.cron || '0 8 * * *');
+    const expresionCron = useMemo(() => buildCronFromPreset(f.preset, f), [f]);
+    const resumen = useMemo(() => describePreset(f.preset, f), [f]);
 
-    // Config específica
-    const [destinatarios, setDestinatarios] = useState(initial?.destinatarios || []);
-    const [asuntoTpl, setAsuntoTpl] = useState(initial?.configuracion?.asuntoTpl || '');
-    const [htmlTpl, setHtmlTpl] = useState(initial?.configuracion?.htmlTpl || '');
-    const [repRebotes, setRepRebotes] = useState(initial?.configuracion?.reportes?.rebotes ?? true);
-    const [repAcciones, setRepAcciones] = useState(initial?.configuracion?.reportes?.acciones ?? true);
+    const invalidos = f.destinatarios.filter((d) => !EMAIL_RE.test(d));
+    const cadaInvalido = f.preset === 'cada_x_minutos' && !(Number(f.cadaMin) >= 1 && Number(f.cadaMin) <= 59);
+    // Qué falta, para decirlo al lado del botón en vez de dejarlo apagado sin explicación.
+    const faltantes = [];
+    if (!f.nombre.trim()) faltantes.push('el nombre');
+    if (cadaInvalido) faltantes.push('un intervalo de 1 a 59 minutos');
+    if (f.preset === 'custom' && f.customCron.trim().split(/\s+/).length !== 5) faltantes.push('una expresión cron de 5 campos');
+    if (f.destinatarios.length === 0) faltantes.push('al menos un destinatario');
+    else if (invalidos.length > 0) faltantes.push('corregir los emails inválidos');
 
-    useEffect(() => {
-        if (open && initial) {
-            setNombre(initial?.nombre || '');
-            setDescripcion(initial?.descripcion || '');
-            setTipo(initial?.tipo || 'REPORTE_EMAIL_DIARIO');
-            setTz(initial?.zonaHoraria || initial?.tz || TZ_DEFAULT);
-            setHabilitada(initial?.habilitada ?? initial?.activa ?? true);
+    const sucio = JSON.stringify(f) !== base.current;
 
-            if (initial?.preset) {
-                setPreset(initial.preset);
-                setCadaMin(initial?.cadaMin || 5);
-                setHora(initial?.hora || '08');
-                setMinuto(initial?.minuto || '00');
-                setDiaSemana(initial?.diaSemana || '1');
-                setDiaMes(initial?.diaMes || '1');
-                setCustomCron(initial?.expresionCron || initial?.cron || '0 8 * * *');
-            } else {
-                setPreset('custom');
-                setCustomCron(initial?.expresionCron || initial?.cron || '0 8 * * *');
-            }
-
-            setDestinatarios(initial?.destinatarios || []);
-            setAsuntoTpl(initial?.configuracion?.asuntoTpl || '');
-            setHtmlTpl(initial?.configuracion?.htmlTpl || '');
-            setRepRebotes(initial?.configuracion?.reportes?.rebotes ?? true);
-            setRepAcciones(initial?.configuracion?.reportes?.acciones ?? true);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open]);
-
-    const cronParams = { cadaMin, hora, minuto, diaSemana, diaMes, customCron };
-    const expresionCron = useMemo(() => buildCronFromPreset(preset, cronParams), [preset, cadaMin, hora, minuto, diaSemana, diaMes, customCron]);
-    const presetDesc = useMemo(() => describePreset(preset, cronParams), [preset, cadaMin, hora, minuto, diaSemana, diaMes, customCron]);
-
-    const disabledSave = !nombre || !expresionCron || !tz || !tipo || destinatarios.length === 0;
+    const guardar = () => onSubmit({
+        id: initial?.id,
+        nombre: f.nombre,
+        tipo: f.tipo,
+        expresionCron,
+        zonaHoraria: f.tz,
+        habilitada: f.habilitada,
+        destinatarios: f.destinatarios,
+        descripcion: f.descripcion,
+        configuracion: { reportes: { rebotes: f.repRebotes, acciones: f.repAcciones }, asuntoTpl: f.asuntoTpl, htmlTpl: f.htmlTpl },
+    });
 
     return (
-        <Dialog
+        <ResponsiveDialog
             open={open}
             onClose={onClose}
             maxWidth="md"
-            fullWidth
-            PaperProps={{ sx: { maxHeight: { xs: '92vh', md: '85vh' } } }}
+            sucio={sucio && !guardando}
+            title={isEdit ? 'Editar tarea' : 'Nueva tarea'}
+            actions={
+                <>
+                    {faltantes.length > 0 && (
+                        <Typography variant="body2" color="text.secondary" sx={{ flex: '1 1 100%', fontSize: 13 }}>
+                            Para guardar falta: {faltantes.join(', ')}.
+                        </Typography>
+                    )}
+                    <Button onClick={onClose} disabled={guardando}>Cancelar</Button>
+                    <Button
+                        variant="contained"
+                        onClick={guardar}
+                        disabled={guardando || faltantes.length > 0}
+                        startIcon={guardando ? <CircularProgress size={16} color="inherit" /> : null}
+                    >
+                        {guardando ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear tarea'}
+                    </Button>
+                </>
+            }
         >
-            <DialogTitle>{isEdit ? 'Editar tarea' : 'Nueva tarea'}</DialogTitle>
-            <DialogContent dividers sx={{ p: { xs: 2, md: 3 } }}>
-                <Stack spacing={2} sx={{ mt: 1 }}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                        <TextField label="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'} />
-                        <TextField select label="Tipo" value={tipo} onChange={(e) => setTipo(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
-                            {TIPOS.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
-                        </TextField>
-                    </Stack>
+            <Stack spacing={2.5} sx={{ pt: 0.5 }}>
+                {error && <Alert severity="error" role="alert">{error}</Alert>}
 
-                    <TextField
-                        label="Descripción (opcional)"
-                        value={descripcion}
-                        onChange={(e) => setDescripcion(e.target.value)}
-                        fullWidth multiline minRows={2}
-                        size={isMobile ? 'small' : 'medium'}
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+                    <TextField label="Nombre" value={f.nombre} onChange={set('nombre')} fullWidth required />
+                    <TextField select label="Tipo" value={f.tipo} onChange={set('tipo')} fullWidth>
+                        {TIPOS.map((t) => <MenuItem key={t.value} value={t.value} sx={{ minHeight: 44 }}>{t.label}</MenuItem>)}
+                    </TextField>
+                </Box>
+
+                <TextField label="Descripción (opcional)" value={f.descripcion} onChange={set('descripcion')} fullWidth multiline minRows={2} />
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2, alignItems: 'center' }}>
+                    <TextField select label="Zona horaria" value={f.tz} onChange={set('tz')} fullWidth>
+                        <MenuItem value="America/Argentina/Buenos_Aires" sx={{ minHeight: 44 }}>Argentina (Buenos Aires)</MenuItem>
+                        <MenuItem value="UTC" sx={{ minHeight: 44 }}>UTC</MenuItem>
+                    </TextField>
+                    <FormControlLabel
+                        sx={{ minHeight: 44, mx: 0 }}
+                        control={<Switch checked={f.habilitada} onChange={set('habilitada')} />}
+                        label={f.habilitada ? 'Activa' : 'Pausada (no se ejecuta)'}
                     />
+                </Box>
 
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-                        <TextField select label="Zona horaria" value={tz} onChange={(e) => setTz(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
-                            <MenuItem value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires</MenuItem>
-                            <MenuItem value="UTC">UTC</MenuItem>
-                        </TextField>
-                        <FormControlLabel control={<Switch checked={habilitada} onChange={(e) => setHabilitada(e.target.checked)} />} label={habilitada ? 'Activa' : 'Pausada'} />
-                    </Stack>
+                <Divider />
+                <Typography component="h3" sx={{ fontWeight: 650, fontSize: 15 }}>Frecuencia</Typography>
 
-                    <Divider />
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+                    <TextField select label="Cada cuánto" value={f.preset} onChange={set('preset')} fullWidth>
+                        <MenuItem value="cada_x_minutos" sx={{ minHeight: 44 }}>Cada X minutos</MenuItem>
+                        <MenuItem value="cada_hora_al_minuto" sx={{ minHeight: 44 }}>Cada hora, a un minuto</MenuItem>
+                        <MenuItem value="diario_hora" sx={{ minHeight: 44 }}>Todos los días a una hora</MenuItem>
+                        <MenuItem value="semanal_dow_hora" sx={{ minHeight: 44 }}>Una vez por semana</MenuItem>
+                        <MenuItem value="mensual_dom_hora" sx={{ minHeight: 44 }}>Una vez por mes</MenuItem>
+                        <MenuItem value="custom" sx={{ minHeight: 44 }}>Cron personalizado</MenuItem>
+                    </TextField>
 
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Frecuencia</Typography>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                        <TextField select label="Preset" value={preset} onChange={(e) => setPreset(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
-                            <MenuItem value="cada_x_minutos">Cada X minutos</MenuItem>
-                            <MenuItem value="cada_hora_al_minuto">Cada hora al minuto</MenuItem>
-                            <MenuItem value="diario_hora">Diario a una hora</MenuItem>
-                            <MenuItem value="semanal_dow_hora">Semanal (día de semana + hora)</MenuItem>
-                            <MenuItem value="mensual_dom_hora">Mensual (día del mes + hora)</MenuItem>
-                            <MenuItem value="custom">Cron personalizado</MenuItem>
-                        </TextField>
-
-                        {preset === 'cada_x_minutos' && (
-                            <TextField type="number" label="Cada (min)" value={cadaMin} onChange={(e) => setCadaMin(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'} />
-                        )}
-                        {(preset === 'diario_hora' || preset === 'semanal_dow_hora' || preset === 'mensual_dom_hora') && (
-                            <TextField select label="Hora" value={hora} onChange={(e) => setHora(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
-                                {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
-                            </TextField>
-                        )}
-                        {(preset === 'cada_hora_al_minuto' || preset === 'diario_hora' || preset === 'semanal_dow_hora' || preset === 'mensual_dom_hora') && (
-                            <TextField select label="Minuto" value={minuto} onChange={(e) => setMinuto(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
-                                {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                            </TextField>
-                        )}
-                        {preset === 'semanal_dow_hora' && (
-                            <TextField select label="Día de semana" value={diaSemana} onChange={(e) => setDiaSemana(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
-                                <MenuItem value="1">Lunes</MenuItem><MenuItem value="2">Martes</MenuItem><MenuItem value="3">Miércoles</MenuItem>
-                                <MenuItem value="4">Jueves</MenuItem><MenuItem value="5">Viernes</MenuItem><MenuItem value="6">Sábado</MenuItem><MenuItem value="0">Domingo</MenuItem>
-                            </TextField>
-                        )}
-                        {preset === 'mensual_dom_hora' && (
-                            <TextField select label="Día del mes" value={diaMes} onChange={(e) => setDiaMes(e.target.value)} fullWidth size={isMobile ? 'small' : 'medium'}>
-                                {Array.from({ length: 31 }, (_, i) => String(i + 1)).map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
-                            </TextField>
-                        )}
-                    </Stack>
-
-                    {preset === 'custom' && (
+                    {f.preset === 'cada_x_minutos' && (
                         <TextField
-                            label="Expresión cron"
-                            value={customCron}
-                            onChange={(e) => setCustomCron(e.target.value)}
-                            helperText="Formato: m h dom mon dow (ej: 0 8 * * * → 08:00 todos los días)"
+                            type="number"
+                            label="Cada (minutos)"
+                            value={f.cadaMin}
+                            onChange={set('cadaMin')}
                             fullWidth
-                            size={isMobile ? 'small' : 'medium'}
+                            error={cadaInvalido}
+                            helperText={cadaInvalido ? 'Entre 1 y 59.' : undefined}
+                            slotProps={{ htmlInput: { min: 1, max: 59, inputMode: 'numeric' } }}
                         />
                     )}
+                    {['diario_hora', 'semanal_dow_hora', 'mensual_dom_hora'].includes(f.preset) && (
+                        <TextField select label="Hora" value={f.hora} onChange={set('hora')} fullWidth>
+                            {Array.from({ length: 24 }, (_, i) => dosDigitos(i)).map((h) => <MenuItem key={h} value={h} sx={{ minHeight: 44 }}>{h}</MenuItem>)}
+                        </TextField>
+                    )}
+                    {['cada_hora_al_minuto', 'diario_hora', 'semanal_dow_hora', 'mensual_dom_hora'].includes(f.preset) && (
+                        <TextField select label="Minuto" value={f.minuto} onChange={set('minuto')} fullWidth>
+                            {Array.from({ length: 60 }, (_, i) => dosDigitos(i)).map((m) => <MenuItem key={m} value={m} sx={{ minHeight: 44 }}>{m}</MenuItem>)}
+                        </TextField>
+                    )}
+                    {f.preset === 'semanal_dow_hora' && (
+                        <TextField select label="Día de la semana" value={f.diaSemana} onChange={set('diaSemana')} fullWidth>
+                            {[['1', 'Lunes'], ['2', 'Martes'], ['3', 'Miércoles'], ['4', 'Jueves'], ['5', 'Viernes'], ['6', 'Sábado'], ['0', 'Domingo']].map(([v, l]) => (
+                                <MenuItem key={v} value={v} sx={{ minHeight: 44 }}>{l}</MenuItem>
+                            ))}
+                        </TextField>
+                    )}
+                    {f.preset === 'mensual_dom_hora' && (
+                        <TextField select label="Día del mes" value={f.diaMes} onChange={set('diaMes')} fullWidth>
+                            {Array.from({ length: 31 }, (_, i) => String(i + 1)).map((d) => <MenuItem key={d} value={d} sx={{ minHeight: 44 }}>{d}</MenuItem>)}
+                        </TextField>
+                    )}
+                </Box>
 
-                    <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
-                        <Typography variant="body2"><strong>Resumen:</strong> {presetDesc}</Typography>
-                        <Typography variant="caption">Cron resultante: <code>{expresionCron}</code></Typography>
-                    </Box>
-
-                    <Divider />
-
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Destino y contenido</Typography>
-
-                    <Autocomplete
-                        multiple
-                        freeSolo
-                        options={[]}
-                        value={destinatarios}
-                        onChange={(_, vals) => setDestinatarios(vals)}
-                        renderTags={(value, getTagProps) =>
-                            value.map((option, index) => (<Chip variant="outlined" label={option} {...getTagProps({ index })} />))
-                        }
-                        renderInput={(params) => <TextField {...params} label="Destinatarios (emails)" placeholder="Agregar email y Enter" size={isMobile ? 'small' : 'medium'} />}
-                    />
-
+                {f.preset === 'custom' && (
                     <TextField
-                        label="Asunto (asuntoTpl)"
-                        value={asuntoTpl}
-                        onChange={(e) => setAsuntoTpl(e.target.value)}
-                        helperText="Podés usar variables como ${DATE}"
+                        label="Expresión cron"
+                        value={f.customCron}
+                        onChange={set('customCron')}
+                        helperText="Formato: minuto hora día-del-mes mes día-de-la-semana. Ej: 0 8 * * * es las 08:00 todos los días."
                         fullWidth
-                        size={isMobile ? 'small' : 'medium'}
+                        slotProps={{ htmlInput: { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false } }}
                     />
+                )}
 
-                    <HtmlTemplateEditor
-                        value={htmlTpl}
-                        onChange={setHtmlTpl}
-                        variables={[
-                            { label: 'Fecha', token: '${DATE}' },
-                        ]}
-                    />
+                <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}>
+                    <Typography variant="body2"><strong>Se ejecuta:</strong> {resumen}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }}>
+                        Expresión cron: <code>{expresionCron}</code>
+                    </Typography>
+                </Box>
 
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                        <FormControlLabel control={<Switch checked={repRebotes} onChange={(e) => setRepRebotes(e.target.checked)} />} label="Incluir reportes de rebotes" />
-                        <FormControlLabel control={<Switch checked={repAcciones} onChange={(e) => setRepAcciones(e.target.checked)} />} label="Incluir reportes de acciones" />
-                    </Stack>
-                </Stack>
-            </DialogContent>
-            <DialogActions sx={{ p: { xs: 2, md: 3 } }}>
-                <Button onClick={onClose}>Cancelar</Button>
-                <Button
-                    onClick={() => onSubmit({
-                        id: initial?.id,
-                        nombre,
-                        tipo,
-                        expresionCron,
-                        zonaHoraria: tz,
-                        habilitada,
-                        destinatarios,
-                        configuracion: {
-                            reportes: { rebotes: repRebotes, acciones: repAcciones },
-                            asuntoTpl,
-                            htmlTpl,
-                        },
-                        descripcion,
-                        preset, cadaMin, hora, minuto, diaSemana, diaMes,
-                    })}
-                    variant="contained"
-                    disabled={disabledSave}
-                >
-                    {isEdit ? 'Guardar' : 'Crear'}
-                </Button>
-            </DialogActions>
-        </Dialog>
+                <Divider />
+                <Typography component="h3" sx={{ fontWeight: 650, fontSize: 15 }}>Destino y contenido</Typography>
+
+                <Autocomplete
+                    multiple
+                    freeSolo
+                    autoSelect
+                    options={[]}
+                    value={f.destinatarios}
+                    onChange={(_, vals) => setF((p) => ({ ...p, destinatarios: vals.map((v) => String(v).trim()).filter(Boolean) }))}
+                    renderTags={(value, getTagProps) =>
+                        value.map((option, index) => {
+                            const { key, ...props } = getTagProps({ index });
+                            return <Chip key={key} variant="outlined" color={EMAIL_RE.test(option) ? 'default' : 'error'} label={option} {...props} />;
+                        })
+                    }
+                    renderInput={(params) => (
+                        <TextField
+                            {...params}
+                            label="Destinatarios (emails)"
+                            placeholder="Escribí un email y tocá Enter"
+                            error={invalidos.length > 0}
+                            helperText={invalidos.length > 0 ? `No son emails válidos: ${invalidos.join(', ')}` : 'Reciben el reporte en cada ejecución.'}
+                        />
+                    )}
+                />
+
+                <TextField
+                    label="Asunto"
+                    value={f.asuntoTpl}
+                    onChange={set('asuntoTpl')}
+                    helperText="Podés usar variables como ${DATE}."
+                    fullWidth
+                />
+
+                <HtmlTemplateEditor
+                    value={f.htmlTpl}
+                    onChange={(html) => setF((p) => (p.htmlTpl === html ? p : { ...p, htmlTpl: html }))}
+                    variables={[{ label: 'Fecha', token: '${DATE}' }]}
+                />
+
+                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, columnGap: 3 }}>
+                    <FormControlLabel sx={{ minHeight: 44, mx: 0 }} control={<Switch checked={f.repRebotes} onChange={set('repRebotes')} />} label="Incluir reporte de rebotes" />
+                    <FormControlLabel sx={{ minHeight: 44, mx: 0 }} control={<Switch checked={f.repAcciones} onChange={set('repAcciones')} />} label="Incluir reporte de acciones" />
+                </Box>
+            </Stack>
+        </ResponsiveDialog>
     );
 }
 
-function HistorialDialog({ open, onClose, loading, ejecuciones }) {
+function HistorialDialog({ tarea, onClose, loading, error, ejecuciones, onReintentar }) {
+    const columns = [
+        { key: 'inicioEn', label: 'Inicio', primary: true, render: (e) => fecha(e.inicioEn) },
+        {
+            key: 'estado',
+            label: 'Estado',
+            render: (e) => {
+                const s = ESTADO_EJECUCION[e.estado] ?? { label: e.estado, tono: 'neutro' };
+                return <StatusChip label={s.label} tono={s.tono} />;
+            },
+        },
+        { key: 'finEn', label: 'Fin', render: (e) => fecha(e.finEn) },
+        {
+            key: 'mensaje',
+            label: 'Resultado',
+            render: (e) => (e.error != null ? String(e.error).substring(0, 200) : 'Se ejecutó sin errores.'),
+        },
+    ];
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth PaperProps={{ sx: { maxHeight: { xs: '92vh', md: '85vh' } } }}>
-            <DialogTitle>Historial de ejecuciones</DialogTitle>
-            <DialogContent dividers sx={{ p: { xs: 2, md: 3 } }}>
-                {loading && <LinearProgress sx={{ mb: 2 }} />}
-                <TableContainer sx={{ overflowX: 'auto', borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}` }}>
-                    <Table size="small" stickyHeader sx={{ minWidth: 800 }}>
-                        <TableHead>
-                            <TableRow>
-                                <TableCell>Fecha Inicio</TableCell>
-                                <TableCell>Fecha Fin</TableCell>
-                                <TableCell>Estado</TableCell>
-                                <TableCell>Mensaje</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {ejecuciones?.length ? ejecuciones.map((e) => (
-                                <TableRow key={e.id} hover>
-                                    <TableCell>{e.inicioEn != null ? `${new Date(e.inicioEn).toLocaleString()}` : '-'}</TableCell>
-                                    <TableCell>{e.finEn != null ? `${new Date(e.finEn).toLocaleString()}` : '-'}</TableCell>
-                                    <TableCell><Chip size="small" label={e.estado} color={e.estado === 'completed' ? 'success' : e.estado === 'failed' ? 'error' : 'default'} /></TableCell>
-                                    <TableCell sx={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-                                        {e.error != null ? `${e.error.substring(0, 200)}` : 'Procesado Exitosamente.'}
-                                    </TableCell>
-                                </TableRow>
-                            )) : (
-                                <TableRow><TableCell colSpan={4} align="center">Sin ejecuciones registradas.</TableCell></TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-            </DialogContent>
-            <DialogActions sx={{ p: { xs: 2, md: 3 } }}><Button onClick={onClose}>Cerrar</Button></DialogActions>
-        </Dialog>
+        <ResponsiveDialog
+            open={!!tarea}
+            onClose={onClose}
+            cerrarConFondo
+            maxWidth="lg"
+            title={`Historial${tarea ? `: ${tarea.nombre}` : ''}`}
+            contentSx={{ p: 0 }}
+            actions={<Button onClick={onClose}>Cerrar</Button>}
+        >
+            {error ? (
+                <Box sx={{ p: 2 }}><BloqueEstado estado="error" mensaje={error} onReintentar={onReintentar} /></Box>
+            ) : (
+                <DataTableResponsive
+                    ariaLabel="Ejecuciones de la tarea"
+                    columns={columns}
+                    rows={ejecuciones}
+                    rowKey={(e) => e.id}
+                    loading={loading}
+                    empty={<EmptyState compact icon={History} title="Todavía no se ejecutó" description="Cuando la tarea corra, cada ejecución queda registrada acá." />}
+                />
+            )}
+        </ResponsiveDialog>
     );
 }
 
 export default function TareasProgramadas() {
-    const isMobile = useMediaQuery('(max-width:768px)');
-
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-    const [loading, setLoading] = useState(false);
+    const feedback = useFeedback();
+    const [estado, setEstado] = useState('cargando');
     const [rows, setRows] = useState([]);
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRpp] = useState(10);
-    const [dialogOpen, setDialogOpen] = useState(false);
-    const [editing, setEditing] = useState(null);
-    const [histOpen, setHistOpen] = useState(false);
-    const [histLoading, setHistLoading] = useState(false);
-    const [histRows, setHistRows] = useState([]);
+    const [dialog, setDialog] = useState(null); // { tarea } (tarea null = nueva)
+    const [errorGuardar, setErrorGuardar] = useState('');
     const [saving, setSaving] = useState(false);
-    const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' });
-    const [confirmarEliminacion, setConfirmarEliminacion] = useState(false);
-    const [tareaAEliminar, setTareaAEliminar] = useState(null);
+    const [hist, setHist] = useState(null); // { tarea, loading, error, rows }
+    const [porEliminar, setPorEliminar] = useState(null);
+    const [porEjecutar, setPorEjecutar] = useState(null);
+    const [trabajando, setTrabajando] = useState(false);
 
     const paginated = useMemo(() => rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage), [rows, page, rowsPerPage]);
 
-    const fetchAll = async () => {
-        setLoading(true);
+    const fetchAll = useCallback(async () => {
+        setEstado((e) => (e === 'listo' ? e : 'cargando'));
         try {
             const { data } = await api.get('/tareas-programadas');
-            setRows(data || []);
+            setRows(Array.isArray(data) ? data : []);
+            setEstado('listo');
         } catch {
-            setSnack({ open: true, msg: 'Error cargando tareas', sev: 'error' });
-        } finally { setLoading(false); }
-    };
-    useEffect(() => { fetchAll(); }, []);
-
-    const handleCreate = () => { setEditing(null); setDialogOpen(true); };
-    const handleEdit = (row) => { setEditing(row); setDialogOpen(true); };
+            setEstado('error');
+        }
+    }, []);
+    useEffect(() => { fetchAll(); }, [fetchAll]);
 
     const submitDialog = async (payload) => {
         setSaving(true);
+        setErrorGuardar('');
         try {
             const body = sanitizeCreateOrUpdate(payload);
             if (payload.id) {
                 await api.put(`/tareas-programadas/${payload.id}`, body);
-                setSnack({ open: true, msg: 'Tarea actualizada', sev: 'success' });
+                feedback.exito('Tarea actualizada.');
             } else {
                 await api.post('/tareas-programadas', body);
-                setSnack({ open: true, msg: 'Tarea creada', sev: 'success' });
+                feedback.exito('Tarea creada.');
             }
-            setDialogOpen(false);
+            setDialog(null);
             await fetchAll();
         } catch (e) {
-            setSnack({ open: true, msg: 'Error guardando tarea', sev: 'error' });
+            setErrorGuardar(mensajeDeError(e, 'No se pudo guardar la tarea.'));
         } finally {
             setSaving(false);
         }
     };
 
     const toggleActiva = async (row) => {
+        const estaba = row.habilitada ?? row.activa;
         try {
             await api.post(`/tareas-programadas/${row.id}/alternar`, {});
-            setSnack({ open: true, msg: row.habilitada ? 'Tarea pausada' : 'Tarea reanudada', sev: 'success' });
+            feedback.exito(estaba ? 'Tarea pausada: no se va a ejecutar hasta que la actives.' : 'Tarea activada.');
             await fetchAll();
-        } catch {
-            setSnack({ open: true, msg: 'Error al alternar estado', sev: 'error' });
+        } catch (e) {
+            feedback.error(mensajeDeError(e, 'No se pudo cambiar el estado de la tarea.'));
         }
     };
 
-    const runNow = async (row) => {
+    const ejecutarAhora = async () => {
+        setTrabajando(true);
         try {
-            await api.post(`/tareas-programadas/${row.id}/ejecutar-ahora`, {});
-            setSnack({ open: true, msg: 'Ejecución forzada disparada', sev: 'success' });
-        } catch {
-            setSnack({ open: true, msg: 'Error al ejecutar ahora', sev: 'error' });
+            await api.post(`/tareas-programadas/${porEjecutar.id}/ejecutar-ahora`, {});
+            feedback.exito('Se mandó a ejecutar. El resultado queda en el historial.');
+            setPorEjecutar(null);
+            await fetchAll();
+        } catch (e) {
+            feedback.error(mensajeDeError(e, 'No se pudo ejecutar la tarea.'));
+            setPorEjecutar(null);
+        } finally {
+            setTrabajando(false);
         }
-    };
-
-    const confirmarEliminarFn = (campaña) => {
-        setTareaAEliminar(campaña);
-        setConfirmarEliminacion(true);
     };
 
     const remove = async () => {
-        if (!tareaAEliminar) return;
+        setTrabajando(true);
         try {
-            await api.delete(`/tareas-programadas/${tareaAEliminar.id}`);
-            setSnack({ open: true, msg: 'Tarea eliminada', sev: 'success' });
+            await api.delete(`/tareas-programadas/${porEliminar.id}`);
+            feedback.exito('Tarea eliminada.');
+            setPorEliminar(null);
             await fetchAll();
-        } catch {
-            setSnack({ open: true, msg: 'Error al eliminar tarea', sev: 'error' });
+        } catch (e) {
+            feedback.error(mensajeDeError(e, 'No se pudo eliminar la tarea.'));
+            setPorEliminar(null);
         } finally {
-            setConfirmarEliminacion(false);
-            setTareaAEliminar(null);
+            setTrabajando(false);
         }
     };
 
-    const openHistorial = async (row) => {
-        setHistOpen(true); setHistRows([]); setHistLoading(true);
+    const cargarHistorial = useCallback(async (tarea) => {
+        setHist({ tarea, loading: true, error: '', rows: [] });
         try {
-            const { data } = await api.get(`/tareas-programadas/${row.id}/ejecuciones`);
-            setHistRows(data || []);
-        } catch {
-            setSnack({ open: true, msg: 'Error cargando historial', sev: 'error' });
-        } finally { setHistLoading(false); }
-    };
+            const { data } = await api.get(`/tareas-programadas/${tarea.id}/ejecuciones`);
+            setHist({ tarea, loading: false, error: '', rows: Array.isArray(data) ? data : [] });
+        } catch (e) {
+            setHist({ tarea, loading: false, error: mensajeDeError(e, 'No se pudo cargar el historial.'), rows: [] });
+        }
+    }, []);
+
+    const columns = [
+        {
+            key: 'nombre',
+            label: 'Tarea',
+            primary: true,
+            render: (r) => (
+                <Box sx={{ minWidth: 0 }}>
+                    <Box sx={{ fontWeight: 600 }}>{r.nombre}</Box>
+                    {descripcionDe(r) && <Box sx={{ fontSize: 13, color: 'text.secondary', fontWeight: 400 }}>{descripcionDe(r)}</Box>}
+                </Box>
+            ),
+        },
+        { key: 'tipo', label: 'Tipo', secondary: true, render: (r) => nombreTipo(r.tipo) },
+        {
+            key: 'habilitada',
+            label: 'Estado',
+            render: (r) => {
+                const activa = r.habilitada ?? r.activa;
+                return <StatusChip label={activa ? 'Activa' : 'Pausada'} tono={activa ? 'ok' : 'neutro'} vivo={!!activa} />;
+            },
+        },
+        {
+            key: 'cron',
+            label: 'Se ejecuta',
+            render: (r) => {
+                const cron = r.expresionCron || r.cron;
+                const p = inferirPreset(cron);
+                return (
+                    <Box>
+                        <Box>{describePreset(p.preset, p)}</Box>
+                        <Box sx={{ fontSize: 12, color: 'text.secondary' }}>
+                            <code>{cron}</code> · {r.zonaHoraria || r.tz || TZ_DEFAULT}
+                        </Box>
+                    </Box>
+                );
+            },
+        },
+        { key: 'proximoRun', label: 'Próxima ejecución', hideBelow: 'lg', render: (r) => ((r.habilitada ?? r.activa) ? fecha(r.proximoRun) : 'Pausada') },
+        { key: 'ultimoRun', label: 'Última ejecución', hideBelow: 'lg', render: (r) => fecha(r.ultimoRun) },
+    ];
 
     return (
-        <Paper sx={{ p: { xs: 2, md: 3 }, mt: 2 }}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" sx={{ mb: 1 }} spacing={1}>
-                <Typography variant={isMobile ? 'h6' : 'h6'} fontWeight={700}>Tareas programadas</Typography>
-                <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }} justifyContent={{ xs: 'flex-end', sm: 'flex-end' }} flexWrap="wrap" useFlexGap>
-                    <Tooltip title="Refrescar"><IconButton onClick={fetchAll}><RefreshIcon /></IconButton></Tooltip>
-                    <Button
-                        fullWidth={isMobile}
-                        sx={{
-                            borderRadius: 2,
-                            fontFamily: commonFont,
-                            textTransform: 'none',
-                            fontSize: '0.9rem',
-                            backgroundColor: '#075E54',
-                            transition: 'all 0.3s ease',
-                            '&:hover': {
-                                backgroundColor: '#0b7b65',
-                                transform: { md: 'scale(1.03)' },
-                                boxShadow: 4,
-                            },
-                        }} startIcon={<AddIcon />} variant="contained" onClick={handleCreate}
-                    >
-                        Nueva tarea
-                    </Button>
-                </Stack>
-            </Stack>
-
-            {loading && <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />}
-
-            <TableContainer sx={{ overflowX: 'auto', borderRadius: 2, border: (t) => `1px solid ${t.palette.divider}` }}>
-                <Table size="small" stickyHeader sx={{ minWidth: 900 }}>
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Nombre</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Tipo</TableCell>
-                            <TableCell>Estado</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Cron</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>TZ</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Próximo run</TableCell>
-                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Último run</TableCell>
-                            <TableCell align="right">Acciones</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {paginated.map((row) => (
-                            <TableRow key={row.id} hover>
-                                <TableCell sx={{ maxWidth: 260 }}>
-                                    <Stack spacing={0.2}>
-                                        <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {row.nombre}
-                                        </Typography>
-                                        {row.descripcion && (
-                                            <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
-                                                {row.descripcion}
-                                            </Typography>
-                                        )}
-
-                                        {/* Sub-info en mobile cuando ocultamos columnas */}
-                                        <Box sx={{ display: { xs: 'block', sm: 'none' }, mt: 0.5 }}>
-                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
-                                                {chipEstado(row.habilitada ?? row.activa)}
-                                                <Chip size="small" variant="outlined" label={(row.zonaHoraria || row.tz || TZ_DEFAULT)} />
-                                            </Stack>
-                                            <Typography variant="caption" color="text.secondary">
-                                                <code>{row.expresionCron || row.cron}</code>
-                                            </Typography>
-                                            <Typography variant="caption" color="text.secondary" display="block">
-                                                Próx: {row.proximoRun ? dayjs(row.proximoRun).format('YYYY-MM-DD HH:mm') : '-'} · Últ: {row.ultimoRun ? dayjs(row.ultimoRun).format('YYYY-MM-DD HH:mm') : '-'}
-                                            </Typography>
-                                        </Box>
-                                    </Stack>
-                                </TableCell>
-
-                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{row.tipo}</TableCell>
-                                <TableCell>{chipEstado(row.habilitada ?? row.activa)}</TableCell>
-                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}><code style={{ wordBreak: 'break-all' }}>{row.expresionCron || row.cron}</code></TableCell>
-                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{row.zonaHoraria || row.tz || TZ_DEFAULT}</TableCell>
-                                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{row.proximoRun ? dayjs(row.proximoRun).format('YYYY-MM-DD HH:mm') : '-'}</TableCell>
-                                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{row.ultimoRun ? dayjs(row.ultimoRun).format('YYYY-MM-DD HH:mm') : '-'}</TableCell>
-
-                                <TableCell align="right" sx={{ whiteSpace: 'nowrap', minWidth: 180 }}>
-                                    <Stack direction="row" spacing={0.5} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
-                                        <Tooltip title="Editar"><span><IconButton size={isMobile ? 'small' : 'medium'} onClick={() => handleEdit(row)}><EditIcon /></IconButton></span></Tooltip>
-                                        <Tooltip title={(row.habilitada ?? row.activa) ? 'Pausar' : 'Reanudar'}>
-                                            <span>
-                                                <IconButton size={isMobile ? 'small' : 'medium'} onClick={() => toggleActiva(row)}>
-                                                    {(row.habilitada ?? row.activa) ? <PauseIcon /> : <PlayArrowIcon />}
-                                                </IconButton>
-                                            </span>
-                                        </Tooltip>
-                                        <Tooltip title="Ejecutar ahora"><span><IconButton size={isMobile ? 'small' : 'medium'} onClick={() => runNow(row)}><PlayCircleFilledWhiteIcon /></IconButton></span></Tooltip>
-                                        <Tooltip title="Historial"><span><IconButton size={isMobile ? 'small' : 'medium'} onClick={() => openHistorial(row)}><HistoryIcon /></IconButton></span></Tooltip>
-                                        <Tooltip title="Eliminar"><span><IconButton size={isMobile ? 'small' : 'medium'} onClick={() => confirmarEliminarFn(row)} color="error"><DeleteIcon /></IconButton></span></Tooltip>
-                                    </Stack>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-
-                        {!loading && paginated.length === 0 && (
-                            <TableRow>
-                                <TableCell colSpan={8} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                                    <Stack alignItems="center" spacing={1}>
-                                        <HistoryIcon fontSize="large" />
-                                        <Typography>No hay tareas todavía</Typography>
-                                        <Button variant="outlined" startIcon={<AddIcon />} onClick={handleCreate}>Crear la primera tarea</Button>
-                                    </Stack>
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-
-            <TablePagination
-                component="div"
-                count={rows.length}
-                page={page}
-                onPageChange={(_, p) => setPage(p)}
-                rowsPerPage={rowsPerPage}
-                onRowsPerPageChange={(e) => { setRpp(parseInt(e.target.value, 10)); setPage(0); }}
-                rowsPerPageOptions={[5, 10, 25]}
-                sx={{
-                    '.MuiTablePagination-toolbar': { px: { xs: 0.5, sm: 2 } },
-                    '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
-                        fontSize: { xs: 12, sm: 14 }
-                    }
-                }}
+        <PageContainer>
+            <PageHeader
+                title="Tareas programadas"
+                subtitle="Reportes que se envían solos por email, en el horario que elijas."
+                breadcrumbs={migasDe('/config/tareas-programadas')}
+                actions={
+                    <>
+                        <Button variant="outlined" startIcon={<RefreshCw size={18} strokeWidth={1.75} aria-hidden />} onClick={fetchAll}>
+                            Actualizar
+                        </Button>
+                        <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={() => { setErrorGuardar(''); setDialog({ tarea: null }); }}>
+                            Nueva tarea
+                        </Button>
+                    </>
+                }
             />
 
-            <TareaDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onSubmit={submitDialog} initial={editing} />
-            <HistorialDialog open={histOpen} onClose={() => setHistOpen(false)} loading={histLoading} ejecuciones={histRows} />
-
-            {saving && (
-                <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
-                    <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <CircularProgress size={24} /><Typography>Guardando…</Typography>
-                    </Paper>
-                </Box>
+            {estado === 'error' ? (
+                <BloqueEstado estado="error" mensaje="No se pudieron cargar las tareas." onReintentar={fetchAll} />
+            ) : (
+                <SectionCard noPadding>
+                    <DataTableResponsive
+                        ariaLabel="Tareas programadas"
+                        columns={columns}
+                        rows={paginated}
+                        rowKey={(r) => r.id}
+                        loading={estado === 'cargando'}
+                        acciones={(row) => {
+                            const activa = row.habilitada ?? row.activa;
+                            return (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                                    <Button startIcon={<Pencil size={16} strokeWidth={1.75} aria-hidden />} onClick={() => { setErrorGuardar(''); setDialog({ tarea: row }); }}>
+                                        Editar
+                                    </Button>
+                                    <MenuMas
+                                        items={[
+                                            { label: 'Ejecutar ahora', icon: Zap, onClick: () => setPorEjecutar(row) },
+                                            { label: activa ? 'Pausar' : 'Activar', icon: activa ? Pause : Play, onClick: () => toggleActiva(row) },
+                                            { label: 'Ver historial', icon: History, onClick: () => cargarHistorial(row) },
+                                            { label: 'Eliminar', icon: Trash2, peligro: true, onClick: () => setPorEliminar(row) },
+                                        ]}
+                                    />
+                                </Box>
+                            );
+                        }}
+                        empty={
+                            <EmptyState
+                                icon={Timer}
+                                title="Todavía no hay tareas"
+                                description="Creá una tarea para que un reporte llegue por email todos los días, sin que nadie se acuerde."
+                                action={{ label: 'Nueva tarea', onClick: () => { setErrorGuardar(''); setDialog({ tarea: null }); } }}
+                            />
+                        }
+                    />
+                    {estado === 'listo' && rows.length > 0 && (
+                        <TablePagination
+                            component="div"
+                            count={rows.length}
+                            page={page}
+                            onPageChange={(_, p) => setPage(p)}
+                            rowsPerPage={rowsPerPage}
+                            onRowsPerPageChange={(e) => { setRpp(parseInt(e.target.value, 10)); setPage(0); }}
+                            rowsPerPageOptions={[5, 10, 25]}
+                            labelRowsPerPage="Filas:"
+                            labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+                        />
+                    )}
+                </SectionCard>
             )}
 
-            <Snackbar open={snack.open} autoHideDuration={3500} onClose={() => setSnack(s => ({ ...s, open: false }))}>
-                <Alert severity={snack.sev} variant="filled" onClose={() => setSnack(s => ({ ...s, open: false }))}>{snack.msg}</Alert>
-            </Snackbar>
+            {dialog && (
+                <TareaDialog
+                    open
+                    initial={dialog.tarea}
+                    onClose={() => setDialog(null)}
+                    onSubmit={submitDialog}
+                    guardando={saving}
+                    error={errorGuardar}
+                />
+            )}
 
-            <Dialog
-                open={confirmarEliminacion}
-                onClose={() => setConfirmarEliminacion(false)}
-                maxWidth="xs"
-                fullWidth
-            >
-                <DialogTitle>¿Eliminar tarea?</DialogTitle>
-                <DialogContent dividers>
-                    <Typography>
-                        ¿Estás seguro de que querés eliminar la tarea "{tareaAEliminar?.nombre}"?
-                        Esta acción eliminará sus contactos, pero los reportes se conservarán.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setConfirmarEliminacion(false)} color="inherit">
-                        Cancelar
-                    </Button>
-                    <Button onClick={remove} color="error" variant="contained">
-                        Eliminar
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        </Paper>
+            <HistorialDialog
+                tarea={hist?.tarea}
+                loading={!!hist?.loading}
+                error={hist?.error}
+                ejecuciones={hist?.rows ?? []}
+                onClose={() => setHist(null)}
+                onReintentar={() => hist && cargarHistorial(hist.tarea)}
+            />
+
+            <ConfirmDialog
+                open={!!porEjecutar}
+                titulo="¿Ejecutar la tarea ahora?"
+                mensaje={`Se genera y se envía "${porEjecutar?.nombre ?? ''}" ahora mismo a ${Array.isArray(porEjecutar?.destinatarios) ? porEjecutar.destinatarios.length : 0} destinatario(s), sin esperar al horario. La programación sigue igual.`}
+                confirmarTexto="Ejecutar ahora"
+                cargando={trabajando}
+                onConfirmar={ejecutarAhora}
+                onCancelar={() => setPorEjecutar(null)}
+            />
+            <ConfirmDialog
+                open={!!porEliminar}
+                titulo="¿Eliminar la tarea?"
+                mensaje={`Se elimina "${porEliminar?.nombre ?? ''}" y deja de ejecutarse. Los reportes que ya se enviaron no se tocan. No se puede deshacer.`}
+                confirmarTexto="Eliminar"
+                peligro
+                cargando={trabajando}
+                onConfirmar={remove}
+                onCancelar={() => setPorEliminar(null)}
+            />
+        </PageContainer>
     );
 }

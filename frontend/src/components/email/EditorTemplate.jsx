@@ -1,224 +1,104 @@
-import { useRef, useEffect, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import EmailEditor from 'react-email-editor';
 import { useTheme } from '@mui/material/styles';
-import {
-    Box,
-    Button,
-    Typography,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions
-} from '@mui/material';
+import { Box } from '@mui/material';
+import { VARIABLES_EMAIL } from '../plantillas/variablesEmail';
 
-const variablesDisponibles = [
-    'mail', 'nombre', 'id_contacto', 'Telefono_1', 'Telefono_2', 'direccion',
-    'ciudad', 'Empresa', 'deuhist', 'deuact', 'Filer', 'Nroemp', 'remesa',
-    'Cuitdoc', 'Codemp2', 'codpos', 'f_recepc', 'f_cierre', 'Usercode2',
-    'Usercode3', 'Usercode4', 'usernum0', 'usernum1', 'usernum2', 'codbar',
-    'codbar_2', 'Usercode1', 'co1', 'userfec5'
-];
+const DISEÑO_NUEVO = {
+    body: {
+        contentWidth: '600px',
+        rows: [{ cells: [1], columns: [{ contents: [], values: {} }], values: {} }],
+    },
+};
 
-const EditorTemplate = ({ initialDesign, onGuardar }) => {
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-    const emailEditorRef = useRef();
+/**
+ * El editor de diseño (Unlayer). No tiene botón de guardar propio: el botón vive arriba, junto a los campos de la
+ * plantilla, y le pide el contenido con `ref.current.exportar()` (antes había que confirmar un diálogo de "se exportará
+ * el HTML…" que no le servía a nadie).
+ *
+ * @param {object} props
+ * @param {object} [props.initialDesign]
+ * @param {() => void} [props.onCambio] Avisa que el operador tocó el diseño (para preguntar antes de salir).
+ */
+const EditorTemplate = forwardRef(function EditorTemplate({ initialDesign, onCambio }, ref) {
+    const editorRef = useRef(null);
     const theme = useTheme();
-    const [dialogOpen, setDialogOpen] = useState(false);
-    const [exportedData, setExportedData] = useState(null);
-    const [editorReady, setEditorReady] = useState(false);
+    const [listo, setListo] = useState(false);
+    // Unlayer avisa "design:updated" también cuando carga el diseño inicial: hasta que pasa un rato no cuenta como cambio.
+    const aceptaCambios = useRef(false);
+    const onCambioRef = useRef(onCambio);
+    onCambioRef.current = onCambio;
 
-    // Aplica tema cuando cambia
+    useImperativeHandle(ref, () => ({
+        estaListo: () => !!editorRef.current?.editor,
+        exportar: () => new Promise((resolve, reject) => {
+            const editor = editorRef.current?.editor;
+            if (!editor) {
+                reject(new Error('El editor todavía está cargando.'));
+                return;
+            }
+            editor.exportHtml(({ html, design }) => resolve({ html, design }));
+        }),
+    }));
+
     useEffect(() => {
-        if (emailEditorRef.current?.editor) {
-            emailEditorRef.current.editor.setAppearance({
-                theme: theme.palette.mode === 'dark' ? 'dark' : 'light'
-            });
-        }
+        editorRef.current?.editor?.setAppearance({ theme: theme.palette.mode === 'dark' ? 'dark' : 'light' });
     }, [theme.palette.mode]);
 
-    // Cargar diseño y mergeTags cuando el editor esté listo Y haya diseño disponible
+    // Variables como etiquetas de combinación, para insertarlas desde el propio editor.
     useEffect(() => {
-        const editor = emailEditorRef.current?.editor;
-
-        if (editorReady && editor) {
-            // ✅ Siempre setear mergeTags
-            const mergeTags = {};
-            variablesDisponibles.forEach((v) => {
-                mergeTags[v] = {
-                    name: v.charAt(0).toUpperCase() + v.slice(1),
-                    value: `{{${v}}}`
-                };
-            });
-
-            editor.setMergeTags(mergeTags);
-            //editor.loadDesign(designInicial);
-        }
-    }, [editorReady]);
+        const editor = editorRef.current?.editor;
+        if (!listo || !editor) return;
+        const mergeTags = {};
+        VARIABLES_EMAIL.forEach((v) => {
+            mergeTags[v] = { name: v.charAt(0).toUpperCase() + v.slice(1), value: `{{${v}}}` };
+        });
+        editor.setMergeTags(mergeTags);
+        editor.addEventListener('design:updated', () => {
+            if (aceptaCambios.current) onCambioRef.current?.();
+        });
+    }, [listo]);
 
     useEffect(() => {
-        const editor = emailEditorRef.current?.editor;
-
-        if (editorReady && initialDesign && editor) {
+        const editor = editorRef.current?.editor;
+        if (!listo || !editor) return undefined;
+        aceptaCambios.current = false;
+        if (initialDesign) {
             editor.loadDesign(initialDesign);
-        }
-    }, [editorReady, initialDesign]);
-
-    useEffect(() => {
-        const editor = emailEditorRef.current?.editor;
-
-        // Si el editor está listo, no hay diseño inicial y existe el editor, forzamos ancho 600px
-        if (editorReady && !initialDesign && editor) {
-            const diseñoNuevo = {
-                body: {
-                    contentWidth: '600px',
-                    rows: [
-                        {
-                            cells: [1],
-                            columns: [
-                                {
-                                    contents: [],
-                                    values: {},
-                                },
-                            ],
-                            values: {},
-                        },
-                    ],
-                },
-            };
-
-            editor.loadDesign(diseñoNuevo);
-            // ✅ Forzar visualmente el ancho del contenido
+        } else {
+            editor.loadDesign(DISEÑO_NUEVO);
             editor.setBodyValues({ contentWidth: '600px' });
         }
-    }, [editorReady, initialDesign]);
-
-    const handleLoad = () => {
-        setEditorReady(true);
-    };
-
-    const handleExportar = () => {
-        if (!emailEditorRef.current) return;
-
-        emailEditorRef.current.editor.exportHtml((data) => {
-            const { html, design } = data;
-            setExportedData({ html, design });
-            setDialogOpen(true);
-            console.log(html);
-        });
-    };
-
-    const handleConfirmarGuardado = () => {
-        if (exportedData && onGuardar) {
-            onGuardar(exportedData);
-        }
-        setDialogOpen(false);
-    };
+        const t = setTimeout(() => {
+            aceptaCambios.current = true;
+        }, 1500);
+        return () => clearTimeout(t);
+    }, [listo, initialDesign]);
 
     return (
-        <Box>
-            {/* Barra superior */}
-            <Box
-                sx={{
-                    backgroundColor:
-                        theme.palette.mode === 'dark' ? '#1e1e1e' : '#f5f5f5',
-                    px: 2,
-                    py: 1,
-                    borderBottom: '1px solid',
-                    borderColor:
-                        theme.palette.mode === 'dark' ? 'grey.800' : 'grey.300',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: 1
-                }}
-            >
-                <Typography variant="subtitle1" fontWeight="bold">
-                    Editor de Email
-                </Typography>
-
-                <Box display="flex" gap={1} alignItems="center" flexWrap="wrap">
-                    <Button
-                        sx={{
-                            borderRadius: 2,
-                            fontFamily: commonFont,
-                            textTransform: 'none',
-                            fontSize: '0.9rem',
-                            backgroundColor: '#075E54',
-                            transition: 'all 0.3s ease',
-                            '&:hover': {
-                                backgroundColor: '#0b7b65',
-                                transform: 'scale(1.03)',
-                                boxShadow: 4,
-                            },
-                        }}
-                        variant="contained"
-                        color="primary"
-                        size="small"
-                        onClick={handleExportar}
-                    >
-                        Guardar template
-                    </Button>
-                </Box>
-            </Box>
-
-            {/* Editor visual */}
+        <Box sx={{ border: 1, borderColor: 'divider', borderRadius: '14px', overflow: 'hidden' }}>
             <EmailEditor
-                ref={emailEditorRef}
-                onLoad={handleLoad}
-                style={{ height: 'calc(100vh - 64px)' }}
+                onLoad={() => setListo(true)}
+                ref={editorRef}
+                style={{ height: 'max(560px, calc(100dvh - 280px))' }}
                 options={{
                     projectId: '279225',
                     locale: 'es',
-                    appearance: {
-                        theme: theme.palette.mode === 'dark' ? 'dark' : 'modern_light'
-                    },
+                    appearance: { theme: theme.palette.mode === 'dark' ? 'dark' : 'modern_light' },
                     translations: {
                         es: {
                             mergeTags: {
                                 merge_tags: 'Variables disponibles',
                                 no_tags: 'No hay variables disponibles',
                                 search_placeholder: 'Buscar variable...',
-                                search_empty: 'Sin resultados'
-                            }
-                        }
-                    }
+                                search_empty: 'Sin resultados',
+                            },
+                        },
+                    },
                 }}
             />
-
-            {/* Diálogo de confirmación */}
-            <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
-                <DialogTitle>¿Guardar template?</DialogTitle>
-                <DialogContent>
-                    <Typography>
-                        Se exportará el HTML y diseño actual del editor. ¿Deseás continuar?
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setDialogOpen(false)} color="secondary">
-                        Cancelar
-                    </Button>
-                    <Button sx={{
-                        px: 2,
-                        py: 1,
-                        borderRadius: 2,
-                        fontFamily: commonFont,
-                        textTransform: 'none',
-                        fontSize: '0.9rem',
-                        backgroundColor: '#075E54',
-                        transition: 'all 0.3s ease',
-                        '&:hover': {
-                            backgroundColor: '#0b7b65',
-                            transform: 'scale(1.03)',
-                            boxShadow: 4,
-                        },
-                    }} onClick={handleConfirmarGuardado} color="primary" variant="contained">
-                        Confirmar
-                    </Button>
-                </DialogActions>
-            </Dialog>
         </Box>
     );
-};
+});
 
 export default EditorTemplate;

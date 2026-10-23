@@ -6,22 +6,55 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      workbox: {
-        maximumFileSizeToCacheInBytes: 4000000,
+      // 'prompt': la versión nueva no se aplica sola (no queremos recargas en medio de un mensaje);
+      // PwaProvider avisa y el usuario decide cuándo actualizar.
+      registerType: 'prompt',
+      injectRegister: false, // el registro lo hace src/pwa/PwaProvider.jsx
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+      injectManifest: {
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
       },
+      includeAssets: ['favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'AMSA Sender',
-        short_name: 'AMSA Sender',
-        theme_color: '#2e5a50',
+        short_name: 'Sender',
+        description: 'Campañas de WhatsApp y email, y la bandeja de conversaciones de AMSA.',
+        lang: 'es-AR',
+        id: '/',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        background_color: '#F8FAFC',
+        theme_color: '#075E54',
+        categories: ['business', 'productivity'],
         icons: [
-          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: 'icon-192-maskable.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-          { src: 'icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
-        ]
-      }
-    })
+          { src: 'icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+        shortcuts: [
+          {
+            name: 'Conversaciones',
+            url: '/wapi/inbox',
+            icons: [{ src: 'icon-96.png', sizes: '96x96', type: 'image/png' }],
+          },
+          {
+            name: 'Campañas',
+            url: '/wapi/campanias',
+            icons: [{ src: 'icon-96.png', sizes: '96x96', type: 'image/png' }],
+          },
+          {
+            name: 'Buscar deudor',
+            url: '/deudores',
+            icons: [{ src: 'icon-96.png', sizes: '96x96', type: 'image/png' }],
+          },
+        ],
+      },
+    }),
   ],
   server: {
     host: true,

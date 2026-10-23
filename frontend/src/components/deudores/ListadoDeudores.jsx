@@ -1,255 +1,212 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-    Box,
-    Container,
-    Paper,
-    Typography,
-    TextField,
-    Button,
-    Table,
-    TableHead,
-    TableRow,
-    TableCell,
-    TableBody,
-    TablePagination,
-    Chip,
-    Skeleton,
-    Alert,
-    useTheme,
-    Grid,
-    Autocomplete,
-    LinearProgress,
-    CircularProgress,
-    Fade,
-} from '@mui/material';
-import PersonSearchIcon from '@mui/icons-material/PersonSearch';
-import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import EmailIcon from '@mui/icons-material/Email';
-import ApiIcon from '@mui/icons-material/Api';
-import ClearIcon from '@mui/icons-material/Clear';
-import SearchIcon from '@mui/icons-material/Search';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Autocomplete, Box, Paper, TextField } from '@mui/material';
+import { SearchX, UserSearch } from 'lucide-react';
 import api from '../../api/axios';
+import { mensajeDeError } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import { BloqueEstado, DataTableResponsive, EmptyState, PageContainer, PageHeader } from '../ui';
+import { CanalChip, nombreDeEmpresa, PanelFiltros, Paginacion, useCatalogosDeudores } from './comunes';
 
-const SkeletonRow = () => (
-    <TableRow>
-        {[80, 200, 120, 150, 120, 100, 150].map((w, i) => (
-            <TableCell key={i}>
-                <Skeleton variant="text" width={w} />
-            </TableCell>
-        ))}
-    </TableRow>
-);
+const TAMANIOS = [10, 20, 50, 100];
+
+// Los filtros aplicados viven en la URL (?q=&empresas=&nro=&remesas=&page=&size=): al volver de la ficha la búsqueda
+// sigue ahí, y el atrás del celular hace lo esperable. Lo que se escribe sin buscar todavía vive solo en los inputs.
+function leerFiltros(params) {
+    const lista = (clave) => (params.get(clave) || '').split(',').map((v) => v.trim()).filter(Boolean);
+    const size = Number(params.get('size'));
+    return {
+        q: params.get('q') || '',
+        empresas: lista('empresas'),
+        nroEmpresa: params.get('nro') || '',
+        remesas: lista('remesas'),
+        page: Math.max(0, Number(params.get('page')) || 0),
+        size: TAMANIOS.includes(size) ? size : 20,
+    };
+}
 
 export default function ListadoDeudores() {
-    const theme = useTheme();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const aplicados = useMemo(() => leerFiltros(searchParams), [searchParams]);
+    const hayBusqueda = Boolean(aplicados.q || aplicados.empresas.length || aplicados.nroEmpresa || aplicados.remesas.length);
 
-    // Estado del formulario (inputs del usuario)
-    const [qInput, setQInput] = useState('');
+    // Lo que hay en el formulario (todavía sin aplicar)
+    const [qInput, setQInput] = useState(aplicados.q);
     const [empresasInput, setEmpresasInput] = useState([]);
-    const [nroEmpresaInput, setNroEmpresaInput] = useState('');
-    const [remesasInput, setRemesasInput] = useState([]);
+    const [nroEmpresaInput, setNroEmpresaInput] = useState(aplicados.nroEmpresa);
+    const [remesasInput, setRemesasInput] = useState(aplicados.remesas);
 
-    // Filtros aplicados (los que se usan para buscar)
-    const [appliedFilters, setAppliedFilters] = useState(null);
-
-    // Data
     const [deudores, setDeudores] = useState([]);
     const [total, setTotal] = useState(0);
-    const [page, setPage] = useState(0);
-    const [rowsPerPage, setRowsPerPage] = useState(20);
-
-    // Loading states
     const [loading, setLoading] = useState(false);
-    const [empresas, setEmpresas] = useState([]);
-    const [remesas, setRemesas] = useState([]);
     const [error, setError] = useState(null);
 
-    const empresasMap = useMemo(() => {
-        const map = new Map();
-        for (const e of empresas) {
-            if (e && typeof e === 'object' && 'id' in e) map.set(e.id, e.nombre);
-        }
-        return map;
-    }, [empresas]);
-    const getEmpresaLabel = (id) => empresasMap.get(id) ?? id ?? '-';
-
-    // Cargar empresas al montar
-    useEffect(() => {
-        const cargarEmpresas = async () => {
-            try {
-                const res = await api.get('/deudores/empresas');
-                setEmpresas(res.data || []);
-            } catch (err) {
-                console.error('Error al cargar empresas:', err);
-            }
-        };
-        cargarEmpresas();
+    // Si una remesa elegida no es de las empresas elegidas, se descarta (solo después de cargar la lista nueva).
+    const depurarRemesas = useCallback((lista) => {
+        setRemesasInput((prev) => (prev.every((r) => lista.includes(r)) ? prev : prev.filter((r) => lista.includes(r))));
     }, []);
+    const catalogos = useCatalogosDeudores(empresasInput, depurarRemesas);
+    const { empresas, remesas, empresasMap } = catalogos;
 
-    // Cargar remesas cuando cambian las empresas del formulario
-    // Nota: sólo se consulta si hay al menos una empresa seleccionada.
+    // El formulario sigue a la URL (atrás/adelante del navegador, o entrar con un enlace). Las empresas se resuelven
+    // a objetos cuando llega el catálogo.
+    const claveUrl = searchParams.toString();
     useEffect(() => {
-        if (empresasInput.length === 0) {
-            setRemesas([]);
-            setRemesasInput([]);
+        setQInput(aplicados.q);
+        setNroEmpresaInput(aplicados.nroEmpresa);
+        setRemesasInput(aplicados.remesas);
+        setEmpresasInput(empresas.filter((e) => aplicados.empresas.includes(String(e.id))));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [claveUrl, empresas]);
+
+    const buscar = useCallback(async () => {
+        if (!hayBusqueda) {
+            setDeudores([]);
+            setTotal(0);
+            setError(null);
             return;
         }
-        const cargarRemesas = async () => {
-            try {
-                const params = { empresas: empresasInput.map((e) => e.id).join(',') };
-                const res = await api.get('/deudores/remesas', { params });
-                setRemesas(res.data || []);
-            } catch (err) {
-                console.error('Error al cargar remesas:', err);
-            }
-        };
-        cargarRemesas();
-    }, [empresasInput]);
-
-    // Depura remesas seleccionadas si dejan de pertenecer al listado
-    useEffect(() => {
-        if (remesasInput.length === 0) return;
-        const filtradas = remesasInput.filter((r) => remesas.includes(r));
-        if (filtradas.length !== remesasInput.length) {
-            setRemesasInput(filtradas);
-        }
-    }, [remesas, remesasInput]);
-
-    const hasActiveInputs = Boolean(
-        qInput ||
-            empresasInput.length > 0 ||
-            nroEmpresaInput ||
-            remesasInput.length > 0,
-    );
-
-    // Buscar deudores
-    const buscarDeudores = useCallback(async () => {
-        if (!appliedFilters) return;
-
         setLoading(true);
         setError(null);
-
         try {
-            const params = {
-                page,
-                size: rowsPerPage,
-            };
-
-            if (appliedFilters.q) params.q = appliedFilters.q;
-            if (appliedFilters.empresas && appliedFilters.empresas.length > 0) {
-                params.empresas = appliedFilters.empresas.map((e) => e.id).join(',');
-            }
-            if (appliedFilters.nroEmpresa) params.nroEmpresa = appliedFilters.nroEmpresa;
-            if (appliedFilters.remesas && appliedFilters.remesas.length > 0) {
-                params.remesas = appliedFilters.remesas.join(',');
-            }
-
+            const params = { page: aplicados.page, size: aplicados.size };
+            if (aplicados.q) params.q = aplicados.q;
+            if (aplicados.empresas.length) params.empresas = aplicados.empresas.join(',');
+            if (aplicados.nroEmpresa) params.nroEmpresa = aplicados.nroEmpresa;
+            if (aplicados.remesas.length) params.remesas = aplicados.remesas.join(',');
             const res = await api.get('/deudores/buscar', { params });
             setDeudores(res.data.data);
             setTotal(res.data.total);
         } catch (err) {
-            setError(err.response?.data?.message || 'Error al buscar deudores');
+            setError(mensajeDeError(err, 'No se pudo buscar deudores.'));
             setDeudores([]);
             setTotal(0);
         } finally {
             setLoading(false);
         }
-    }, [appliedFilters, page, rowsPerPage]);
+    }, [aplicados, hayBusqueda]);
 
     useEffect(() => {
-        buscarDeudores();
-    }, [buscarDeudores]);
+        buscar();
+    }, [buscar]);
+
+    const hayInputs = Boolean(qInput.trim() || empresasInput.length || nroEmpresaInput.trim() || remesasInput.length);
+    // Cuántos filtros del panel plegable tienen algo (el texto libre siempre está a la vista).
+    const filtrosActivos = (empresasInput.length ? 1 : 0) + (remesasInput.length ? 1 : 0) + (nroEmpresaInput.trim() ? 1 : 0);
+
+    const armarUrl = (cambios) => {
+        const p = new URLSearchParams();
+        const f = { ...aplicados, ...cambios };
+        if (f.q) p.set('q', f.q);
+        if (f.empresas.length) p.set('empresas', f.empresas.join(','));
+        if (f.nroEmpresa) p.set('nro', f.nroEmpresa);
+        if (f.remesas.length) p.set('remesas', f.remesas.join(','));
+        if (f.page) p.set('page', String(f.page));
+        if (f.size !== 20) p.set('size', String(f.size));
+        return p;
+    };
 
     const handleBuscar = () => {
-        if (!hasActiveInputs) return;
-        setAppliedFilters({
+        if (!hayInputs) return;
+        setSearchParams(armarUrl({
             q: qInput.trim(),
-            empresas: empresasInput,
+            empresas: empresasInput.map((e) => String(e.id)),
             nroEmpresa: nroEmpresaInput.trim(),
             remesas: remesasInput,
-        });
-        setPage(0);
+            page: 0,
+        }));
     };
 
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            handleBuscar();
-        }
-    };
-
-    const limpiarFiltros = () => {
+    const limpiar = () => {
         setQInput('');
         setEmpresasInput([]);
         setNroEmpresaInput('');
         setRemesasInput([]);
-        setAppliedFilters(null);
-        setDeudores([]);
-        setTotal(0);
-        setPage(0);
-        setError(null);
+        setSearchParams({});
     };
 
-    const handleChangePage = (event, newPage) => {
-        setPage(newPage);
-    };
+    // `desdeBusqueda` le avisa a la ficha que "Volver" puede hacer -1 y recuperar esta búsqueda tal cual.
+    const abrirFicha = (d) => navigate(`/deudores/${d.id}`, { state: { desdeBusqueda: true } });
 
-    const handleChangeRowsPerPage = (event) => {
-        setRowsPerPage(parseInt(event.target.value, 10));
-        setPage(0);
-    };
+    const columnas = [
+        { key: 'nombre', label: 'Nombre', primary: true, render: (d) => d.nombre || 'Sin nombre' },
+        { key: 'documento', label: 'Documento', secondary: true, render: (d) => d.documento || '—' },
+        { key: 'idDeudor', label: 'ID deudor', render: (d) => d.idDeudor ?? '—' },
+        { key: 'empresa', label: 'Empresa', render: (d) => nombreDeEmpresa(empresasMap, d.empresa) },
+        { key: 'nroEmpresa', label: 'Nro. empresa', render: (d) => d.nroEmpresa || '—' },
+        { key: 'remesa', label: 'Remesa', render: (d) => d.remesa || '—' },
+        {
+            key: 'canales',
+            label: 'Canales',
+            render: (d) => {
+                const c = d.canales;
+                const con = ['wapi', 'whatsapp', 'email'].filter((k) => c[k] > 0);
+                if (con.length === 0) return <Box component="span" sx={{ color: 'text.secondary', fontSize: 13 }}>Sin canales</Box>;
+                return (
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {con.map((k) => <CanalChip key={k} canal={k} cantidad={c[k]} />)}
+                    </Box>
+                );
+            },
+        },
+    ];
 
-    const handleRowClick = (deudorId) => {
-        navigate(`/deudores/${deudorId}`);
-    };
+    const vacio = !hayBusqueda ? (
+        <EmptyState
+            icon={UserSearch}
+            title="Buscá un deudor"
+            description="Escribí un nombre, un documento o un ID, o elegí una empresa, y tocá Buscar."
+        />
+    ) : (
+        <EmptyState icon={SearchX} compact title="No se encontraron deudores" description="Probá con otros filtros o con menos datos." />
+    );
 
     return (
-        <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                <PersonSearchIcon sx={{ fontSize: 40, color: theme.palette.primary.main }} />
-                <Typography variant="h4" component="h1" sx={{ color: theme.palette.text.primary }}>
-                    Buscar Deudores
-                </Typography>
-            </Box>
+        <PageContainer>
+            <PageHeader title="Buscar deudores" breadcrumbs={migasDe('/deudores')} />
 
-            {/* Filtros */}
-            <Paper
-                sx={{
-                    p: 3,
-                    mb: 3,
-                    bgcolor: theme.palette.background.paper,
-                    borderRadius: 2,
-                }}
-            >
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap', width: '100%' }}>
-                    <Box sx={{ flex: 3, minWidth: 250 }}>
+            {catalogos.error && <BloqueEstado estado="error" mensaje={catalogos.error} onReintentar={catalogos.reintentar} />}
+
+            <PanelFiltros
+                activos={filtrosActivos}
+                onBuscar={handleBuscar}
+                onLimpiar={limpiar}
+                buscando={loading}
+                puedeBuscar={hayInputs}
+                principal={
+                    <TextField
+                        fullWidth
+                        size="small"
+                        label="Buscar (ID, nombre, documento)"
+                        value={qInput}
+                        onChange={(e) => setQInput(e.target.value)}
+                        slotProps={{ htmlInput: { enterKeyHint: 'search' } }}
+                        sx={{ gridColumn: { md: 'span 2' } }}
+                    />
+                }
+                secundarios={
+                    <>
                         <Autocomplete
                             multiple
                             fullWidth
                             size="small"
                             options={empresas}
                             value={empresasInput}
-                            onChange={(_, v) => setEmpresasInput(v)}
-                            onKeyDown={handleKeyDown}
+                            onChange={(_, v) => {
+                                setEmpresasInput(v);
+                                if (v.length === 0) setRemesasInput([]);
+                            }}
                             filterSelectedOptions
                             disableCloseOnSelect
-                            limitTags={3}
-                            ChipProps={{ size: 'small' }}
+                            limitTags={2}
                             getOptionLabel={(o) => (typeof o === 'string' ? o : o?.nombre ?? '')}
                             isOptionEqualToValue={(o, v) => o?.id === v?.id}
                             renderInput={(params) => (
-                                <TextField
-                                    {...params}
-                                    fullWidth
-                                    label="Empresas"
-                                    placeholder={empresasInput.length === 0 ? 'Todas' : ''}
-                                />
+                                <TextField {...params} label="Empresas" placeholder={empresasInput.length === 0 ? 'Todas' : ''} />
                             )}
                             noOptionsText="Sin coincidencias"
                         />
-                    </Box>
-                    <Box sx={{ flex: 2, minWidth: 150 }}>
                         <Autocomplete
                             multiple
                             fullWidth
@@ -258,247 +215,53 @@ export default function ListadoDeudores() {
                             options={remesas}
                             value={remesasInput}
                             onChange={(_, v) => setRemesasInput(v)}
-                            onKeyDown={handleKeyDown}
                             filterSelectedOptions
                             disableCloseOnSelect
-                            limitTags={3}
-                            ChipProps={{ size: 'small' }}
+                            limitTags={2}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
-                                    fullWidth
                                     label="Remesas"
-                                    placeholder={
-                                        empresasInput.length === 0
-                                            ? 'Empresa...'
-                                            : remesasInput.length === 0
-                                                ? 'Todas'
-                                                : ''
-                                    }
+                                    placeholder={empresasInput.length === 0 ? 'Elegí una empresa' : remesasInput.length === 0 ? 'Todas' : ''}
                                 />
                             )}
                             noOptionsText="Sin coincidencias"
                         />
-                    </Box>
-                    <Box sx={{ flex: 3.5, minWidth: 200 }}>
                         <TextField
                             fullWidth
-                            label="Buscar (ID, Nombre, Documento)"
-                            placeholder="Buscar..."
-                            value={qInput}
-                            onChange={(e) => setQInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
                             size="small"
-                        />
-                    </Box>
-                    <Box sx={{ flex: 1.5, minWidth: 100 }}>
-                        <TextField
-                            fullWidth
-                            label="Nro. Empresa"
+                            label="Nro. de empresa"
                             value={nroEmpresaInput}
                             onChange={(e) => setNroEmpresaInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            size="small"
                         />
-                    </Box>
-                    <Box sx={{ flex: 2, minWidth: 120 }}>
-                        <Box sx={{ display: 'flex', gap: 0.5 }}>
-                            <Button
-                                fullWidth
-                                variant="contained"
-                                onClick={handleBuscar}
-                                disabled={!hasActiveInputs || loading}
-                                startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <SearchIcon />}
-                                sx={{ height: 40, px: 1 }}
-                            >
-                                Buscar
-                            </Button>
-                            <Button
-                                variant="outlined"
-                                onClick={limpiarFiltros}
-                                sx={{ height: 40, minWidth: 40, px: 0 }}
-                                title="Limpiar filtros"
-                            >
-                                <ClearIcon fontSize="small" />
-                            </Button>
-                        </Box>
-                    </Box>
-                </Box>
-            </Paper>
+                    </>
+                }
+            />
 
-            {/* Error */}
-            {error && (
-                <Alert severity="error" sx={{ mb: 3 }}>
-                    {error}
-                </Alert>
-            )}
-
-            {/* Tabla */}
-            <Paper
-                sx={{
-                    bgcolor: theme.palette.background.paper,
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                    position: 'relative',
-                }}
-            >
-                <Fade in={loading} unmountOnExit>
-                    <LinearProgress
-                        sx={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            zIndex: 2,
-                            height: 3,
-                        }}
+            {error ? (
+                <BloqueEstado estado="error" mensaje={error} onReintentar={buscar} />
+            ) : (
+                <Paper variant="outlined" sx={{ borderRadius: '14px', overflow: 'hidden' }}>
+                    <DataTableResponsive
+                        ariaLabel="Deudores encontrados"
+                        columns={columnas}
+                        rows={deudores}
+                        loading={loading}
+                        onRowClick={abrirFicha}
+                        empty={vacio}
                     />
-                </Fade>
-
-                <Box sx={{ overflowX: 'auto' }}>
-                    <Table>
-                        <TableHead>
-                            <TableRow
-                                sx={{
-                                    bgcolor:
-                                        theme.palette.mode === 'light'
-                                            ? '#e8f0fe'
-                                            : '#2c2c2c',
-                                }}
-                            >
-                                <TableCell sx={{ fontWeight: 'bold' }}>ID Deudor</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Nombre</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Documento</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Empresa</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Nro. Empresa</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Remesa</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Canales</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {!appliedFilters && !loading ? (
-                                <TableRow>
-                                    <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
-                                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                                            <SearchIcon sx={{ fontSize: 48, color: theme.palette.text.disabled }} />
-                                            <Typography
-                                                variant="body1"
-                                                color={theme.palette.text.secondary}
-                                            >
-                                                Utilice los filtros y presione <strong>Buscar</strong> para listar deudores
-                                            </Typography>
-                                        </Box>
-                                    </TableCell>
-                                </TableRow>
-                            ) : loading ? (
-                                <>
-                                    <SkeletonRow />
-                                    <SkeletonRow />
-                                    <SkeletonRow />
-                                    <SkeletonRow />
-                                    <SkeletonRow />
-                                </>
-                            ) : deudores.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                                        <Typography
-                                            variant="body1"
-                                            color={theme.palette.text.secondary}
-                                        >
-                                            No se encontraron deudores
-                                        </Typography>
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                deudores.map((deudor) => (
-                                    <TableRow
-                                        key={deudor.id}
-                                        hover
-                                        onClick={() => handleRowClick(deudor.id)}
-                                        sx={{
-                                            cursor: 'pointer',
-                                            '&:hover': {
-                                                bgcolor:
-                                                    theme.palette.mode === 'light'
-                                                        ? '#f5f5f5'
-                                                        : '#2a2a2a',
-                                            },
-                                        }}
-                                    >
-                                        <TableCell>{deudor.idDeudor || '-'}</TableCell>
-                                        <TableCell>{deudor.nombre || '-'}</TableCell>
-                                        <TableCell>{deudor.documento || '-'}</TableCell>
-                                        <TableCell>{deudor.empresa ? getEmpresaLabel(deudor.empresa) : '-'}</TableCell>
-                                        <TableCell>{deudor.nroEmpresa || '-'}</TableCell>
-                                        <TableCell>{deudor.remesa || '-'}</TableCell>
-                                        <TableCell>
-                                            <Box sx={{ display: 'flex', gap: 0.5 }}>
-                                                {deudor.canales.whatsapp > 0 && (
-                                                    <Chip
-                                                        icon={<WhatsAppIcon />}
-                                                        label={deudor.canales.whatsapp}
-                                                        size="small"
-                                                        color="success"
-                                                        sx={{ fontSize: 11 }}
-                                                    />
-                                                )}
-                                                {deudor.canales.email > 0 && (
-                                                    <Chip
-                                                        icon={<EmailIcon />}
-                                                        label={deudor.canales.email}
-                                                        size="small"
-                                                        color="primary"
-                                                        sx={{ fontSize: 11 }}
-                                                    />
-                                                )}
-                                                {deudor.canales.wapi > 0 && (
-                                                    <Chip
-                                                        icon={<ApiIcon />}
-                                                        label={deudor.canales.wapi}
-                                                        size="small"
-                                                        color="info"
-                                                        sx={{ fontSize: 11 }}
-                                                    />
-                                                )}
-                                                {deudor.canales.whatsapp === 0 &&
-                                                    deudor.canales.email === 0 &&
-                                                    deudor.canales.wapi === 0 && (
-                                                        <Typography
-                                                            variant="caption"
-                                                            color={theme.palette.text.secondary}
-                                                        >
-                                                            Sin canales
-                                                        </Typography>
-                                                    )}
-                                            </Box>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </Box>
-
-                {/* Paginación */}
-                <TablePagination
-                    component="div"
-                    count={total}
-                    page={page}
-                    onPageChange={handleChangePage}
-                    rowsPerPage={rowsPerPage}
-                    onRowsPerPageChange={handleChangeRowsPerPage}
-                    rowsPerPageOptions={[10, 20, 50, 100]}
-                    labelRowsPerPage="Filas por página:"
-                    labelDisplayedRows={({ from, to, count }) =>
-                        `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
-                    }
-                    sx={{
-                        borderTop: `1px solid ${theme.palette.mode === 'light' ? '#e0e0e0' : '#333'}`,
-                        bgcolor: theme.palette.background.paper,
-                        color: theme.palette.text.primary,
-                    }}
-                />
-            </Paper>
-        </Container>
+                    {hayBusqueda && total > 0 && (
+                        <Paginacion
+                            total={total}
+                            page={aplicados.page}
+                            rowsPerPage={aplicados.size}
+                            opciones={TAMANIOS}
+                            onPage={(p) => setSearchParams(armarUrl({ page: p }))}
+                            onRowsPerPage={(n) => setSearchParams(armarUrl({ size: n, page: 0 }))}
+                        />
+                    )}
+                </Paper>
+            )}
+        </PageContainer>
     );
 }

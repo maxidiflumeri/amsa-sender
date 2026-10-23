@@ -1,5 +1,193 @@
 # Changelog
 
+## [2026-10-23] — Sender v2: de la misma familia que Gestión, pensado para el celular y como app instalada
+
+### Contexto
+
+El usuario pidió una versión 2 de la interfaz con los mismos lineamientos que AMSA Gestión, que estrenó marco nuevo el
+22/10. Su condición: **"que uno vea una plataforma y la otra y diga: son de la misma empresa"**, conservando cada una su
+color (Sender su verde, Gestión su azul). Además, 100% usable en el celular y como PWA, porque Conversaciones se atiende
+desde el teléfono. La propuesta, con el relevamiento de las 36 rutas y las maquetas, está en el lienzo
+https://claude.ai/artifact/GPeQrtau7EUiRVKAzPRvtU.
+
+Decisiones del usuario: barra de abajo en el celular sí; WhatsApp Web se sigue usando (va completo); el logo es la A de
+Gestión en el verde de Sender; notificaciones push sí; marco neutro, igual que Gestión. Las reglas de interfaz quedaron
+en [docs/sender-v2-guia-ui.md](docs/sender-v2-guia-ui.md).
+
+### Base (frontend)
+
+- **Tema único** (`src/theme/`): los tokens de Gestión con el acento verde (`#075E54` claro, `#25D366` oscuro). Antes
+  había dos temas (`theme.js` quedaba tapado por el de `App.jsx`) y `primary` y `success` eran el mismo verde. Inter
+  (`@fontsource/inter`), íconos Lucide (`lucide-react` 1.52.0, la misma versión exacta que Gestión), sombras y escala
+  tipográfica de Gestión, `esES` de MUI, campos de 16 px debajo de `sm` (iOS no hace zoom).
+- **Tema Claro / Oscuro / Sistema** (`ColorModeContext`), con la misma clave `themeMode` de antes. Pinta la barra del
+  sistema del celular (`theme-color`).
+- **El marco** (`src/components/layout/`): barra y menú lateral sobre `background.marco`, la pantalla en un panel
+  redondeado desde `md`; menú por bloques (Operación, Envíos, Configuración) con la pantalla abierta como píldora, el grupo
+  abierto, achicado con el menú al costado y renglones de 44 px en el cajón del celular; contador de pendientes en
+  Conversaciones y un punto que late en WhatsApp API con una campaña enviando. Lo que se configura una vez (líneas, cuentas
+  SMTP) pasó a **Ajustes**. Debajo de `md`, **barra de abajo** (Inicio, Conversaciones, Campañas, Deudores, según
+  permisos) con zona segura. **Buscador Ctrl+K**: pantallas, deudores (`/deudores/buscar`) y conversaciones
+  (`/wapi/inbox/buscar`), endpoints que ya existían. **Menú de la cuenta** con Mi perfil, Apariencia y Cerrar sesión.
+- **Sesión**: guarda de rutas (antes, sin token se veía el marco y recién un 401 mandaba al login), token vencido = sin
+  sesión, `?volver=` para regresar a la pantalla después de entrar (también tras un 401), sesión sincronizada entre
+  pestañas.
+- **Socket único** (`SocketContext`): antes había nueve `io()` y las listas de campañas lo recreaban con cada cambio.
+  `useSalaSocket` vuelve a entrar a las salas al reconectar (el backend no tiene "salir"), `useEventoSocket` llama siempre
+  al último handler, `useAlReanudar` avisa al reconectar o al volver de segundo plano (más de 20 s) para recargar.
+- **Avisos** (`FeedbackContext`): un solo Snackbar para toda la app; reemplaza a cinco mecanismos distintos.
+- **Piezas comunes** (`src/components/ui/`): `PageHeader`, `MigasDePan`, `SectionCard`, `DataTableResponsive` (tabla
+  desde `md`, tarjetas debajo, nunca `minWidth`), `StatusChip`, `EmptyState`, `BloqueEstado`, `ResponsiveDialog`
+  (pantalla completa en el celular, no se cierra tocando afuera, pregunta antes de descartar), `ConfirmDialog` (con
+  "escribí X para confirmar"), `KpiTile`, `AvatarUsuario`, `SelectorTema`, `WaBurbuja` + `formatoWhatsApp` (una sola
+  burbuja; antes había tres verdes) y `VistaPreviaEmail` (iframe aislado y escalado, en vez de `dangerouslySetInnerHTML`).
+  Más `utils/descargar.js`, `components/campanias/estados.js` (los estados de campaña de los tres canales) y
+  `permisos.js` (catálogo de permisos; antes estaba escrito dos veces en Roles).
+- **Inicio** nuevo, como el "Tu día" de Gestión (antes era una página de presentación sin datos): sin leer, sin asignar,
+  tus chats, campañas en curso, las conversaciones que esperan y el aviso para instalar la app. **Mi perfil** (`/perfil`):
+  cuenta, lo que podés hacer, tema, notificaciones push y sesión.
+- **Carga por pantalla** (`React.lazy` en todas las rutas): el paquete principal pasó de ~2,7 MB a ~715 kB. El
+  `<script>` de Unlayer salió de `index.html` (`react-email-editor` lo carga solo).
+- `npm run verificar-ui` (`scripts/verificar-ui.mjs`): chequea las reglas que se ven en el código (colores a mano,
+  anchos fijos, breakpoint de 768, `console.*`, íconos que no son Lucide, Grid legacy, degradados, emojis).
+
+### PWA y notificaciones push
+
+- **Manifest** completo (`lang es-AR`, descripción, accesos directos a Conversaciones, Campañas y Buscar deudor,
+  categorías), íconos nuevos con el logo (normales, enmascarables, `apple-touch-icon`, favicon SVG), meta de iOS,
+  `viewport-fit=cover` y zonas seguras, `theme-color` para claro y oscuro, script anti-parpadeo del tema.
+- **Service worker propio** (`src/sw.js`, `injectManifest`) con `registerType: 'prompt'`: avisa "Hay una versión nueva"
+  (antes `autoUpdate` sin aviso: una app abierta días seguía con el código viejo). No cachea `/api` ni `/socket.io`.
+  Busca actualizaciones cada hora y al volver a la pestaña.
+- **Push**: módulo `backend/src/modules/push/` (`web-push` 3.6.7), modelo `PushSuscripcion`, endpoints
+  `GET /push/clave-publica`, `POST` y `DELETE /push/suscripciones` (solo las propias). Al entrar un mensaje de WhatsApp
+  API se avisa al asesor asignado o, sin asignar, a los usuarios activos con `wapi.inbox`; no espera ni rompe el webhook,
+  y borra las suscripciones vencidas (404/410). Sin `VAPID_*` arranca deshabilitado. Las notificaciones se activan desde
+  Mi perfil; el número de pendientes va al ícono de la app (`setAppBadge`). Reemplaza al `new Notification` del inbox,
+  que no existe en Chrome de Android y solo andaba con el inbox abierto.
+
+### Pantallas
+
+- **Conversaciones** (`WapiInbox.jsx` pasó de 1831 líneas a ~480, partido en `components/wapi/inbox/`): tres columnas en
+  la computadora (lista, chat y ficha del contacto desde `lg`), lista o chat a pantalla completa en el celular, sin la
+  barra de abajo con el chat abierto. El chat abierto va en la URL (`?c=`, el atrás de Android vuelve a la lista) junto
+  con `?filtro=`. Acciones con texto (Tomar, Resolver, Asignar, Resumir) y el resto en "Más" (marcar no leída ya no
+  depende del click derecho, copiar número, copiar #id). En pantallas táctiles Enter baja de línea y se envía con el
+  botón. Respuestas rápidas en un panel desde abajo en el celular, insertadas en el cursor. Un mensaje que no se envió
+  queda como burbuja fallida con Reintentar, Editar y Descartar (antes los errores iban a un panel oculto en el celular).
+  Los borradores sobreviven a una recarga. Arreglados: el filtro de línea congelado en el socket, el resaltado de "Sin
+  asignar" que nunca se activaba, una resuelta con ventana cerrada que decía "ventana cerrada", el doble toque en Tomar,
+  la letra de 9–11 px y el buscador que hacía zoom en iOS. Las imágenes se abren dentro de la app.
+
+- **Campañas de WhatsApp API, Monitor y log**: pestañas por estado en la URL, una acción principal por fila y el resto
+  en "Más", confirmaciones con cantidades (enviar ahora no confirmaba), avance real desde el principio (una pausada
+  mostraba 0 %), "Ver en vivo" lleva a esa campaña, asistente que no se pierde con un toque afuera, delays en segundos,
+  validación de la columna `numero` del CSV. El log es pantalla completa en el celular y confirma antes de pausar.
+- **Campañas de Email y de WhatsApp Web, Sesiones y Conectar**: una sola pantalla de lista parametrizada por canal
+  (`components/campanias/waweb/`), contactos virtualizados con búsqueda, resumen y confirmación antes de enviar, sesiones
+  por ANI. Conectar explica los pasos y avisa que no se puede escanear desde el mismo teléfono, el QR vence y se
+  regenera, y ya no se pisa entre dos personas conectando a la vez.
+- **Plantillas (los tres canales), Envío manual, Desuscripciones, Respuestas rápidas y páginas públicas**: vista previa
+  con la burbuja real y con `VistaPreviaEmail`; Unlayer solo desde `md` (en el celular se edita nombre, remitente y
+  asunto); "Limpiar todas" las desuscripciones pide escribir «limpiar» y dice cuántas personas vuelven a recibir mails;
+  las páginas públicas van siempre en claro y sin el nombre interno.
+- **Analítica y reportes**: pestañas y elementos abiertos en la URL, gráficos con los colores del tema, tablas que pasan
+  a tarjetas, IA en violeta sin brillos, Reportes y Métricas de WhatsApp Web comparten la campaña elegida.
+- **Deudores**: la búsqueda vive en la URL (al volver de la ficha sigue ahí), la ficha muestra el nombre de la empresa y
+  tiene llamar, escribir y copiar, el historial carga de a páginas y las fechas son del día local.
+- **Ajustes, Administración y Login**: Login de la familia de Gestión, con el mensaje real del backend y `?volver=`
+  seguro; Líneas, Cuentas, Tareas, Bajas, Usuarios y Roles con las piezas comunes, confirmaciones y errores visibles.
+
+### Errores arreglados de paso
+
+- WhatsApp Web: el estado vacío de Campañas nunca aparecía (condición invertida); un error al subir una campaña no se
+  mostraba (`setMensaje` inexistente); `/enviar` quedaba en blanco y `/subir-campania` fallaba (ahora redirigen a
+  `/campanias`); el modal de plantillas se cerraba como si hubiera guardado aunque fallara.
+- Email: guardar dos veces una plantilla nueva la duplicaba; el diálogo de borrar una cuenta decía "¿Eliminar template?";
+  la doble paginación del detalle de reportes dejaba vacías las páginas siguientes.
+- El Grid de MUI 7 (que ignora `item`/`xs`/`md` en silencio) estaba roto en 11 archivos.
+- Deudores: el "hasta" del historial cortaba un día (medianoche UTC); la ficha mostraba el ID de la empresa.
+- Tareas programadas no guardaba la descripción (ahora va en `configuracion.descripcion`, sin cambio de backend).
+- Monitor: una campaña pausada mostraba 0 %; los errores de pausar y reanudar se tragaban.
+
+### Backend
+
+- Módulo `push` y modelo `PushSuscripcion` (relación con `Usuario`, `onDelete: Cascade`). **Lleva `prisma db push`**
+  (aditivo: solo crea la tabla).
+- `listarCampanias` de WhatsApp API devuelve `configId`: la lista muestra y filtra por línea sin pedir el detalle de
+  cada campaña.
+- `backend/.env.example` (nuevo, con las variables `VAPID_*`).
+
+### Productividad de los agentes: cuenta cierres, y queda fija
+
+Pedido de las usuarias: "en Sender la productividad da la mitad que en S1, y el número no queda fijo: va variando según
+el día en que saco el reporte".
+
+- **Causa**: las "resueltas" de un agente eran las conversaciones que **hoy** tiene asignadas, con el **último
+  mensaje** en el rango y que **hoy** están resueltas. Si el cliente contestaba después del cierre ("gracias"), la
+  conversación se reabría y su último mensaje se corría: el cierre desaparecía del día en que se hizo. Una conversación
+  cerrada dos veces contaba una, y si se reasignaba el cierre pasaba a otro agente.
+- **Medido en prod** (01/10 al 22/10): Ana Paula Godoy 362 contra 771 cierres reales, Joaquín Barros 375 contra 710,
+  Laura Siri 252 contra 486, Tati De Antoni 166 contra 536. La mitad o menos, como decían.
+- **Ahora** (`wapi-analitica.service.ts`, `resumirCierres`): se cuentan los cierres de `WaApiCierreConversacion`
+  (una fila por cada vez que alguien resuelve, con quién y cuándo, que no cambia después), en el día de Argentina en
+  que se hicieron. Lo que cerró un agente que ya no está activo sigue contando. Mismo cambio en el detalle del agente,
+  la evolución diaria (que además usaba días UTC), el Excel de agentes (columnas "Cerradas" y "Conversaciones distintas
+  cerradas") y el análisis con IA del equipo.
+- En pantalla, "Resueltas" pasa a **"Cerradas"** con cuántas conversaciones distintas fueron; el ranking se ordena por
+  cierres y ya no muestra un % sobre las asignadas (con cierres puede pasar del 100 %).
+- Los cierres se registran desde el 22/04/2026: un rango anterior da 0.
+- Tests: `wapi-analitica.service.spec.ts` (4).
+
+### Después de la auditoría (agente auditor: no pasaba; todo lo de abajo corregido)
+
+- **Redirección abierta en el Login**: `?volver=/%09/otro-sitio` pasaba el filtro (el navegador descarta el tab y queda
+  `//otro-sitio`). Ahora se valida la URL ya normalizada (`new URL`) y se exige el mismo origen.
+- **Conectar podía borrar una línea que sí se conectó** si el evento del socket se perdía (corte de red al escanear, o
+  `ready` que tarda más de 90 s): antes de borrar consulta `GET /whatsapp/sesiones/status/:id` y solo borra en `qr`,
+  `inicializando`, `fallo_autenticacion` o `desconectado`; ante la duda no toca nada.
+- **El v2 no les iba a llegar a quienes ya usan Sender**: el deploy subía `sw.js` y el manifest con cache de un año y solo
+  invalidaba `index.html`. El workflow ahora sube lo que no lleva hash con `no-cache` y lo invalida, y deja de borrar
+  los assets viejos (una pestaña atrasada puede seguir pidiendo sus pantallas). El service worker nuevo se activa solo
+  si el anterior no era de v2 (marca en caché): las páginas del Sender anterior no tienen el aviso de versión nueva y
+  esperaban a que se cerrara todo.
+- **Pantalla en blanco al cambiar de versión**: `ErrorBoundary` sobre la app ("Hay una versión nueva, recargá") y
+  recarga única ante `vite:preloadError`.
+- **Push con la sesión vencida**: un 401 o un token vencido dan de baja la suscripción en el navegador (sin token no hay
+  DELETE; el backend borra la fila con el próximo 410). En un puesto compartido seguían llegando los mensajes de quien
+  se había ido.
+- **Fechas de la analítica de WhatsApp API y del Excel de agentes**: con el servidor en UTC, el rango empezaba a las 21
+  del día anterior y cortaba las últimas 3 horas. `parseFechas` usa `-03:00` y el Excel manda las fechas con offset.
+- **Eventos de campaña con ids repetidos entre canales**: son globales y llegan con el id solo. La lista de WhatsApp API
+  ya no aplica el estado del evento (recarga), y la de Email y WhatsApp Web solo toma `campania_error` de su canal
+  (`tipo`); antes el error de una campaña de email marcaba como bloqueada a la de WhatsApp Web con el mismo id.
+- **Teclado del celular en Conversaciones**: `interactive-widget=resizes-content` en el viewport (Chrome Android) y alto
+  tomado de `visualViewport` (iOS), para que el encabezado del chat no se vaya de la pantalla.
+- `/sesiones` vuelve a pedir `whatsapp.sesiones` (el backend lo exige en todo el controller). Una conversación asignada
+  a un asesor desactivado ahora avisa a los usuarios del inbox en vez de a nadie. Las páginas públicas no heredan el
+  oscuro ni en el primer pintado.
+
+### Pendiente o con riesgo
+
+- **No se probó en un celular real ni instalada como app**: hay un guion de prueba. En iOS el push solo funciona con la
+  app instalada desde iOS 16.4, y el popup de Google en la app instalada puede fallar (la salida es `ux_mode: redirect`,
+  con cambio de backend).
+- Reportes de deudores: el filtro Canal no se aplica a la tabla y los KPI son "de esta página" (el backend no acepta
+  `canal` ni devuelve totales).
+- `frontend/.env` apunta ahora al backend en el puerto 3001 (estaba en 5001 y el login local no llegaba al backend).
+
+### Deploy
+
+1. Generar las claves VAPID de producción (`npx web-push generate-vapid-keys`) y cargarlas en el `.env` del backend.
+2. `prisma db push` en producción (solo crea `PushSuscripcion`).
+3. Desplegar el backend con `/opt/amsa/deploy.sh`, **después de verificar que no haya campañas enviando** (recrea los
+   workers).
+4. Desplegar el frontend (push a `main`; el workflow ya sube `sw.js` y el manifest sin cache y los invalida). El
+   service worker nuevo reemplaza al viejo sin aviso esa primera vez y las páginas abiertas recargan solas; desde ahí,
+   cada versión nueva se anuncia. Verificar con `curl -I https://amsasender.anamayasa.com/sw.js` que diga `no-cache`.
+
+---
+
 ## [2026-08-21] — Envío manual: el asunto, los desuscriptos y el match con el timeline
 
 ### Contexto

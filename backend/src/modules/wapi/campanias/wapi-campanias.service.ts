@@ -140,6 +140,8 @@ export class WapiCampaniasService {
         createdAt: true,
         enviadoAt: true,
         agendadoAt: true,
+        // La línea, para la columna y el filtro de la lista (sin esto, el frontend pedía el detalle de cada campaña).
+        configId: true,
         template: { select: { metaNombre: true, categoria: true } },
         _count: { select: { contactos: true } },
       },

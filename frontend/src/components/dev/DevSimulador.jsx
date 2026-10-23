@@ -1,18 +1,13 @@
 import { useState } from 'react';
 import {
-    Box, Paper, Typography, Button, TextField, Stack, Chip,
-    Alert, Snackbar, Divider, Card, CardContent, CardActions,
+    Box, Paper, Typography, Button, TextField, Stack, Chip, Divider, Card, CardContent, CardActions,
 } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
-import SmartButtonIcon from '@mui/icons-material/SmartButton';
-import DoneAllIcon from '@mui/icons-material/DoneAll';
-import ImageIcon from '@mui/icons-material/Image';
-import AudioFileIcon from '@mui/icons-material/AudioFile';
-import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
-import ContactsIcon from '@mui/icons-material/Contacts';
-import StickerIcon from '@mui/icons-material/EmojiEmotions';
-import ThumbUpIcon from '@mui/icons-material/ThumbUp';
+import {
+    Contact, FileText, Image as ImageIcon, Music, Send, SmilePlus, ThumbsUp, CheckCheck, MousePointerClick,
+} from 'lucide-react';
 import api from '../../api/axios';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { PageContainer, PageHeader, SectionCard, StatusChip } from '../ui';
 
 const NUMERO_DEFAULT = '5491155550001';
 
@@ -81,37 +76,28 @@ export default function DevSimulador() {
     const [reaccionEmoji, setReaccionEmoji] = useState('👍');
     const [reaccionMsgId, setReaccionMsgId] = useState('');
     const [loading, setLoading] = useState('');
-    const [snack, setSnack] = useState({ open: false, msg: '', sev: 'success' });
-
-    const ok = (msg) => setSnack({ open: true, msg, sev: 'success' });
-    const err = (msg) => setSnack({ open: true, msg, sev: 'error' });
+    const feedback = useFeedback();
 
     const ejecutar = async (endpoint, body) => {
         setLoading(endpoint);
         try {
             const { data } = await api.post(endpoint, body);
-            ok(`✓ ${JSON.stringify(data)}`);
+            feedback.exito(`Listo: ${JSON.stringify(data)}`);
         } catch (e) {
-            err(e?.response?.data?.message || 'Error al simular');
+            feedback.error(mensajeDeError(e, 'No se pudo simular el evento.'));
         } finally {
             setLoading('');
         }
     };
 
     return (
-        <Box py={3}>
-            <Paper elevation={3} sx={{ p: { xs: 2, md: 4 } }}>
-                <Box mb={3}>
-                    <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                        <Typography variant="h5" fontWeight={700}>Simulador de Webhook</Typography>
-                        <Chip label="solo desarrollo" size="small" color="warning" />
-                    </Box>
-                    <Typography variant="body2" color="text.secondary">
-                        Simula eventos de WhatsApp directamente en el backend local sin pasar por Meta.
-                        Los eventos se procesan igual que si vinieran de un teléfono real.
-                    </Typography>
-                </Box>
-
+        <PageContainer>
+            <PageHeader
+                title="Simulador de webhook"
+                subtitle="Simula eventos de WhatsApp en el backend local, sin pasar por Meta. Se procesan como si vinieran de un teléfono real."
+                actions={<StatusChip label="Solo desarrollo" tono="aviso" />}
+            />
+            <SectionCard>
                 {/* Escenarios rápidos */}
                 <Typography variant="subtitle2" fontWeight={700} gutterBottom>Escenarios rápidos</Typography>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, gap: 2, mb: 4 }}>
@@ -121,7 +107,7 @@ export default function DevSimulador() {
                                 <Typography variant="body2" fontWeight={700} gutterBottom>{e.label}</Typography>
                                 <Typography variant="caption" color="text.secondary">{e.descripcion}</Typography>
                                 <Box sx={{ mt: 1 }}>
-                                    <Chip label={e.payload.numero} size="small" sx={{ fontSize: 10, height: 18 }} />
+                                    <Chip label={e.payload.numero} size="small" sx={{ fontSize: 12, height: 22 }} />
                                 </Box>
                             </CardContent>
                             <CardActions sx={{ pt: 0 }}>
@@ -149,11 +135,11 @@ export default function DevSimulador() {
                 </Stack>
 
                 {/* Fila 1: Texto + Botón + Status */}
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' }, gap: 2, mb: 2 }}>
                     {/* Mensaje de texto */}
                     <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
                         <Typography variant="caption" fontWeight={700} display="block" mb={1}>
-                            <SendIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Mensaje de texto
+                            <Send size={14} strokeWidth={1.75} aria-hidden style={{ marginRight: 4, verticalAlign: 'middle' }} />Mensaje de texto
                         </Typography>
                         <TextField
                             fullWidth size="small" multiline rows={2}
@@ -162,7 +148,7 @@ export default function DevSimulador() {
                             sx={{ mb: 1 }}
                         />
                         <Button
-                            fullWidth variant="outlined" startIcon={<SendIcon />}
+                            fullWidth variant="outlined" startIcon={<Send size={16} strokeWidth={1.75} aria-hidden />}
                             disabled={!!loading || !texto.trim() || !numero.trim()}
                             onClick={() => ejecutar('/dev/simular/mensaje', { numero, nombre, texto })}
                         >
@@ -173,7 +159,7 @@ export default function DevSimulador() {
                     {/* Botón */}
                     <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
                         <Typography variant="caption" fontWeight={700} display="block" mb={1}>
-                            <SmartButtonIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Presionar botón
+                            <MousePointerClick size={14} strokeWidth={1.75} aria-hidden style={{ marginRight: 4, verticalAlign: 'middle' }} />Presionar botón
                         </Typography>
                         <TextField
                             fullWidth size="small" label="Payload del botón"
@@ -182,7 +168,7 @@ export default function DevSimulador() {
                             sx={{ mb: 1 }}
                         />
                         <Button
-                            fullWidth variant="outlined" startIcon={<SmartButtonIcon />}
+                            fullWidth variant="outlined" startIcon={<MousePointerClick size={16} strokeWidth={1.75} aria-hidden />}
                             disabled={!!loading || !payload.trim() || !numero.trim()}
                             onClick={() => ejecutar('/dev/simular/boton', { numero, nombre, payload })}
                         >
@@ -193,7 +179,7 @@ export default function DevSimulador() {
                     {/* Status update */}
                     <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
                         <Typography variant="caption" fontWeight={700} display="block" mb={1}>
-                            <DoneAllIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Status update
+                            <CheckCheck size={14} strokeWidth={1.75} aria-hidden style={{ marginRight: 4, verticalAlign: 'middle' }} />Status update
                         </Typography>
                         <TextField
                             fullWidth size="small" label="waMessageId"
@@ -203,14 +189,14 @@ export default function DevSimulador() {
                         />
                         <Stack direction="row" spacing={1}>
                             <Button
-                                fullWidth variant="outlined" size="small" startIcon={<DoneAllIcon />}
+                                fullWidth variant="outlined" size="small" startIcon={<CheckCheck size={16} strokeWidth={1.75} aria-hidden />}
                                 disabled={!!loading || !waMessageId.trim() || !numero.trim()}
                                 onClick={() => ejecutar('/dev/simular/status', { waMessageId, status: 'delivered', numero })}
                             >
                                 Entregado
                             </Button>
                             <Button
-                                fullWidth variant="outlined" size="small" color="success" startIcon={<DoneAllIcon />}
+                                fullWidth variant="outlined" size="small" color="success" startIcon={<CheckCheck size={16} strokeWidth={1.75} aria-hidden />}
                                 disabled={!!loading || !waMessageId.trim() || !numero.trim()}
                                 onClick={() => ejecutar('/dev/simular/status', { waMessageId, status: 'read', numero })}
                             >
@@ -218,14 +204,14 @@ export default function DevSimulador() {
                             </Button>
                         </Stack>
                     </Paper>
-                </Stack>
+                </Box>
 
                 {/* Fila 2: Imagen + Audio + Documento + Contacto */}
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: 2 }}>
                     {/* Imagen */}
                     <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
                         <Typography variant="caption" fontWeight={700} display="block" mb={1}>
-                            <ImageIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Imagen
+                            <ImageIcon size={14} strokeWidth={1.75} aria-hidden style={{ marginRight: 4, verticalAlign: 'middle' }} />Imagen
                         </Typography>
                         <TextField
                             fullWidth size="small" label="Caption (opcional)"
@@ -233,7 +219,7 @@ export default function DevSimulador() {
                             sx={{ mb: 1 }}
                         />
                         <Button
-                            fullWidth variant="outlined" startIcon={<ImageIcon />}
+                            fullWidth variant="outlined" startIcon={<ImageIcon size={16} strokeWidth={1.75} aria-hidden />}
                             disabled={!!loading || !numero.trim()}
                             onClick={() => ejecutar('/dev/simular/imagen', { numero, nombre, texto })}
                         >
@@ -244,13 +230,13 @@ export default function DevSimulador() {
                     {/* Audio */}
                     <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
                         <Typography variant="caption" fontWeight={700} display="block" mb={1}>
-                            <AudioFileIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Audio
+                            <Music size={14} strokeWidth={1.75} aria-hidden style={{ marginRight: 4, verticalAlign: 'middle' }} />Audio
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1, minHeight: 38 }}>
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
                             Simula una nota de voz (ogg/opus). El audio no es reproducible en dev.
                         </Typography>
                         <Button
-                            fullWidth variant="outlined" startIcon={<AudioFileIcon />}
+                            fullWidth variant="outlined" startIcon={<Music size={16} strokeWidth={1.75} aria-hidden />}
                             disabled={!!loading || !numero.trim()}
                             onClick={() => ejecutar('/dev/simular/audio', { numero, nombre })}
                         >
@@ -261,7 +247,7 @@ export default function DevSimulador() {
                     {/* Documento */}
                     <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
                         <Typography variant="caption" fontWeight={700} display="block" mb={1}>
-                            <InsertDriveFileIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Documento
+                            <FileText size={14} strokeWidth={1.75} aria-hidden style={{ marginRight: 4, verticalAlign: 'middle' }} />Documento
                         </Typography>
                         <TextField
                             fullWidth size="small" label="Nombre archivo"
@@ -274,7 +260,7 @@ export default function DevSimulador() {
                             sx={{ mb: 1 }}
                         />
                         <Button
-                            fullWidth variant="outlined" startIcon={<InsertDriveFileIcon />}
+                            fullWidth variant="outlined" startIcon={<FileText size={16} strokeWidth={1.75} aria-hidden />}
                             disabled={!!loading || !numero.trim()}
                             onClick={() => ejecutar('/dev/simular/documento', { numero, nombre, caption: docCaption, filename: docFilename })}
                         >
@@ -285,7 +271,7 @@ export default function DevSimulador() {
                     {/* Contacto */}
                     <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
                         <Typography variant="caption" fontWeight={700} display="block" mb={1}>
-                            <ContactsIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Contacto compartido
+                            <Contact size={14} strokeWidth={1.75} aria-hidden style={{ marginRight: 4, verticalAlign: 'middle' }} />Contacto compartido
                         </Typography>
                         <TextField
                             fullWidth size="small" label="Nombre del contacto"
@@ -303,7 +289,7 @@ export default function DevSimulador() {
                             sx={{ mb: 1 }}
                         />
                         <Button
-                            fullWidth variant="outlined" startIcon={<ContactsIcon />}
+                            fullWidth variant="outlined" startIcon={<Contact size={16} strokeWidth={1.75} aria-hidden />}
                             disabled={!!loading || !numero.trim() || !contactoNombre.trim()}
                             onClick={() => ejecutar('/dev/simular/contacto', { numero, nombre, contactoNombre, contactoTelefono, contactoEmpresa })}
                         >
@@ -314,13 +300,13 @@ export default function DevSimulador() {
                     {/* Sticker */}
                     <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
                         <Typography variant="caption" fontWeight={700} display="block" mb={1}>
-                            <StickerIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Sticker
+                            <SmilePlus size={14} strokeWidth={1.75} aria-hidden style={{ marginRight: 4, verticalAlign: 'middle' }} />Sticker
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1, minHeight: 56 }}>
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
                             Simula un sticker WebP. No visualizable en dev (media ID falso).
                         </Typography>
                         <Button
-                            fullWidth variant="outlined" startIcon={<StickerIcon />}
+                            fullWidth variant="outlined" startIcon={<SmilePlus size={16} strokeWidth={1.75} aria-hidden />}
                             disabled={!!loading || !numero.trim()}
                             onClick={() => ejecutar('/dev/simular/sticker', { numero, nombre })}
                         >
@@ -331,7 +317,7 @@ export default function DevSimulador() {
                     {/* Reacción */}
                     <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
                         <Typography variant="caption" fontWeight={700} display="block" mb={1}>
-                            <ThumbUpIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />Reacción emoji
+                            <ThumbsUp size={14} strokeWidth={1.75} aria-hidden style={{ marginRight: 4, verticalAlign: 'middle' }} />Reacción emoji
                         </Typography>
                         <TextField
                             fullWidth size="small" label="Emoji"
@@ -345,21 +331,16 @@ export default function DevSimulador() {
                             sx={{ mb: 1 }}
                         />
                         <Button
-                            fullWidth variant="outlined" startIcon={<ThumbUpIcon />}
+                            fullWidth variant="outlined" startIcon={<ThumbsUp size={16} strokeWidth={1.75} aria-hidden />}
                             disabled={!!loading || !numero.trim() || !reaccionEmoji.trim()}
                             onClick={() => ejecutar('/dev/simular/reaccion', { numero, nombre, emoji: reaccionEmoji, waMessageId: reaccionMsgId || 'dev-msg-id' })}
                         >
                             Simular reacción
                         </Button>
                     </Paper>
-                </Stack>
-            </Paper>
+                </Box>
+            </SectionCard>
 
-            <Snackbar open={snack.open} autoHideDuration={4000} onClose={() => setSnack(s => ({ ...s, open: false }))}>
-                <Alert severity={snack.sev} onClose={() => setSnack(s => ({ ...s, open: false }))} sx={{ maxWidth: 500, wordBreak: 'break-all' }}>
-                    {snack.msg}
-                </Alert>
-            </Snackbar>
-        </Box>
+        </PageContainer>
     );
 }

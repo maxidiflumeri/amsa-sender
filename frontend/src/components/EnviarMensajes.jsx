@@ -1,316 +1,311 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    FormControl,
-    InputLabel,
-    Select,
-    MenuItem,
-    Button,
+    Accordion, AccordionDetails, AccordionSummary, Autocomplete, Box, Button, Checkbox, Chip, CircularProgress, ListItemText, MenuItem, TextField,
     Typography,
-    Box,
-    Alert,
-    IconButton,
-    Tooltip,
-    TextField,
-    Accordion,
-    AccordionSummary,
-    AccordionDetails,
-    CircularProgress,
-    Autocomplete
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import api from '../api/axios';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
-import dayjs from 'dayjs';
+import { ChevronDown } from 'lucide-react';
+import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
+import { mensajeDeError, useFeedback } from '../context/FeedbackContext';
+import { useEventoSocket } from '../context/SocketContext';
+import { BloqueEstado, ConfirmDialog, ResponsiveDialog, StatusChip } from './ui';
+import { pluralizar } from './campanias/waweb/formatos';
+
+// Enviar o agendar una campaña de WhatsApp Web: plantilla, sesiones que van a enviar, ritmo y, si se agenda, la
+// fecha. Antes de mandar se muestra el resumen y se pide confirmar.
+
+// El backend guarda el ritmo en milisegundos; la pantalla lo muestra en segundos, que es como lo piensa quien envía.
+const RITMO_POR_DEFECTO = { batchSize: 5, delayEntreMensajes: 25_000, delayEntreLotes: 60_000 };
+
+const aSegundos = (ms) => String(Number(ms) / 1000);
+
+function ritmoAFormulario(ritmo) {
+    return {
+        batchSize: String(ritmo.batchSize),
+        delayEntreMensajes: aSegundos(ritmo.delayEntreMensajes),
+        delayEntreLotes: aSegundos(ritmo.delayEntreLotes),
+    };
+}
+
+function Resumen({ filas }) {
+    return (
+        <Box
+            component="dl"
+            sx={{ m: 0, p: 2, border: 1, borderColor: 'divider', borderRadius: '14px', display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '120px 1fr' }, columnGap: 2, rowGap: { xs: 0, sm: 1 } }}
+        >
+            {filas.map(([titulo, valor]) => (
+                <Box key={titulo} sx={{ display: 'contents' }}>
+                    <Box component="dt" sx={{ fontSize: 13, color: 'text.secondary', mt: { xs: 1, sm: 0 } }}>{titulo}</Box>
+                    <Box component="dd" sx={{ m: 0, overflowWrap: 'anywhere', fontWeight: valor === '—' ? 400 : 600 }}>{valor}</Box>
+                </Box>
+            ))}
+        </Box>
+    );
+}
 
 export default function EnviarMensajesModal({ open, onSendSuccess, onClose, campaña, mostrarCalendario = false }) {
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+    const feedback = useFeedback();
+    const { usuario } = useAuth();
     const [sesiones, setSesiones] = useState([]);
-    const [selectedSesion, setSelectedSesion] = useState([]);
+    const [seleccionadas, setSeleccionadas] = useState([]);
     const [templates, setTemplates] = useState([]);
-    const [selectedTemplateId, setSelectedTemplateId] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
-    const configPorDefecto = {
-        batchSize: 5,
-        delayEntreMensajes: 25000,
-        delayEntreLotes: 60000,
-    };
-
-    const [config, setConfig] = useState(configPorDefecto);
+    const [templateId, setTemplateId] = useState('');
+    const [cargando, setCargando] = useState(false);
+    const [errorCarga, setErrorCarga] = useState(false);
+    const [formRitmo, setFormRitmo] = useState(ritmoAFormulario(RITMO_POR_DEFECTO));
     const [fechaAgendada, setFechaAgendada] = useState(null);
-    const [loadingGuardarConfig, setLoadingGuardarConfig] = useState(false);
-    const usuario = JSON.parse(localStorage.getItem('usuario'));
+    const [guardandoRitmo, setGuardandoRitmo] = useState(false);
+    const [confirmando, setConfirmando] = useState(false);
+    const [enviando, setEnviando] = useState(false);
+    const [reintento, setReintento] = useState(0);
+
+    const total = campaña?.contactosCount ?? campaña?.contactos?.length ?? 0;
+
+    const cargarSesiones = useCallback(async () => {
+        const res = await api.get('/whatsapp/sesiones/status');
+        setSesiones(res.data);
+        // Una sesión que se cayó deja de estar elegida.
+        setSeleccionadas((actual) => actual.filter((id) => res.data.some((s) => s.id === id && s.estado === 'conectado')));
+    }, []);
 
     useEffect(() => {
-        if (open) {
-            setMensaje({ tipo: '', texto: '' });
-            setSelectedSesion([]);
-            setSelectedTemplateId('');
-            setFechaAgendada(null);
-
-            api.get('/whatsapp/sesiones/status')
-                .then(res => setSesiones(res.data))
-                .catch(err => console.error('Error al obtener sesiones:', err));
-
-            api.get('/whatsapp/templates')
-                .then(res => setTemplates(res.data))
-                .catch(err => console.error('Error al obtener templates:', err));
-
-            // Intentar cargar configuración personalizada del backend
-            api.get('/config', {
-                params: {
-                    scope: 'whatsapp.envio'
-                }
+        if (!open) return undefined;
+        setSeleccionadas([]);
+        setTemplateId('');
+        setFechaAgendada(null);
+        setConfirmando(false);
+        setFormRitmo(ritmoAFormulario(RITMO_POR_DEFECTO));
+        let cancelado = false;
+        setCargando(true);
+        setErrorCarga(false);
+        Promise.all([cargarSesiones(), api.get('/whatsapp/templates').then((res) => !cancelado && setTemplates(res.data))])
+            .catch(() => !cancelado && setErrorCarga(true))
+            .finally(() => !cancelado && setCargando(false));
+        // El ritmo guardado es opcional: si no se puede leer, se usa el de siempre.
+        api.get('/config', { params: { scope: 'whatsapp.envio' } })
+            .then((res) => {
+                if (cancelado) return;
+                const guardado = res.data ?? {};
+                setFormRitmo(ritmoAFormulario({
+                    batchSize: Number(guardado.batchSize ?? RITMO_POR_DEFECTO.batchSize),
+                    delayEntreMensajes: Number(guardado.delayEntreMensajes ?? RITMO_POR_DEFECTO.delayEntreMensajes),
+                    delayEntreLotes: Number(guardado.delayEntreLotes ?? RITMO_POR_DEFECTO.delayEntreLotes),
+                }));
             })
-                .then(res => {
-                    const backendConfig = res.data;
-                    setConfig(prev => ({
-                        ...prev,
-                        ...{
-                            batchSize: Number(backendConfig.batchSize ?? prev.batchSize),
-                            delayEntreMensajes: Number(backendConfig.delayEntreMensajes ?? prev.delayEntreMensajes),
-                            delayEntreLotes: Number(backendConfig.delayEntreLotes ?? prev.delayEntreLotes),
-                        }
-                    }));
-                })
-                .catch(err => {
-                    console.warn('No se pudo cargar configuración del backend, se usan valores por defecto.', err);
-                    setConfig(configPorDefecto);
-                });
-        }
-    }, [open]);
+            .catch(() => undefined);
+        return () => {
+            cancelado = true;
+        };
+    }, [open, reintento, cargarSesiones]);
 
-    const enviarMensajes = async () => {
-        if (selectedSesion.length === 0) {
-            setMensaje({ tipo: 'error', texto: 'Seleccioná al menos una sesión' });
-            return;
-        }
+    // Si una sesión se conecta o se cae con el diálogo abierto, la lista se actualiza.
+    useEventoSocket('estado_sesion', ({ estado }) => {
+        if (open && estado !== 'qr') cargarSesiones().catch(() => undefined);
+    });
 
-        if (!selectedTemplateId) {
-            setMensaje({ tipo: 'error', texto: 'Seleccioná un template para continuar' });
-            return;
-        }
+    const ritmo = useMemo(() => {
+        const lote = Number(formRitmo.batchSize);
+        const entreMensajes = Number(formRitmo.delayEntreMensajes);
+        const entreLotes = Number(formRitmo.delayEntreLotes);
+        const valido = Number.isInteger(lote) && lote >= 1 && entreMensajes >= 0 && entreLotes >= 0
+            && formRitmo.delayEntreMensajes !== '' && formRitmo.delayEntreLotes !== '';
+        return { valido, config: { batchSize: lote, delayEntreMensajes: Math.round(entreMensajes * 1000), delayEntreLotes: Math.round(entreLotes * 1000) } };
+    }, [formRitmo]);
 
-        if (mostrarCalendario && !fechaAgendada || dayjs(fechaAgendada).isBefore(dayjs())) {
-            setMensaje({ tipo: 'error', texto: 'Seleccioná una fecha válida para el envío agendado' });
-            return;
-        }
+    const template = templates.find((t) => t.id === templateId);
+    const conectadas = sesiones.filter((s) => s.estado === 'conectado');
+    const elegidas = sesiones.filter((s) => seleccionadas.includes(s.id));
+    const fechaValida = fechaAgendada instanceof Date && !Number.isNaN(fechaAgendada.getTime()) && fechaAgendada > new Date();
+    const fechaConError = mostrarCalendario && !!fechaAgendada && !fechaValida;
+    const listo = !!template && elegidas.length > 0 && ritmo.valido && (!mostrarCalendario || fechaValida);
 
-        setLoading(true);
-        setMensaje({ tipo: '', texto: '' });
+    const textoSesiones = elegidas.map((s) => s.ani || s.id).join(', ');
+    const cuando = !mostrarCalendario
+        ? 'Apenas confirmes'
+        : fechaValida ? fechaAgendada.toLocaleString('es-AR', { dateStyle: 'full', timeStyle: 'short' }) : '—';
 
+    const enviar = async () => {
+        setEnviando(true);
         try {
-            // Aplicar template si corresponde
-            if (selectedTemplateId) {
-                await api.post(`/whatsapp/campanias/${campaña.id}/aplicar-template`, {
-                    templateId: selectedTemplateId
-                });
-            }
-
-            if (fechaAgendada) {
-                // Envío agendado
+            await api.post(`/whatsapp/campanias/${campaña.id}/aplicar-template`, { templateId });
+            if (mostrarCalendario) {
                 await api.post(`/whatsapp/campanias/${campaña.id}/agendar`, {
-                    sessionIds: selectedSesion,
+                    sessionIds: seleccionadas,
                     fechaAgenda: fechaAgendada,
-                    config
+                    config: ritmo.config,
                 });
             } else {
-                // Envío inmediato
                 await api.post('/whatsapp/mensajes/send-messages', {
-                    sessionIds: selectedSesion,
+                    sessionIds: seleccionadas,
                     campaña: campaña.id,
-                    config
+                    config: ritmo.config,
                 });
             }
-
+            setConfirmando(false);
             onSendSuccess();
         } catch (error) {
-            console.error('Error al iniciar el envío', error);
-            setMensaje({ tipo: 'error', texto: 'Ocurrió un error al iniciar el envío' });
+            feedback.error(mensajeDeError(error, 'No se pudo iniciar el envío.'));
         } finally {
-            setLoading(false);
+            setEnviando(false);
         }
     };
 
-
-    const handleChangeConfig = (field, value) => {
-        setConfig(prev => ({ ...prev, [field]: Number(value) }));
+    const guardarRitmo = async () => {
+        setGuardandoRitmo(true);
+        try {
+            await api.post('/config', { userId: usuario?.id, scope: 'whatsapp.envio', valores: ritmo.config });
+            feedback.exito('Ritmo guardado como predeterminado.');
+        } catch (error) {
+            feedback.error(mensajeDeError(error, 'No se pudo guardar el ritmo.'));
+        } finally {
+            setGuardandoRitmo(false);
+        }
     };
 
+    const campoRitmo = (clave, label, ayuda, { entero = false } = {}) => (
+        <TextField
+            label={label}
+            type="number"
+            fullWidth
+            value={formRitmo[clave]}
+            onChange={(e) => setFormRitmo((prev) => ({ ...prev, [clave]: e.target.value }))}
+            helperText={ayuda}
+            slotProps={{ htmlInput: { min: entero ? 1 : 0, step: entero ? 1 : 'any', inputMode: entero ? 'numeric' : 'decimal' } }}
+            error={formRitmo[clave] === '' || Number(formRitmo[clave]) < (entero ? 1 : 0)}
+        />
+    );
+
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>
-                {`${mostrarCalendario ? 'Agendar campaña: ' : 'Enviar campaña: '} ${campaña?.nombre}`}
-                <IconButton
-                    aria-label="cerrar"
-                    onClick={onClose}
-                    sx={{ position: 'absolute', right: 8, top: 8 }}
-                >
-                    <CloseIcon />
-                </IconButton>
-            </DialogTitle>
-            <DialogContent dividers>
-                <Autocomplete
-                    fullWidth
-                    sx={{ mb: 2 }}
-                    options={templates}
-                    getOptionLabel={(option) => option.nombre}
-                    value={templates.find((t) => t.id === selectedTemplateId) || null}
-                    onChange={(event, newValue) => {
-                        setSelectedTemplateId(newValue ? newValue.id : '');
-                    }}
-                    renderInput={(params) => (
-                        <TextField {...params} label="Template" />
-                    )}
-                />
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Sesiones</InputLabel>
-                    <Select
-                        multiple
-                        value={selectedSesion}
-                        onChange={(e) => setSelectedSesion(e.target.value)}
-                        label="Sesiones"
-                        renderValue={(selected) => selected.join(', ')}
-                    >
-                        {sesiones.map((s) => (
-                            <MenuItem
-                                key={s.id}
-                                value={s.id}
-                                disabled={s.estado !== 'conectado'}
-                            >
-                                <Box display="flex" justifyContent="space-between" width="100%">
-                                    <span>{s.ani}</span>
-                                    <span style={{ color: s.estado === 'conectado' ? 'green' : 'gray' }}>
-                                        {s.estado}
-                                    </span>
-                                </Box>
-                            </MenuItem>
-                        ))}
-                    </Select>
-                </FormControl>
-
-                {mostrarCalendario && (
-                    <Box display="flex" justifyContent="center" sx={{ mt: 2, mb: 4 }}>
-                        <DateTimePicker
-                            label="Agendar envío"
-                            value={fechaAgendada}
-                            onChange={setFechaAgendada}
-                            minDateTime={dayjs()}
-                            renderInput={(params) => (
-                                <TextField {...params} />
-                            )}
-                        />
-                    </Box>
+        <>
+            <ResponsiveDialog
+                open={open}
+                onClose={() => !enviando && onClose()}
+                title={`${mostrarCalendario ? 'Agendar' : 'Enviar'} «${campaña?.nombre}»`}
+                sucio={!!templateId || seleccionadas.length > 0 || !!fechaAgendada}
+                actions={(
+                    <>
+                        <Button onClick={onClose} disabled={enviando}>Cancelar</Button>
+                        <Button variant="contained" disabled={!listo || enviando} onClick={() => setConfirmando(true)}>
+                            {mostrarCalendario ? 'Agendar campaña' : 'Enviar campaña'}
+                        </Button>
+                    </>
                 )}
+            >
+                {cargando && <BloqueEstado estado="cargando" mensaje="Cargando sesiones y plantillas…" />}
+                {errorCarga && <BloqueEstado estado="error" mensaje="No se pudieron cargar las sesiones o las plantillas." onReintentar={() => setReintento((n) => n + 1)} />}
+                {!cargando && !errorCarga && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                        <Autocomplete
+                            fullWidth
+                            options={templates}
+                            getOptionLabel={(t) => t.nombre}
+                            isOptionEqualToValue={(a, b) => a.id === b.id}
+                            value={template ?? null}
+                            onChange={(_, nuevo) => setTemplateId(nuevo ? nuevo.id : '')}
+                            noOptionsText="No hay plantillas de WhatsApp Web"
+                            renderInput={(params) => <TextField {...params} label="Plantilla" helperText="El texto del mensaje que se va a enviar." />}
+                        />
 
-                <Accordion sx={{ mb: 2 }}>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                        <Typography>Configuración avanzada</Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                        <Box display="flex" flexDirection="column" gap={2}>
+                        <Box>
                             <TextField
-                                label={
-                                    <Box display="flex" alignItems="center" gap={1}>
-                                        Tamaño del lote
-                                        <Tooltip title="Cantidad de contactos que se envían por sesión">
-                                            <InfoOutlinedIcon fontSize="small" color="action" />
-                                        </Tooltip>
-                                    </Box>
-                                }
-                                type="number"
+                                select
                                 fullWidth
-                                value={config.batchSize}
-                                onChange={e => handleChangeConfig('batchSize', e.target.value)}
+                                label="Sesiones"
+                                value={seleccionadas}
+                                onChange={(e) => setSeleccionadas(e.target.value)}
+                                error={conectadas.length === 0}
+                                helperText={conectadas.length === 0
+                                    ? 'No hay ninguna sesión conectada. Conectá una desde Envíos › WhatsApp Web › Sesiones.'
+                                    : 'Los mensajes se reparten entre las sesiones que elijas.'}
+                                slotProps={{
+                                    select: {
+                                        multiple: true,
+                                        renderValue: (ids) => (
+                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                                {ids.map((id) => <Chip key={id} size="small" label={sesiones.find((s) => s.id === id)?.ani || id} />)}
+                                            </Box>
+                                        ),
+                                    },
+                                }}
+                            >
+                                {sesiones.map((s) => (
+                                    <MenuItem key={s.id} value={s.id} disabled={s.estado !== 'conectado'} sx={{ minHeight: 44, gap: 1 }}>
+                                        <Checkbox checked={seleccionadas.includes(s.id)} tabIndex={-1} disableRipple sx={{ p: 0.5 }} />
+                                        <ListItemText primary={s.ani || 'Sin número todavía'} />
+                                        <StatusChip label={s.estado === 'conectado' ? 'Conectada' : 'No disponible'} tono={s.estado === 'conectado' ? 'ok' : 'neutro'} />
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                            {conectadas.length > 1 && seleccionadas.length < conectadas.length && (
+                                <Button size="small" onClick={() => setSeleccionadas(conectadas.map((s) => s.id))} sx={{ mt: 0.5, minHeight: { xs: 44, sm: 30 } }}>
+                                    Elegir todas las conectadas
+                                </Button>
+                            )}
+                        </Box>
+
+                        {mostrarCalendario && (
+                            <DateTimePicker
+                                label="Fecha y hora del envío"
+                                value={fechaAgendada}
+                                onChange={setFechaAgendada}
+                                minDateTime={new Date()}
+                                slotProps={{
+                                    textField: {
+                                        fullWidth: true,
+                                        error: fechaConError,
+                                        helperText: fechaConError ? 'Elegí una fecha y hora que todavía no pasaron.' : undefined,
+                                    },
+                                }}
                             />
+                        )}
 
-                            <TextField
-                                label={
-                                    <Box display="flex" alignItems="center" gap={1}>
-                                        Delay entre mensajes (ms)
-                                        <Tooltip title="Tiempo de espera entre cada mensaje enviado">
-                                            <InfoOutlinedIcon fontSize="small" color="action" />
-                                        </Tooltip>
-                                    </Box>
-                                }
-                                type="number"
-                                fullWidth
-                                value={config.delayEntreMensajes}
-                                onChange={e => handleChangeConfig('delayEntreMensajes', e.target.value)}
-                            />
+                        <Accordion disableGutters variant="outlined" sx={{ borderRadius: '14px', '&::before': { display: 'none' }, overflow: 'hidden' }}>
+                            <AccordionSummary expandIcon={<ChevronDown size={20} strokeWidth={1.75} aria-hidden />} sx={{ minHeight: 48 }}>
+                                <Typography sx={{ fontWeight: 600 }}>Ritmo de envío</Typography>
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {campoRitmo('batchSize', 'Mensajes por lote', 'Cuántos contactos toma cada sesión antes de hacer la pausa larga.', { entero: true })}
+                                {campoRitmo('delayEntreMensajes', 'Espera entre mensajes (segundos)', 'El tiempo que pasa entre un mensaje y el siguiente de la misma sesión.')}
+                                {campoRitmo('delayEntreLotes', 'Espera entre lotes (segundos)', 'La pausa que hace una sesión al terminar un lote.')}
+                                <Box>
+                                    <Button
+                                        variant="outlined"
+                                        disabled={guardandoRitmo || !ritmo.valido}
+                                        onClick={guardarRitmo}
+                                        startIcon={guardandoRitmo ? <CircularProgress size={16} color="inherit" /> : undefined}
+                                    >
+                                        {guardandoRitmo ? 'Guardando…' : 'Guardar como predeterminado'}
+                                    </Button>
+                                </Box>
+                            </AccordionDetails>
+                        </Accordion>
 
-                            <TextField
-                                label={
-                                    <Box display="flex" alignItems="center" gap={1}>
-                                        Delay entre lotes (ms)
-                                        <Tooltip title="Pausa luego de completar los mensajes de una sesión">
-                                            <InfoOutlinedIcon fontSize="small" color="action" />
-                                        </Tooltip>
-                                    </Box>
-                                }
-                                type="number"
-                                fullWidth
-                                value={config.delayEntreLotes}
-                                onChange={e => handleChangeConfig('delayEntreLotes', e.target.value)}
+                        <Box>
+                            <Typography component="h3" sx={{ fontSize: 14, fontWeight: 650, mb: 1 }}>Resumen</Typography>
+                            <Resumen
+                                filas={[
+                                    ['Mensajes', pluralizar(total, 'mensaje', 'mensajes')],
+                                    ['Plantilla', template ? template.nombre : '—'],
+                                    ['Sesiones', textoSesiones || '—'],
+                                    ['Ritmo', ritmo.valido ? `Un mensaje cada ${formRitmo.delayEntreMensajes} s; lotes de ${formRitmo.batchSize} con ${formRitmo.delayEntreLotes} s de pausa` : 'Revisá los valores del ritmo'],
+                                    ['Cuándo', cuando],
+                                ]}
                             />
                         </Box>
-                    </AccordionDetails>
-                    <Box display="flex" justifyContent="center">
-                        <Button
-                            disabled={loadingGuardarConfig}
-                            variant="outlined"
-                            sx={{ mt: 1, mb: 1 }}
-                            onClick={async () => {
-                                try {
-                                    setLoadingGuardarConfig(true);
-                                    await api.post('/config', {
-                                        userId: usuario?.id,
-                                        scope: 'whatsapp.envio',
-                                        valores: config
-                                    });
-                                    setMensaje({ tipo: 'success', texto: 'Configuración guardada como predeterminada' });
-                                } catch (error) {
-                                    console.error('Error guardando config:', error);
-                                    setMensaje({ tipo: 'error', texto: 'Error al guardar configuración' });
-                                } finally {
-                                    setLoadingGuardarConfig(false);
-                                }
-                            }}
-                            startIcon={loadingGuardarConfig ? <CircularProgress size={20} /> : null}
-                        >
-                            {loadingGuardarConfig ? 'Guardando...' : 'Guardar como predeterminado'}
-                        </Button>
                     </Box>
-                </Accordion>
-
-                {mensaje.texto && (
-                    <Alert severity={mensaje.tipo} sx={{ mb: 2 }}>
-                        {mensaje.texto}
-                    </Alert>
                 )}
+            </ResponsiveDialog>
 
-                <Box textAlign="center" sx={{ mt: 2 }}>
-                    <Button
-                        sx={{
-                            mb: 2,
-                            backgroundColor: '#075E54',
-                            fontFamily: commonFont,
-                            textTransform: 'none'
-                        }}
-                        variant="contained"
-                        onClick={enviarMensajes}
-                        disabled={loading || selectedSesion.length === 0 || !selectedTemplateId}
-                        startIcon={loading ? <CircularProgress size={20} /> : null}
-                    >
-                        {loading ? 'Iniciando...' : mostrarCalendario ? 'Agendar campaña' : 'Iniciar envío'}
-                    </Button>
-                </Box>
-            </DialogContent>
-        </Dialog>
+            <ConfirmDialog
+                open={confirmando}
+                titulo={mostrarCalendario ? '¿Agendar el envío?' : '¿Enviar la campaña?'}
+                mensaje={`Se van a enviar ${pluralizar(total, 'mensaje', 'mensajes')} por ${elegidas.length === 1 ? 'la sesión' : 'las sesiones'} ${textoSesiones} con la plantilla «${template?.nombre ?? ''}»${mostrarCalendario ? `, el ${cuando}` : ''}.`}
+                confirmarTexto={mostrarCalendario ? 'Agendar' : 'Enviar ahora'}
+                cargando={enviando}
+                onConfirmar={enviar}
+                onCancelar={() => setConfirmando(false)}
+            />
+        </>
     );
 }

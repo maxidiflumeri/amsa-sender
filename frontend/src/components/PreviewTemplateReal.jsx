@@ -1,258 +1,103 @@
-import React, { useEffect, useState } from 'react';
-import {
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    Button,
-    Typography,
-    Box,
-    CircularProgress,
-    IconButton,
-    Tooltip,
-    useTheme,
-    Fade,
-    Autocomplete,
-    TextField
-} from '@mui/material';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { useEffect, useState } from 'react';
+import { Alert, Autocomplete, Box, Button, CircularProgress, TextField, Typography } from '@mui/material';
+import { Copy } from 'lucide-react';
 import api from '../api/axios';
+import { mensajeDeError, useFeedback } from '../context/FeedbackContext';
+import { ResponsiveDialog, WaBurbuja, formatoWhatsApp } from './ui';
 
-const PreviewTemplateReal = ({ open, onClose, templateId }) => {
-    const theme = useTheme();
-    const commonFont = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+/**
+ * La plantilla con los datos reales del primer contacto de una campaña. Antes mostraba además un mensaje entrante
+ * inventado ("Hola, quería saber más sobre sus servicios") que parecía parte de la conversación real.
+ */
+export default function PreviewTemplateReal({ open, onClose, templateId }) {
+    const feedback = useFeedback();
     const [campañas, setCampañas] = useState([]);
     const [campañaId, setCampañaId] = useState('');
     const [mensaje, setMensaje] = useState('');
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState('');
-    const [copiado, setCopiado] = useState(false);
 
-    const obtenerCampañas = async () => {
-        try {
-            const res = await api.get('/whatsapp/campanias');
-            const ordenadas = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-            setCampañas(ordenadas);
-        } catch (err) {
-            console.error('Error cargando campañas:', err);
-        }
-    };
+    useEffect(() => {
+        if (!open) return;
+        setMensaje('');
+        setCampañaId('');
+        setError('');
+        api.get('/whatsapp/campanias')
+            .then((res) => setCampañas([...res.data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))))
+            .catch((err) => setError(mensajeDeError(err, 'No se pudieron cargar las campañas.')));
+    }, [open]);
 
-    const generarPreview = async () => {
-        if (!campañaId || !templateId) return;
+    // Al elegir la campaña se genera sola: un botón "Generar" de más era un paso sin sentido.
+    useEffect(() => {
+        if (!campañaId || !templateId) return undefined;
+        let vigente = true;
         setCargando(true);
         setMensaje('');
         setError('');
-        try {
-            const res = await api.post('/whatsapp/templates/preview-real', {
-                templateId,
-                campañaId
-            });
-            setMensaje(res.data.mensaje);
-        } catch (err) {
-            console.error('Error generando preview real:', err);
-            setError('Error al generar la vista previa con datos reales.');
-        } finally {
-            setCargando(false);
-        }
-    };
+        api.post('/whatsapp/templates/preview-real', { templateId, campañaId })
+            .then((res) => vigente && setMensaje(res.data.mensaje))
+            .catch((err) => vigente && setError(mensajeDeError(err, 'No se pudo generar la vista previa con datos reales.')))
+            .finally(() => vigente && setCargando(false));
+        return () => {
+            vigente = false;
+        };
+    }, [campañaId, templateId]);
 
-    const copiarAlPortapapeles = async () => {
+    const copiar = async () => {
         try {
             await navigator.clipboard.writeText(mensaje);
-            setCopiado(true);
-            setTimeout(() => setCopiado(false), 2000);
-        } catch (err) {
-            console.error('Error al copiar:', err);
+            feedback.exito('Mensaje copiado.');
+        } catch {
+            feedback.error('No se pudo copiar. Seleccioná el texto y copialo a mano.');
         }
-    };
-
-    const obtenerHoraActual = () => {
-        const now = new Date();
-        return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    };
-
-    useEffect(() => {
-        if (open) {
-            obtenerCampañas();
-            setMensaje('');
-            setCampañaId('');
-        }
-    }, [open]);
-
-    const parsearFormatoWhatsApp = (texto) => {
-        if (!texto) return '';
-
-        return texto
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
-            .replace(/_(.*?)_/g, '<em>$1</em>')
-            .replace(/~(.*?)~/g, '<s>$1</s>')
-            .replace(/`(.*?)`/g, '<code>$1</code>')
-            .replace(/\n/g, '<br />');
     };
 
     return (
-        <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-            <DialogTitle>Vista previa tipo WhatsApp</DialogTitle>
-            <DialogContent dividers>
+        <ResponsiveDialog
+            open={open}
+            onClose={onClose}
+            maxWidth="sm"
+            cerrarConFondo
+            title="Vista previa con datos reales"
+            actions={
+                <>
+                    {mensaje && (
+                        <Button onClick={copiar} startIcon={<Copy size={18} strokeWidth={1.75} aria-hidden />}>Copiar mensaje</Button>
+                    )}
+                    <Button variant="contained" onClick={onClose}>Cerrar</Button>
+                </>
+            }
+        >
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Autocomplete
                     fullWidth
-                    options={campañas.slice(0, 15)}// últimas 10 campañas
-                    getOptionLabel={(option) => option.nombre}
+                    options={campañas.slice(0, 15)}
+                    getOptionLabel={(o) => o.nombre}
+                    isOptionEqualToValue={(o, v) => o.id === v.id}
                     value={campañas.find((c) => c.id === campañaId) || null}
-                    onChange={(event, newValue) => {
-                        setCampañaId(newValue ? newValue.id : '');
-                    }}
+                    onChange={(_, nueva) => setCampañaId(nueva ? nueva.id : '')}
+                    noOptionsText="No hay campañas"
                     renderInput={(params) => (
-                        <TextField
-                            {...params}
-                            label="Seleccioná una campaña"
-                            variant="outlined"
-                            sx={{ mb: 3 }}
-                        />
+                        <TextField {...params} label="Campaña" helperText="Se usan los datos de su primer contacto." />
                     )}
-                    isOptionEqualToValue={(option, value) => option.id === value.id}
                 />
-                <Button
-                    variant="contained"
-                    fullWidth
-                    onClick={generarPreview}
-                    disabled={!campañaId}
-                    sx={{
-                        borderRadius: 2,
-                        fontFamily: commonFont,
-                        textTransform: 'none',
-                        fontSize: '0.9rem',
-                        backgroundColor: '#075E54',
-                        transition: 'all 0.3s ease',
-                        '&:hover': {
-                            backgroundColor: '#0b7b65',
-                            transform: 'scale(1.03)',
-                            boxShadow: 4,
-                        },
-                    }}
-                >
-                    Generar vista previa
-                </Button>
 
-                {cargando ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <CircularProgress />
-                    </Box>
-                ) : mensaje ? (
-                    <Box
-                        sx={{
-                            mt: 3,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 2,
-                            backgroundColor: theme.palette.mode === 'dark' ? '#1a1a1a' : '#e5ddd5',
-                            borderRadius: 2,
-                            p: 2,
-                            minHeight: 200
-                        }}
-                    >
-                        {/* Mensaje entrante simulado */}
-                        <Fade in={true} timeout={500}>
-                            <Box
-                                sx={{
-                                    backgroundColor: theme.palette.mode === 'dark' ? '#2a2f32' : '#fff',
-                                    color: theme.palette.mode === 'dark' ? '#e9edef' : '#000',
-                                    borderRadius: '16px',
-                                    px: 2,
-                                    py: 1.5,
-                                    maxWidth: '75%',
-                                    display: 'inline-block',
-                                    boxShadow: 2,
-                                    fontSize: '1rem',
-                                    fontFamily: commonFont,
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word'
-                                }}
-                            >
-                                Hola, quería saber más sobre sus servicios.
-                                <Box sx={{ fontSize: '0.75rem', color: '#aaa', textAlign: 'right', mt: 1 }}>
-                                    {obtenerHoraActual()}
-                                </Box>
-                            </Box>
-                        </Fade>
+                {error && <Alert severity="error">{error}</Alert>}
 
-                        {/* Mensaje saliente generado */}
-                        <Fade in={true} timeout={700}>
-                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
-                                <Box
-                                    sx={{
-                                        backgroundColor: theme.palette.mode === 'dark' ? '#005c4b' : '#dcf8c6',
-                                        color: theme.palette.mode === 'dark' ? '#fff' : '#000',
-                                        borderRadius: '16px',
-                                        px: 2,
-                                        py: 1.5,
-                                        maxWidth: '75%',
-                                        boxShadow: 3,
-                                        fontSize: '1rem',
-                                        fontFamily: commonFont,
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-word',
-                                        position: 'relative'
-                                    }}
-                                >
-                                    <span
-                                        dangerouslySetInnerHTML={{
-                                            __html: parsearFormatoWhatsApp(mensaje),
-                                        }}
-                                    />
-                                    <Box sx={{
-                                        fontSize: '0.75rem', color: theme.palette.mode === 'dark' ? '#ccd' : '#555'
-                                        , textAlign: 'right', mt: 1
-                                    }}>
-                                        {obtenerHoraActual()}
-                                    </Box>
-                                </Box>
-                                <Tooltip title={copiado ? "¡Copiado!" : "Copiar"}>
-                                    <IconButton
-                                        onClick={copiarAlPortapapeles}
-                                        sx={{
-                                            ml: 1,
-                                            mt: 'auto',
-                                            color: theme.palette.mode === 'dark' ? '#fff' : '#555'
-                                        }}
-                                    >
-                                        <ContentCopyIcon fontSize="small" />
-                                    </IconButton>
-                                </Tooltip>
-                            </Box>
-                        </Fade>
+                {cargando && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={28} /></Box>
+                )}
+
+                {!cargando && !mensaje && !error && (
+                    <Typography variant="body2" color="text.secondary">Elegí una campaña para ver cómo le llega el mensaje a su primer contacto.</Typography>
+                )}
+
+                {mensaje && (
+                    <Box sx={{ bgcolor: 'action.hover', borderRadius: 2, p: 2, display: 'flex', flexDirection: 'column' }}>
+                        <WaBurbuja direccion="saliente">{formatoWhatsApp(mensaje)}</WaBurbuja>
                     </Box>
-                ) : error ? (
-                    <Typography color="error">{error}</Typography>
-                ) : null}
-            </DialogContent>
-            <DialogActions>
-                <Button
-                    onClick={onClose}
-                    sx={{
-                        color: '#fff',
-                        borderRadius: 2,
-                        fontFamily: commonFont,
-                        textTransform: 'none',
-                        fontSize: '0.9rem',
-                        backgroundColor: '#075E54',
-                        transition: 'all 0.3s ease',
-                        '&:hover': {
-                            backgroundColor: '#0b7b65',
-                            transform: 'scale(1.03)',
-                            boxShadow: 4,
-                        },
-                    }}
-                >
-                    Cerrar
-                </Button>
-            </DialogActions>
-        </Dialog>
+                )}
+            </Box>
+        </ResponsiveDialog>
     );
-};
-
-export default PreviewTemplateReal;
+}

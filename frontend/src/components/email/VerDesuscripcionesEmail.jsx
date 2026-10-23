@@ -1,414 +1,245 @@
-// src/components/email/TabDesuscripciones.jsx
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-    Box,
-    Card,
-    CardHeader,
-    CardContent,
-    Stack,
-    TextField,
-    InputAdornment,
-    IconButton,
-    Tooltip,
-    Button,
-    Table,
-    TableHead,
-    TableRow,
-    TableCell,
-    TableBody,
-    TableContainer,
-    TablePagination,
-    LinearProgress,
-    Chip,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    FormControl,
-    FormLabel,
-    RadioGroup,
-    FormControlLabel,
-    Radio,
-    Grid,
-    Snackbar,
-    Alert,
-    Divider,
-    useMediaQuery
+    Box, Button, CircularProgress, FormControl, FormControlLabel, FormLabel, IconButton, InputAdornment, Radio, RadioGroup,
+    TablePagination, TextField,
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import AddIcon from '@mui/icons-material/Add';
-import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
-import CloseIcon from '@mui/icons-material/Close';
-import UnsubscribeIcon from '@mui/icons-material/Unsubscribe';
-
-// Si ya tenés un cliente axios con auth, reemplazá por tu import:
-// import { api } from '@/services/api';
+import { MailX, Plus, Search, Trash2, X } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import {
+    BloqueEstado, ConfirmDialog, DataTableResponsive, EmptyState, PageContainer, PageHeader, ResponsiveDialog, SectionCard, StatusChip,
+} from '../ui';
+import { REGEX_EMAIL } from '../plantillas/variablesEmail';
+
+// Los motivos y las fuentes que guarda el backend, en castellano. Lo que no está acá se muestra tal cual.
+const MOTIVO = { admin_add: 'Agregada por un operador', unsubscribe_link: 'Tocó el link de baja', user_request: 'Lo pidió el destinatario' };
+const FUENTE = { manual: 'Carga manual', link: 'Link del mail', webhook: 'Aviso del proveedor' };
+
+const fecha = (f) => (f ? new Date(f).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
 export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25 }) {
-    const isMobile = useMediaQuery('(max-width:768px)');
-    const isTablet = useMediaQuery('(max-width:1024px)');
+    const feedback = useFeedback();
+    const [params, setParams] = useSearchParams();
+    const busquedaUrl = params.get('q') ?? '';
 
     const [rows, setRows] = useState([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(pageSizeDefault);
-    const [query, setQuery] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [texto, setTexto] = useState(busquedaUrl);
+    const [loading, setLoading] = useState(true);
+    const [errorCarga, setErrorCarga] = useState(null);
 
-    const [snack, setSnack] = useState({ open: false, msg: '', sev: 'info' });
+    const [aEliminar, setAEliminar] = useState(null);
+    const [eliminando, setEliminando] = useState(false);
+    const [limpiarAbierto, setLimpiarAbierto] = useState(false);
+    const [totalGlobal, setTotalGlobal] = useState(null);
+    const [limpiando, setLimpiando] = useState(false);
 
-    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-    const [confirmClearAll, setConfirmClearAll] = useState(false);
-    const [openAdd, setOpenAdd] = useState(false);
-
+    const [agregarAbierto, setAgregarAbierto] = useState(false);
     const [addEmail, setAddEmail] = useState('');
-    const [addScope, setAddScope] = useState('global');
-    const [addCampaignId, setAddCampaignId] = useState('');
-    const [submitting, setSubmitting] = useState(false);
+    const [addAlcance, setAddAlcance] = useState('global');
+    const [addCampania, setAddCampania] = useState('');
+    const [errorAgregar, setErrorAgregar] = useState('');
+    const [guardando, setGuardando] = useState(false);
 
-    // debounce búsqueda
-    const debounceRef = useRef(null);
-    const [debouncedQuery, setDebouncedQuery] = useState('');
+    const opcionesTenant = tenantId ? { tenantId } : undefined;
 
+    // La búsqueda va a la URL con un retraso: no se pide al servidor en cada tecla.
     useEffect(() => {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-            setDebouncedQuery(query.trim());
+        const t = setTimeout(() => {
+            const q = texto.trim();
+            if (q === busquedaUrl) return;
+            const nuevo = new URLSearchParams(params);
+            if (q) nuevo.set('q', q);
+            else nuevo.delete('q');
+            setParams(nuevo, { replace: true });
             setPage(0);
         }, 350);
-        return () => debounceRef.current && clearTimeout(debounceRef.current);
-    }, [query]);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [texto]);
 
-    const fetchData = async () => {
+    const cargar = useCallback(async () => {
         setLoading(true);
+        setErrorCarga(null);
         try {
-            const params = { page, size: rowsPerPage };
-            if (debouncedQuery) params.q = debouncedQuery;
-            if (tenantId) params.tenantId = tenantId;
-
-            const { data } = await api.get('/email/desuscripciones/unsubscribes', { params });
+            const query = { page, size: rowsPerPage };
+            if (busquedaUrl) query.q = busquedaUrl;
+            if (tenantId) query.tenantId = tenantId;
+            const { data } = await api.get('/email/desuscripciones/unsubscribes', { params: query });
             setRows(data.items || []);
             setTotal(data.total ?? 0);
-        } catch (e) {
-            setSnack({
-                open: true,
-                msg: e?.response?.data?.message || 'Error al cargar desuscripciones',
-                sev: 'error',
-            });
+        } catch (err) {
+            setErrorCarga(mensajeDeError(err, 'No se pudieron cargar las desuscripciones.'));
         } finally {
             setLoading(false);
         }
-    };
+    }, [page, rowsPerPage, busquedaUrl, tenantId]);
 
-    useEffect(() => {
-        fetchData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, rowsPerPage, debouncedQuery]);
+    useEffect(() => { cargar(); }, [cargar]);
 
-    const onChangeQuery = (v) => setQuery(v);
-
-    const handleDelete = async (id) => {
+    const eliminar = async () => {
+        setEliminando(true);
         try {
-            await api.delete(`/email/desuscripciones/unsubscribes/${id}`, {
-                params: tenantId ? { tenantId } : undefined,
-            });
-            setSnack({ open: true, msg: 'Desuscripción eliminada', sev: 'success' });
-            const newCount = total - 1;
-            const newLastPage = Math.max(0, Math.ceil(newCount / rowsPerPage) - 1);
-            if (page > newLastPage) setPage(newLastPage);
-            await fetchData();
-        } catch (e) {
-            setSnack({
-                open: true,
-                msg: e?.response?.data?.message || 'Error eliminando desuscripción',
-                sev: 'error',
-            });
+            await api.delete(`/email/desuscripciones/unsubscribes/${aEliminar.id}`, { params: opcionesTenant });
+            feedback.exito(`Se quitó la baja de ${aEliminar.email}.`);
+            const ultimaPagina = Math.max(0, Math.ceil((total - 1) / rowsPerPage) - 1);
+            if (page > ultimaPagina) setPage(ultimaPagina);
+            setAEliminar(null);
+            await cargar();
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo quitar la baja.'));
         } finally {
-            setConfirmDeleteId(null);
+            setEliminando(false);
         }
     };
 
-    const handleClearAll = async () => {
+    // "Limpiar todas" vuelve a habilitar el envío a toda esa gente: se cuenta cuántas son antes de pedir confirmación
+    // (el total de la lista puede estar filtrado por la búsqueda).
+    const abrirLimpiar = async () => {
+        setTotalGlobal(null);
+        setLimpiarAbierto(true);
         try {
-            await api.delete('/email/desuscripciones/unsubscribes', {
-                params: tenantId ? { tenantId } : undefined,
-            });
-            setSnack({
-                open: true,
-                msg: 'Se limpiaron todas las desuscripciones',
-                sev: 'success',
-            });
+            const { data } = await api.get('/email/desuscripciones/unsubscribes', { params: { page: 0, size: 1, ...(tenantId ? { tenantId } : {}) } });
+            setTotalGlobal(data.total ?? 0);
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo contar las desuscripciones.'));
+            setLimpiarAbierto(false);
+        }
+    };
+
+    const limpiarTodas = async () => {
+        setLimpiando(true);
+        try {
+            await api.delete('/email/desuscripciones/unsubscribes', { params: opcionesTenant });
+            feedback.exito('Se quitaron todas las bajas.');
+            setLimpiarAbierto(false);
             setPage(0);
-            await fetchData();
-        } catch (e) {
-            setSnack({
-                open: true,
-                msg: e?.response?.data?.message || 'Error limpiando desuscripciones',
-                sev: 'error',
-            });
+            await cargar();
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudieron quitar las bajas.'));
         } finally {
-            setConfirmClearAll(false);
+            setLimpiando(false);
         }
     };
 
-    const handleAdd = async () => {
-        if (!addEmail.trim()) {
-            setSnack({ open: true, msg: 'Ingresá un email válido', sev: 'error' });
+    const cerrarAgregar = () => {
+        setAgregarAbierto(false);
+        setAddEmail('');
+        setAddAlcance('global');
+        setAddCampania('');
+        setErrorAgregar('');
+    };
+
+    const agregar = async () => {
+        const email = addEmail.trim();
+        if (!REGEX_EMAIL.test(email)) {
+            setErrorAgregar('Escribí un email válido, por ejemplo usuario@dominio.com.');
             return;
         }
-        if (addScope === 'campaign' && !addCampaignId.trim()) {
-            setSnack({ open: true, msg: 'Para "campaign" necesitás CampaignId', sev: 'error' });
+        if (addAlcance === 'campaign' && !addCampania.trim()) {
+            setErrorAgregar('Escribí el número de la campaña.');
             return;
         }
-
-        setSubmitting(true);
+        setGuardando(true);
+        setErrorAgregar('');
         try {
-            const body = {
-                email: addEmail.trim(),
-                scope: addScope,
-                reason: 'admin_add',
-                source: 'manual',
-                campaignId: addScope === 'campaign' ? addCampaignId.trim() : '',
-            };
-
-            await api.post('/email/desuscripciones/unsubscribes', body, {
-                params: tenantId ? { tenantId } : undefined,
-            });
-
-            setSnack({ open: true, msg: 'Desuscripción agregada', sev: 'success' });
-            setOpenAdd(false);
-            setAddEmail('');
-            setAddScope('global');
-            setAddCampaignId('');
+            await api.post(
+                '/email/desuscripciones/unsubscribes',
+                { email, scope: addAlcance, reason: 'admin_add', source: 'manual', campaignId: addAlcance === 'campaign' ? addCampania.trim() : '' },
+                { params: opcionesTenant },
+            );
+            feedback.exito(`${email} ya no va a recibir mails.`);
+            cerrarAgregar();
             setPage(0);
-            await fetchData();
-        } catch (e) {
-            setSnack({
-                open: true,
-                msg: e?.response?.data?.message || 'Error agregando desuscripción',
-                sev: 'error',
-            });
+            await cargar();
+        } catch (err) {
+            setErrorAgregar(mensajeDeError(err, 'No se pudo agregar la baja.'));
         } finally {
-            setSubmitting(false);
+            setGuardando(false);
         }
     };
+
+    const columnas = [
+        { key: 'email', label: 'Email', primary: true, render: (r) => <Box sx={{ fontWeight: 500, overflowWrap: 'anywhere' }}>{r.email}</Box> },
+        {
+            key: 'alcance',
+            label: 'Alcance',
+            secondary: true,
+            render: (r) => (r.scope === 'campaign'
+                ? <StatusChip tono="info" label={`Campaña ${r.campaignId || '—'}`} />
+                : <StatusChip tono="neutro" label="Global" />),
+        },
+        { key: 'reason', label: 'Motivo', render: (r) => MOTIVO[r.reason] ?? r.reason ?? '—' },
+        { key: 'source', label: 'Origen', hideBelow: 'lg', render: (r) => FUENTE[r.source] ?? r.source ?? '—' },
+        { key: 'createdAt', label: 'Fecha', render: (r) => fecha(r.createdAt) },
+    ];
 
     return (
-        <Card sx={{ my: 3 }} elevation={3}>
-            <CardHeader
-                avatar={<UnsubscribeIcon sx={{ fontSize: { xs: 26, md: 32 } }} />}
+        <PageContainer>
+            <PageHeader
                 title="Desuscripciones"
-                titleTypographyProps={{
-                    variant: isMobile ? 'h6' : 'h5',
-                    sx: {
-                        fontWeight: 'bold',
-                        fontSize: { xs: 20, sm: 22, md: 26 },
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                    },
-                }}
-                subheader="Listado de emails desuscriptos (globales y por campaña)"
-                subheaderTypographyProps={{
-                    sx: {
-                        display: { xs: 'none', sm: 'block' }, // 👈 oculto en XS
-                        whiteSpace: 'normal',
-                    },
-                }}
-                sx={{
-                    '& .MuiCardHeader-content': { minWidth: 0, gridArea: { xs: 'content' } },
-                    '& .MuiCardHeader-avatar': { gridArea: { xs: 'avatar' } },
-                    '& .MuiCardHeader-action': {
-                        gridArea: { xs: 'action' },
-                        alignSelf: { xs: 'stretch', sm: 'center' },
-                        ml: { xs: 0, sm: 1 },
-                        mt: { xs: 1, sm: 0 },
-                        width: { xs: '100%', sm: 'auto' },
-                    },
-                    display: { xs: 'grid', sm: 'flex' },              // 👈 grid en XS
-                    gridTemplateColumns: { xs: 'auto 1fr' },
-                    gridTemplateAreas: { xs: `"avatar content" "action action"` },
-                    alignItems: { xs: 'start', sm: 'center' },
-                    rowGap: { xs: 0.5, sm: 0 },
-                }}
-                action={
-                    <Stack
-                        direction="row"
-                        spacing={1}
-                        useFlexGap
-                        flexWrap="wrap"
-                        sx={{ width: { xs: '100%', sm: 'auto' } }}
-                    >
-                        <Tooltip title="Agregar desuscripción manual">
-                            <span>
-                                <Button
-                                    size="small"                // 👈 más compacto en móvil
-                                    fullWidth={isMobile}        // 👈 ocupa todo el ancho en XS
-                                    variant="contained"
-                                    sx={{
-                                        borderRadius: 2,
-                                        textTransform: 'none',
-                                        backgroundColor: '#075E54',
-                                        '&:hover': {
-                                            backgroundColor: '#0b7b65',
-                                            transform: { md: 'scale(1.03)' },
-                                            boxShadow: 4,
-                                        },
-                                    }}
-                                    startIcon={<AddIcon />}
-                                    onClick={() => setOpenAdd(true)}
-                                >
-                                    Agregar
-                                </Button>
-                            </span>
-                        </Tooltip>
-
-                        <Tooltip title="Limpiar todas las desuscripciones">
-                            <span>
-                                <Button
-                                    size="small"                // 👈 compacto
-                                    fullWidth={isMobile}        // 👈 ocupa todo el ancho en XS
-                                    variant="outlined"
-                                    color="error"
-                                    startIcon={<CleaningServicesIcon />}
-                                    onClick={() => setConfirmClearAll(true)}
-                                >
-                                    Limpiar todas
-                                </Button>
-                            </span>
-                        </Tooltip>
-                    </Stack>
+                subtitle="Las direcciones que no reciben más mails, de todas las campañas o de una sola."
+                breadcrumbs={migasDe('/email/desuscripciones')}
+                actions={
+                    <>
+                        <Button variant="outlined" color="error" startIcon={<Trash2 size={18} strokeWidth={1.75} aria-hidden />} onClick={abrirLimpiar} disabled={total === 0 && !busquedaUrl}>
+                            Limpiar todas
+                        </Button>
+                        <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={() => setAgregarAbierto(true)}>
+                            Agregar
+                        </Button>
+                    </>
                 }
             />
-            {/* Subheader solo XS para que no se corte */}
-            <Box
-                sx={{
-                    display: { xs: 'block', sm: 'none' },
-                    px: 2,
-                    mt: -0.5,
-                    mb: 1,
-                    color: 'text.secondary',
-                    fontSize: 14,
+
+            <TextField
+                size="small"
+                fullWidth
+                placeholder="Buscar por email"
+                value={texto}
+                onChange={(e) => setTexto(e.target.value)}
+                inputProps={{ 'aria-label': 'Buscar desuscripciones por email' }}
+                InputProps={{
+                    startAdornment: <InputAdornment position="start"><Search size={18} strokeWidth={1.75} aria-hidden /></InputAdornment>,
+                    endAdornment: texto ? (
+                        <InputAdornment position="end">
+                            <IconButton aria-label="Borrar la búsqueda" onClick={() => setTexto('')} sx={{ width: 44, height: 44, mr: -1 }}>
+                                <X size={18} strokeWidth={1.75} aria-hidden />
+                            </IconButton>
+                        </InputAdornment>
+                    ) : null,
                 }}
-            >
-                Listado de emails desuscriptos (globales y por campaña)
-            </Box>
-            <Divider />
-            <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                <Stack spacing={2}>
-                    <TextField
-                        fullWidth
-                        size={isMobile ? 'small' : 'medium'}
-                        placeholder="Buscar por email…"
-                        value={query}
-                        onChange={(e) => onChangeQuery(e.target.value)}
-                        InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon />
-                                </InputAdornment>
-                            ),
-                            endAdornment: query ? (
-                                <InputAdornment position="end">
-                                    <IconButton onClick={() => onChangeQuery('')}>
-                                        <CloseIcon />
-                                    </IconButton>
-                                </InputAdornment>
-                            ) : null,
-                        }}
+                sx={{ mb: 2, maxWidth: { sm: 400 } }}
+            />
+
+            {errorCarga ? (
+                <BloqueEstado estado="error" mensaje={errorCarga} onReintentar={cargar} />
+            ) : (
+                <SectionCard noPadding>
+                    <DataTableResponsive
+                        ariaLabel="Desuscripciones"
+                        columns={columnas}
+                        rows={rows}
+                        loading={loading}
+                        acciones={(r) => (
+                            <Button color="error" size="small" startIcon={<Trash2 size={16} strokeWidth={1.75} aria-hidden />} onClick={() => setAEliminar(r)} sx={{ minHeight: { xs: 44, md: 32 } }}>
+                                Quitar baja
+                            </Button>
+                        )}
+                        empty={
+                            <EmptyState
+                                compact
+                                icon={MailX}
+                                title={busquedaUrl ? 'No hay bajas con ese email' : 'Nadie se dio de baja'}
+                                description={busquedaUrl ? 'Probá con otra búsqueda.' : 'Cuando alguien toque «Desuscribirme» en un mail, aparece acá.'}
+                            />
+                        }
                     />
-
-                    <Box position="relative">
-                        {loading && <LinearProgress sx={{ position: 'absolute', top: -8, left: 0, right: 0, borderRadius: 1 }} />}
-
-                        {/* Contenedor con scroll horizontal y header sticky */}
-                        <TableContainer
-                            component={Box}
-                            sx={{
-                                overflowX: 'auto',
-                                borderRadius: 2,
-                                border: (theme) => `1px solid ${theme.palette.divider}`
-                            }}
-                        >
-                            <Table size={isMobile ? 'small' : 'small'} stickyHeader sx={{ minWidth: 800 }}>
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell sx={{ minWidth: 220 }}>Email</TableCell>
-                                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Scope</TableCell>
-                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Campaña</TableCell>
-                                        <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Motivo</TableCell>
-                                        <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Fuente</TableCell>
-                                        <TableCell sx={{ minWidth: 170 }}>Fecha</TableCell>
-                                        <TableCell align="right" sx={{ minWidth: 110 }}>Acciones</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {rows.length === 0 && !loading && (
-                                        <TableRow>
-                                            <TableCell colSpan={7} align="center">
-                                                No hay desuscripciones.
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-
-                                    {rows.map((r) => (
-                                        <TableRow key={r.id} hover>
-                                            <TableCell sx={{ maxWidth: { xs: 260, sm: 'unset' } }}>
-                                                <Box sx={{ fontWeight: 500, wordBreak: 'break-all' }}>{r.email}</Box>
-
-                                                {/* Sub-info compacta solo en mobile cuando ocultamos columnas */}
-                                                <Box sx={{ display: { xs: 'block', sm: 'none' }, mt: 0.5 }}>
-                                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
-                                                        <Chip size="small" variant="outlined" label={r.scope === 'campaign' ? 'campaign' : 'global'} />
-                                                        {r.scope === 'campaign' && (
-                                                            <Chip size="small" variant="outlined" label={`Campaña ${r.campaignId || '—'}`} />
-                                                        )}
-                                                    </Stack>
-                                                    <Box sx={{ mt: 0.25, color: 'text.secondary', fontSize: 12 }}>
-                                                        {new Date(r.createdAt).toLocaleString('es-AR')}
-                                                    </Box>
-                                                </Box>
-                                            </TableCell>
-
-                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                                                <Chip size="small" label={r.scope === 'campaign' ? 'campaign' : 'global'} variant="outlined" />
-                                            </TableCell>
-
-                                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {r.scope === 'campaign' ? (r.campaignId || '—') : '—'}
-                                            </TableCell>
-
-                                            <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {r.reason || '—'}
-                                            </TableCell>
-
-                                            <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' }, maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {r.source || '—'}
-                                            </TableCell>
-
-                                            <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                                                {new Date(r.createdAt).toLocaleString('es-AR')}
-                                            </TableCell>
-
-                                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                                                <Tooltip title="Eliminar desuscripción">
-                                                    <IconButton
-                                                        color="error"
-                                                        size={isMobile ? 'small' : 'medium'}
-                                                        onClick={() => setConfirmDeleteId(r.id)}
-                                                    >
-                                                        <DeleteOutlineIcon />
-                                                    </IconButton>
-                                                </Tooltip>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-
+                    {total > 0 && (
                         <TablePagination
                             component="div"
                             count={total}
@@ -419,123 +250,96 @@ export default function VerDesuscripcionesEmail({ tenantId, pageSizeDefault = 25
                                 setRowsPerPage(parseInt(e.target.value, 10));
                                 setPage(0);
                             }}
-                            rowsPerPageOptions={isMobile ? [10, 25, 50] : [10, 25, 50, 100]}
-                            labelRowsPerPage="Filas por página"
-                            sx={{
-                                '.MuiTablePagination-toolbar': { px: { xs: 0.5, sm: 2 } },
-                                '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
-                                    fontSize: { xs: 12, sm: 14 }
-                                }
-                            }}
+                            rowsPerPageOptions={[10, 25, 50, 100]}
+                            labelRowsPerPage="Filas"
+                            sx={{ borderTop: 1, borderColor: 'divider', '.MuiTablePagination-toolbar': { px: { xs: 0.5, sm: 2 } } }}
                         />
-                    </Box>
-                </Stack>
-            </CardContent>
+                    )}
+                </SectionCard>
+            )}
 
-            {/* Dialog Eliminar */}
-            <Dialog
-                open={!!confirmDeleteId}
-                onClose={() => setConfirmDeleteId(null)}
+            <ConfirmDialog
+                open={!!aEliminar}
+                peligro
+                cargando={eliminando}
+                titulo="¿Quitar la baja?"
+                mensaje={<><strong>{aEliminar?.email}</strong> va a volver a recibir mails{aEliminar?.scope === 'campaign' ? ` de la campaña ${aEliminar?.campaignId ?? ''}` : ' de todas las campañas'}.</>}
+                confirmarTexto="Quitar baja"
+                onConfirmar={eliminar}
+                onCancelar={() => setAEliminar(null)}
+            />
+
+            <ConfirmDialog
+                open={limpiarAbierto}
+                peligro
+                cargando={limpiando}
+                titulo="¿Quitar todas las bajas?"
+                mensaje={
+                    totalGlobal === null
+                        ? 'Contando…'
+                        : <>Se van a quitar <strong>{totalGlobal.toLocaleString('es-AR')}</strong> {totalGlobal === 1 ? 'baja' : 'bajas'}. Esas personas pidieron no recibir más mails y <strong>van a volver a recibirlos</strong> en la próxima campaña. No se puede deshacer.</>
+                }
+                textoATipear="limpiar"
+                confirmarTexto="Quitar todas"
+                onConfirmar={limpiarTodas}
+                onCancelar={() => setLimpiarAbierto(false)}
+            />
+
+            <ResponsiveDialog
+                open={agregarAbierto}
+                onClose={cerrarAgregar}
                 maxWidth="xs"
-                fullWidth
-                PaperProps={{ sx: { maxHeight: { xs: '90vh', md: '80vh' } } }}
+                sucio={!!addEmail.trim() && !guardando}
+                title="Agregar una baja"
+                actions={
+                    <>
+                        <Button onClick={cerrarAgregar} disabled={guardando}>Cancelar</Button>
+                        <Button variant="contained" onClick={agregar} disabled={guardando} startIcon={guardando ? <CircularProgress size={16} color="inherit" /> : undefined}>
+                            Guardar
+                        </Button>
+                    </>
+                }
             >
-                <DialogTitle>Eliminar desuscripción</DialogTitle>
-                <DialogContent>¿Seguro que querés eliminar esta desuscripción?</DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setConfirmDeleteId(null)}>Cancelar</Button>
-                    <Button color="error" variant="contained" onClick={() => confirmDeleteId && handleDelete(confirmDeleteId)}>
-                        Eliminar
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <TextField
+                        fullWidth
+                        autoFocus
+                        label="Email"
+                        type="email"
+                        value={addEmail}
+                        onChange={(e) => {
+                            setAddEmail(e.target.value);
+                            setErrorAgregar('');
+                        }}
+                        placeholder="usuario@dominio.com"
+                        inputProps={{ autoCapitalize: 'off', inputMode: 'email' }}
+                        error={!!errorAgregar && !REGEX_EMAIL.test(addEmail.trim())}
+                        helperText={errorAgregar && !REGEX_EMAIL.test(addEmail.trim()) ? errorAgregar : undefined}
+                    />
 
-            {/* Dialog Limpiar todas */}
-            <Dialog
-                open={confirmClearAll}
-                onClose={() => setConfirmClearAll(false)}
-                maxWidth="xs"
-                fullWidth
-                PaperProps={{ sx: { maxHeight: { xs: '90vh', md: '80vh' } } }}
-            >
-                <DialogTitle>Limpiar todas las desuscripciones</DialogTitle>
-                <DialogContent>Esto eliminará todas las desuscripciones del tenant actual. ¿Deseás continuar?</DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setConfirmClearAll(false)}>Cancelar</Button>
-                    <Button color="error" variant="contained" onClick={handleClearAll}>
-                        Limpiar
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                    <FormControl>
+                        <FormLabel id="alcance-baja">Alcance</FormLabel>
+                        <RadioGroup aria-labelledby="alcance-baja" value={addAlcance} onChange={(_, v) => setAddAlcance(v)}>
+                            <FormControlLabel value="global" control={<Radio />} label="Global: no recibe mails de ninguna campaña" sx={{ minHeight: 44 }} />
+                            <FormControlLabel value="campaign" control={<Radio />} label="Una campaña" sx={{ minHeight: 44 }} />
+                        </RadioGroup>
+                    </FormControl>
 
-            {/* Dialog Agregar manual */}
-            <Dialog
-                open={openAdd}
-                onClose={() => setOpenAdd(false)}
-                maxWidth="sm"
-                fullWidth
-                PaperProps={{ sx: { maxHeight: { xs: '92vh', md: '85vh' } } }}
-            >
-                <DialogTitle>Agregar desuscripción</DialogTitle>
-
-                <DialogContent sx={{ pt: 1 }}>
-                    <Stack spacing={2}>
-                        {/* Fila 1: Email full width */}
+                    {addAlcance === 'campaign' && (
                         <TextField
                             fullWidth
-                            label="Email"
-                            value={addEmail}
-                            onChange={(e) => setAddEmail(e.target.value)}
-                            placeholder="usuario@dominio.com"
-                            autoFocus
-                            size={isMobile ? 'small' : 'medium'}
+                            label="Número de campaña"
+                            value={addCampania}
+                            onChange={(e) => setAddCampania(e.target.value)}
+                            inputProps={{ inputMode: 'numeric' }}
                         />
+                    )}
 
-                        {/* Fila 2: Scope centrado */}
-                        <FormControl sx={{ width: '100%' }}>
-                            <FormLabel sx={{ textAlign: 'center', mb: 1 }}>Scope</FormLabel>
-                            <RadioGroup
-                                row
-                                value={addScope}
-                                onChange={(_, v) => setAddScope(v)}
-                                sx={{ justifyContent: 'center' }}
-                            >
-                                <FormControlLabel value="global" control={<Radio />} label="Global" />
-                                <FormControlLabel value="campaign" control={<Radio />} label="Por campaña" />
-                            </RadioGroup>
-                        </FormControl>
-
-                        {/* Fila 3 (opcional): Campaign ID full width */}
-                        {addScope === 'campaign' && (
-                            <TextField
-                                fullWidth
-                                label="Campaign ID"
-                                value={addCampaignId}
-                                onChange={(e) => setAddCampaignId(e.target.value)}
-                                size={isMobile ? 'small' : 'medium'}
-                            />
-                        )}
-                    </Stack>
-                </DialogContent>
-
-                <DialogActions sx={{ px: { xs: 2, md: 3 }, pb: { xs: 2, md: 3 } }}>
-                    <Button onClick={() => setOpenAdd(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleAdd} disabled={submitting}>
-                        {submitting ? 'Guardando…' : 'Guardar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            <Snackbar
-                open={snack.open}
-                autoHideDuration={3000}
-                onClose={() => setSnack((s) => ({ ...s, open: false }))}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert severity={snack.sev} sx={{ width: '100%' }}>
-                    {snack.msg}
-                </Alert>
-            </Snackbar>
-        </Card>
+                    {errorAgregar && REGEX_EMAIL.test(addEmail.trim()) && (
+                        <Box role="alert" sx={{ color: 'error.main', fontSize: 14 }}>{errorAgregar}</Box>
+                    )}
+                </Box>
+            </ResponsiveDialog>
+        </PageContainer>
     );
 }

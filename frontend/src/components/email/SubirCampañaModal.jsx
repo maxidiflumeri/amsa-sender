@@ -1,84 +1,52 @@
-import React, { useState } from 'react';
-import {
-    Box,
-    Button,
-    TextField,
-    Typography,
-    CircularProgress
-} from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import SubirCsvDialog from '../campanias/waweb/SubirCsvDialog';
 
-export default function SubirCampaniaEmail({ onUploadSuccess }) {
-    const [nombre, setNombre] = useState('');
-    const [archivo, setArchivo] = useState(null);
-    const [subiendo, setSubiendo] = useState(false);
-    const [error, setError] = useState('');
+// "Nueva campaña" de Email. A diferencia de WhatsApp Web, el archivo va separado por tabulaciones y el email se
+// lee de la columna `mail`.
 
-    const handleArchivo = (e) => {
-        setArchivo(e.target.files[0]);
-    };
+const code = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.9em' };
 
-    const handleUpload = async () => {
-        if (!nombre || !archivo) {
-            setError('Debe completar el nombre y subir un archivo CSV');
-            return;
+export default function SubirCampañaModal({ open, onClose, onUploadSuccess }) {
+    const feedback = useFeedback();
+    const { usuario, user } = useAuth();
+
+    const subir = async (nombre, archivo) => {
+        const userId = usuario?.id ?? user?.sub;
+        if (userId === undefined || userId === null) {
+            feedback.error('No se pudo identificar tu usuario. Volvé a iniciar sesión.');
+            throw new Error('sin usuario');
         }
-
+        const formData = new FormData();
+        formData.append('file', archivo);
+        formData.append('nombre', nombre);
+        formData.append('userId', userId);
         try {
-            const user = JSON.parse(localStorage.getItem('usuario'));
-            const formData = new FormData();
-            formData.append('file', archivo);
-            formData.append('nombre', nombre);
-            formData.append('userId', user.id);
-            setSubiendo(true);
-            setError(null);
             await api.post('/email/campanias', formData);
-            onUploadSuccess();
-        } catch (err) {
-            console.error('Error al subir campaña:', err);
-            setError('Hubo un error al procesar el CSV o al subir la campaña.');
-        } finally {
-            setSubiendo(false);
+        } catch (error) {
+            feedback.error(mensajeDeError(error, 'No se pudo crear la campaña. Revisá que el archivo tenga la columna mail.'));
+            throw error;
         }
+        onUploadSuccess?.();
     };
 
     return (
-        <>
-
-            <Box display="flex" flexDirection="column" gap={2}>
-                <TextField
-                    label="Nombre de la campaña"
-                    value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
-                    fullWidth
-                />
-                <Button
-                    variant="outlined"
-                    component="label"
-                >
-                    Seleccionar archivo CSV
-                    <input
-                        type="file"
-                        accept=".csv"
-                        hidden
-                        onChange={handleArchivo}
-                    />
-                </Button>
-                {archivo && <Typography variant="body2">Archivo seleccionado: {archivo.name}</Typography>}
-
-                {error && <Typography color="error">{error}</Typography>}
-
-                <Box textAlign="center">
-                    <Button
-                        variant="contained"
-                        onClick={handleUpload}
-                        disabled={subiendo}
-                        sx={{ backgroundColor: '#075E54', '&:hover': { backgroundColor: '#0b7b65' } }}
-                    >
-                        {subiendo ? <CircularProgress size={24} /> : 'Crear campaña'}
-                    </Button>
+        <SubirCsvDialog
+            open={open}
+            onClose={onClose}
+            onSubir={subir}
+            ayuda={(
+                <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Formato del archivo</Typography>
+                    <Typography variant="body2" component="div">
+                        Texto separado por tabulaciones, con una fila de encabezados. La columna <Box component="code" sx={code}>mail</Box> es
+                        obligatoria. Si trae <Box component="code" sx={code}>id_contacto</Box>, la campaña se vincula con el deudor. Las demás columnas quedan
+                        como variables que la plantilla puede usar. Las filas sin mail se descartan.
+                    </Typography>
                 </Box>
-            </Box>
-        </>
+            )}
+        />
     );
 }

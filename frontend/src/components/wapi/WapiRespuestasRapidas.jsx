@@ -1,497 +1,376 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Box, Paper, Typography, Button, IconButton, Tooltip,
-    Table, TableHead, TableRow, TableCell, TableBody, Chip,
-    Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-    CircularProgress, Alert, Snackbar, Stack, Divider, Switch,
-    FormControlLabel, ToggleButton, ToggleButtonGroup, useMediaQuery,
+    Alert, Autocomplete, Box, Button, Chip, CircularProgress, FormControlLabel, IconButton, InputAdornment, Switch, TextField, Tooltip, Typography,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
-import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import FormatBoldIcon from '@mui/icons-material/FormatBold';
-import FormatItalicIcon from '@mui/icons-material/FormatItalic';
-import StrikethroughSIcon from '@mui/icons-material/StrikethroughS';
-import CodeIcon from '@mui/icons-material/Code';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import EditNoteIcon from '@mui/icons-material/EditNote';
-import CloseIcon from '@mui/icons-material/Close';
+import { Bold, Code, Italic, MessageSquareText, Pencil, Plus, Search, Strikethrough, Trash2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { mensajeDeError, useFeedback } from '../../context/FeedbackContext';
+import { migasDe } from '../layout/navConfig';
+import {
+    BloqueEstado, ConfirmDialog, DataTableResponsive, EmptyState, PageContainer, PageHeader, ResponsiveDialog, SectionCard, StatusChip,
+    WaBurbuja, formatoWhatsApp,
+} from '../ui';
+import MenuMas from '../plantillas/MenuMas';
 
-// Renderiza markdown de WhatsApp a HTML para el preview
-function renderWaMarkdown(text) {
-    if (!text) return '';
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/```([\s\S]*?)```/g, '<code style="font-family:monospace;background:rgba(0,0,0,0.08);padding:1px 4px;border-radius:3px">$1</code>')
-        .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
-        .replace(/_(.*?)_/g, '<em>$1</em>')
-        .replace(/~(.*?)~/g, '<del>$1</del>')
-        .replace(/\n/g, '<br/>');
-}
+const FORMULARIO_VACIO = { titulo: '', contenido: '', tags: [], activo: true };
 
-const EMPTY_FORM = { titulo: '', contenido: '', tags: [], activo: true };
+const FORMATOS = [
+    { id: 'bold', Icono: Bold, etiqueta: 'Negrita (*texto*)', envolver: (t) => `*${t}*` },
+    { id: 'italic', Icono: Italic, etiqueta: 'Cursiva (_texto_)', envolver: (t) => `_${t}_` },
+    { id: 'strike', Icono: Strikethrough, etiqueta: 'Tachado (~texto~)', envolver: (t) => `~${t}~` },
+    { id: 'mono', Icono: Code, etiqueta: 'Monoespaciado (```texto```)', envolver: (t) => `\`\`\`${t}\`\`\`` },
+];
 
 export default function WapiRespuestasRapidas() {
-    const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('md')); // tabla → cards
-    const isSmall = useMediaQuery(theme.breakpoints.down('sm'));  // dialogs fullscreen
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [snack, setSnack] = useState('');
+    const feedback = useFeedback();
+    const [params, setParams] = useSearchParams();
+    const busqueda = params.get('q') ?? '';
+    const filtroTag = params.get('tag') ?? '';
 
-    const [dialog, setDialog] = useState(false);
-    const [editando, setEditando] = useState(null); // null = nuevo
-    const [form, setForm] = useState(EMPTY_FORM);
-    const [tagInput, setTagInput] = useState('');
+    const [items, setItems] = useState([]);
+    const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState(null);
+
+    const [abierto, setAbierto] = useState(false);
+    const [editando, setEditando] = useState(null);
+    const [form, setForm] = useState(FORMULARIO_VACIO);
+    const [formInicial, setFormInicial] = useState(FORMULARIO_VACIO);
+    const [tagTexto, setTagTexto] = useState('');
     const [guardando, setGuardando] = useState(false);
-    const [confirmarEliminar, setConfirmarEliminar] = useState(null);
+    // Dentro del diálogo: antes el error de guardado quedaba detrás, en la página.
+    const [errorDialogo, setErrorDialogo] = useState('');
+    const [aEliminar, setAEliminar] = useState(null);
     const [eliminando, setEliminando] = useState(false);
-    const [vistaEditor, setVistaEditor] = useState('editar'); // 'editar' | 'preview'
 
     const textareaRef = useRef(null);
 
-    // Tags únicos de todos los items para filtro
-    const todosLosTags = [...new Set(items.flatMap(i => i.tags ?? []))].sort();
-    const [filtroTag, setFiltroTag] = useState('');
+    const todosLosTags = useMemo(() => [...new Set(items.flatMap((i) => i.tags ?? []))].sort(), [items]);
 
-    const cargar = async () => {
-        setLoading(true);
+    const cargar = useCallback(async () => {
+        setCargando(true);
+        setErrorCarga(null);
         try {
             const { data } = await api.get('/wapi/respuestas-rapidas/todas');
-            setItems(data);
-        } catch {
-            setError('Error cargando plantillas rápidas');
+            setItems(Array.isArray(data) ? data : []);
+        } catch (err) {
+            setErrorCarga(mensajeDeError(err, 'No se pudieron cargar las respuestas rápidas.'));
         } finally {
-            setLoading(false);
+            setCargando(false);
         }
+    }, []);
+
+    useEffect(() => { cargar(); }, [cargar]);
+
+    const cambiarParam = (clave, valor) => {
+        const nuevo = new URLSearchParams(params);
+        if (valor) nuevo.set(clave, valor);
+        else nuevo.delete(clave);
+        setParams(nuevo, { replace: true });
     };
 
-    useEffect(() => { cargar(); }, []);
-
-    const abrirCrear = () => {
-        setEditando(null);
-        setForm(EMPTY_FORM);
-        setTagInput('');
-        setVistaEditor('editar');
-        setDialog(true);
-    };
-
-    const abrirEditar = (item) => {
+    const abrir = (item) => {
+        const base = item
+            ? { titulo: item.titulo, contenido: item.contenido, tags: item.tags ?? [], activo: item.activo }
+            : FORMULARIO_VACIO;
         setEditando(item);
-        setForm({ titulo: item.titulo, contenido: item.contenido, tags: item.tags ?? [], activo: item.activo });
-        setTagInput('');
-        setVistaEditor('editar');
-        setDialog(true);
+        setForm(base);
+        setFormInicial(base);
+        setTagTexto('');
+        setErrorDialogo('');
+        setAbierto(true);
     };
 
-    const cerrarDialog = () => {
-        setDialog(false);
+    const cerrar = () => {
+        setAbierto(false);
         setEditando(null);
     };
 
-    // Insertar formato en el textarea
-    const insertarFormato = (tipo) => {
+    const sucio = JSON.stringify(form) !== JSON.stringify(formInicial) || tagTexto.trim() !== '';
+
+    const aplicarFormato = (envolver) => {
         const el = textareaRef.current;
         if (!el) return;
-        const start = el.selectionStart;
-        const end = el.selectionEnd;
+        const start = el.selectionStart ?? form.contenido.length;
+        const end = el.selectionEnd ?? form.contenido.length;
         const sel = form.contenido.substring(start, end) || 'texto';
-        const envoltura = {
-            bold: `*${sel}*`,
-            italic: `_${sel}_`,
-            strike: `~${sel}~`,
-            mono: `\`\`\`${sel}\`\`\``,
-        }[tipo];
-        const nuevo = form.contenido.substring(0, start) + envoltura + form.contenido.substring(end);
-        setForm(f => ({ ...f, contenido: nuevo }));
-        // Reposicionar cursor
+        const envuelto = envolver(sel);
+        setForm((f) => ({ ...f, contenido: f.contenido.substring(0, start) + envuelto + f.contenido.substring(end) }));
         setTimeout(() => {
             el.focus();
-            const pos = start + envoltura.length;
-            el.setSelectionRange(pos, pos);
+            el.setSelectionRange(start + envuelto.length, start + envuelto.length);
         }, 0);
     };
 
-    const agregarTag = (e) => {
-        if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
-            e.preventDefault();
-            const tag = tagInput.trim().toLowerCase();
-            if (!form.tags.includes(tag)) {
-                setForm(f => ({ ...f, tags: [...f.tags, tag] }));
-            }
-            setTagInput('');
-        }
+    // Los tags se agregan con Enter, con coma o con el botón: en algunos teclados de Android Enter y la coma no llegan
+    // como tecla, así que el botón es el camino que siempre anda.
+    const agregarTags = (texto) => {
+        const nuevos = String(texto).split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+        if (nuevos.length === 0) return;
+        setForm((f) => ({ ...f, tags: [...new Set([...f.tags, ...nuevos])] }));
+        setTagTexto('');
     };
-
-    const quitarTag = (tag) => setForm(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }));
 
     const guardar = async () => {
         if (!form.titulo.trim() || !form.contenido.trim()) return;
+        // Un tag escrito y no agregado se agrega solo, para que no se pierda al guardar.
+        const tags = [...new Set([...form.tags, ...tagTexto.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)])];
+        const payload = { ...form, tags };
         setGuardando(true);
+        setErrorDialogo('');
         try {
             if (editando) {
-                await api.put(`/wapi/respuestas-rapidas/${editando.id}`, form);
-                setSnack('Plantilla actualizada.');
+                await api.put(`/wapi/respuestas-rapidas/${editando.id}`, payload);
+                feedback.exito('Respuesta rápida actualizada.');
             } else {
-                await api.post('/wapi/respuestas-rapidas', form);
-                setSnack('Plantilla creada.');
+                await api.post('/wapi/respuestas-rapidas', payload);
+                feedback.exito('Respuesta rápida creada.');
             }
-            cerrarDialog();
+            cerrar();
             cargar();
-        } catch {
-            setError('Error al guardar la plantilla.');
+        } catch (err) {
+            setErrorDialogo(mensajeDeError(err, 'No se pudo guardar la respuesta rápida.'));
         } finally {
             setGuardando(false);
         }
     };
 
     const eliminar = async () => {
-        if (!confirmarEliminar) return;
         setEliminando(true);
         try {
-            await api.delete(`/wapi/respuestas-rapidas/${confirmarEliminar.id}`);
-            setSnack('Plantilla eliminada.');
-            setConfirmarEliminar(null);
+            await api.delete(`/wapi/respuestas-rapidas/${aEliminar.id}`);
+            feedback.exito(`Se eliminó «${aEliminar.titulo}».`);
+            setAEliminar(null);
             cargar();
-        } catch {
-            setError('Error al eliminar.');
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo eliminar la respuesta rápida.'));
         } finally {
             setEliminando(false);
         }
     };
 
-    const itemsFiltrados = filtroTag
-        ? items.filter(i => (i.tags ?? []).includes(filtroTag))
-        : items;
+    const visibles = useMemo(() => {
+        const q = busqueda.trim().toLowerCase();
+        return items.filter((i) => {
+            if (filtroTag && !(i.tags ?? []).includes(filtroTag)) return false;
+            if (!q) return true;
+            return i.titulo?.toLowerCase().includes(q) || i.contenido?.toLowerCase().includes(q) || (i.tags ?? []).some((t) => t.includes(q));
+        });
+    }, [items, busqueda, filtroTag]);
+
+    const chipsTags = (tags) => (
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+            {(tags ?? []).map((t) => <Chip key={t} label={t} size="small" sx={{ fontSize: 12 }} />)}
+        </Box>
+    );
+
+    const columnas = [
+        { key: 'titulo', label: 'Título', primary: true, width: 220, render: (i) => <Box sx={{ fontWeight: 600 }}>{i.titulo}</Box> },
+        {
+            key: 'contenido',
+            label: 'Contenido',
+            secondary: true,
+            render: (i) => (
+                <Typography variant="body2" color="text.secondary" sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', whiteSpace: 'pre-line' }}>
+                    {i.contenido}
+                </Typography>
+            ),
+        },
+        { key: 'tags', label: 'Tags', width: 200, render: (i) => (i.tags?.length ? chipsTags(i.tags) : '—') },
+        { key: 'activo', label: 'Estado', width: 110, render: (i) => <StatusChip label={i.activo ? 'Activa' : 'Inactiva'} tono={i.activo ? 'ok' : 'neutro'} /> },
+    ];
 
     return (
-        <Box py={3}>
-            <Paper elevation={3} sx={{ p: { xs: 2, md: 4 } }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
-                    <Box>
-                        <Typography variant="h5" fontWeight={700}>Plantillas rápidas</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            Respuestas predefinidas para acelerar la atención en el inbox. Usá <strong>/</strong> en el chat para invocarlas.
-                        </Typography>
-                    </Box>
-                    <Button variant="contained" startIcon={<AddIcon />} onClick={abrirCrear}>
-                        Nueva plantilla
+        <PageContainer>
+            <PageHeader
+                title="Respuestas rápidas"
+                subtitle={<>Mensajes listos para contestar más rápido en Conversaciones. Escribí <strong>/</strong> en el chat para elegir una.</>}
+                breadcrumbs={migasDe('/config/respuestas-rapidas')}
+                actions={
+                    <Button variant="contained" startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden />} onClick={() => abrir(null)}>
+                        Nueva respuesta
                     </Button>
-                </Box>
+                }
+            />
 
-                {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
-
-                {/* Filtro por tags */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2 }}>
+                <TextField
+                    size="small"
+                    fullWidth
+                    placeholder="Buscar por título, texto o tag"
+                    value={busqueda}
+                    onChange={(e) => cambiarParam('q', e.target.value)}
+                    inputProps={{ 'aria-label': 'Buscar respuestas rápidas' }}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><Search size={18} strokeWidth={1.75} aria-hidden /></InputAdornment> }}
+                    sx={{ maxWidth: { sm: 400 } }}
+                />
                 {todosLosTags.length > 0 && (
-                    <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Filtrar:</Typography>
-                        <Chip
-                            label="Todos"
-                            size="small"
-                            color={!filtroTag ? 'primary' : 'default'}
-                            onClick={() => setFiltroTag('')}
-                            sx={{ cursor: 'pointer' }}
-                        />
-                        {todosLosTags.map(tag => (
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <Chip label="Todas" color={!filtroTag ? 'primary' : 'default'} onClick={() => cambiarParam('tag', '')} sx={{ fontSize: 13, height: { xs: 36, md: 28 } }} />
+                        {todosLosTags.map((t) => (
                             <Chip
-                                key={tag}
-                                label={tag}
-                                size="small"
-                                color={filtroTag === tag ? 'primary' : 'default'}
-                                onClick={() => setFiltroTag(filtroTag === tag ? '' : tag)}
-                                sx={{ cursor: 'pointer' }}
+                                key={t}
+                                label={t}
+                                color={filtroTag === t ? 'primary' : 'default'}
+                                onClick={() => cambiarParam('tag', filtroTag === t ? '' : t)}
+                                sx={{ fontSize: 13, height: { xs: 36, md: 28 } }}
                             />
                         ))}
                     </Box>
                 )}
+            </Box>
 
-                {loading ? (
-                    <Box display="flex" justifyContent="center" p={4}><CircularProgress /></Box>
-                ) : itemsFiltrados.length === 0 ? (
-                    <Box textAlign="center" py={6} color="text.secondary">
-                        <Typography>No hay plantillas{filtroTag ? ` con tag "${filtroTag}"` : ''}.</Typography>
-                    </Box>
-                ) : isMobile ? (
-                    /* Vista mobile: cards */
-                    <Stack spacing={1.5}>
-                        {itemsFiltrados.map(item => (
-                            <Paper
-                                key={item.id}
-                                variant="outlined"
-                                sx={{ p: 1.5, borderRadius: 2 }}
-                            >
-                                <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={1}>
-                                    <Box flex={1} minWidth={0}>
-                                        <Box display="flex" alignItems="center" gap={1} mb={0.5} flexWrap="wrap">
-                                            <Typography variant="body2" fontWeight={600} noWrap>
-                                                {item.titulo}
-                                            </Typography>
-                                            <Chip
-                                                label={item.activo ? 'Activa' : 'Inactiva'}
-                                                size="small"
-                                                color={item.activo ? 'success' : 'default'}
-                                                sx={{ height: 18, fontSize: 10 }}
-                                            />
-                                        </Box>
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                            sx={{
-                                                display: '-webkit-box',
-                                                WebkitLineClamp: 2,
-                                                WebkitBoxOrient: 'vertical',
-                                                overflow: 'hidden',
-                                                fontFamily: 'inherit',
-                                            }}
-                                        >
-                                            {item.contenido}
-                                        </Typography>
-                                        {(item.tags ?? []).length > 0 && (
-                                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.75 }}>
-                                                {(item.tags ?? []).map(tag => (
-                                                    <Chip key={tag} label={tag} size="small" sx={{ height: 18, fontSize: 10 }} />
-                                                ))}
-                                            </Box>
-                                        )}
-                                    </Box>
-                                    <Box display="flex" flexDirection="column" alignItems="flex-end" flexShrink={0}>
-                                        <Tooltip title="Editar">
-                                            <IconButton size="small" onClick={() => abrirEditar(item)}>
-                                                <EditIcon fontSize="small" />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Eliminar">
-                                            <IconButton size="small" color="error" onClick={() => setConfirmarEliminar(item)}>
-                                                <DeleteIcon fontSize="small" />
-                                            </IconButton>
-                                        </Tooltip>
-                                    </Box>
-                                </Box>
-                            </Paper>
-                        ))}
-                    </Stack>
-                ) : (
-                    /* Vista desktop: tabla */
-                    <Box sx={{ overflowX: 'auto' }}>
-                    <Table size="small">
-                        <TableHead>
-                            <TableRow>
-                                <TableCell width={200}><strong>Título</strong></TableCell>
-                                <TableCell><strong>Contenido</strong></TableCell>
-                                <TableCell width={180}><strong>Tags</strong></TableCell>
-                                <TableCell width={80} align="center"><strong>Activa</strong></TableCell>
-                                <TableCell width={90} align="right"></TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {itemsFiltrados.map(item => (
-                                <TableRow key={item.id} hover>
-                                    <TableCell>
-                                        <Typography variant="body2" fontWeight={600}>{item.titulo}</Typography>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                            sx={{
-                                                display: '-webkit-box',
-                                                WebkitLineClamp: 2,
-                                                WebkitBoxOrient: 'vertical',
-                                                overflow: 'hidden',
-                                                fontFamily: 'inherit',
-                                            }}
-                                        >
-                                            {item.contenido}
-                                        </Typography>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                            {(item.tags ?? []).map(tag => (
-                                                <Chip key={tag} label={tag} size="small" sx={{ height: 18, fontSize: 10 }} />
-                                            ))}
-                                        </Box>
-                                    </TableCell>
-                                    <TableCell align="center">
-                                        <Chip
-                                            label={item.activo ? 'Activa' : 'Inactiva'}
-                                            size="small"
-                                            color={item.activo ? 'success' : 'default'}
-                                            sx={{ height: 18, fontSize: 10 }}
-                                        />
-                                    </TableCell>
-                                    <TableCell align="right">
-                                        <Tooltip title="Editar">
-                                            <IconButton size="small" onClick={() => abrirEditar(item)}><EditIcon fontSize="small" /></IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Eliminar">
-                                            <IconButton size="small" color="error" onClick={() => setConfirmarEliminar(item)}><DeleteIcon fontSize="small" /></IconButton>
-                                        </Tooltip>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                    </Box>
-                )}
-            </Paper>
+            {errorCarga ? (
+                <BloqueEstado estado="error" mensaje={errorCarga} onReintentar={cargar} />
+            ) : (
+                <SectionCard noPadding>
+                    <DataTableResponsive
+                        ariaLabel="Respuestas rápidas"
+                        columns={columnas}
+                        rows={visibles}
+                        loading={cargando}
+                        acciones={(i) => (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                                <Button size="small" variant="outlined" startIcon={<Pencil size={16} strokeWidth={1.75} aria-hidden />} onClick={() => abrir(i)} sx={{ minHeight: { xs: 44, md: 32 } }}>
+                                    Editar
+                                </Button>
+                                <MenuMas etiqueta={`Más acciones de ${i.titulo}`} items={[{ label: 'Eliminar', icono: Trash2, onClick: () => setAEliminar(i), peligro: true }]} />
+                            </Box>
+                        )}
+                        empty={
+                            <EmptyState
+                                compact
+                                icon={MessageSquareText}
+                                title={busqueda || filtroTag ? 'No hay respuestas con ese filtro' : 'Todavía no hay respuestas rápidas'}
+                                description={busqueda || filtroTag ? 'Probá con otra búsqueda o sacá el filtro.' : 'Creá la primera para contestar más rápido en Conversaciones.'}
+                                action={busqueda || filtroTag ? undefined : { label: 'Nueva respuesta', onClick: () => abrir(null) }}
+                            />
+                        }
+                    />
+                </SectionCard>
+            )}
 
-            {/* Dialog crear/editar */}
-            <Dialog open={dialog} onClose={cerrarDialog} maxWidth="md" fullWidth fullScreen={isSmall}>
-                <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    {editando ? 'Editar plantilla' : 'Nueva plantilla'}
-                    <IconButton size="small" onClick={cerrarDialog}><CloseIcon /></IconButton>
-                </DialogTitle>
-                <DialogContent dividers>
-                    <Stack spacing={2.5}>
-                        <TextField
-                            label="Título"
-                            fullWidth
-                            size="small"
-                            value={form.titulo}
-                            onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
-                            placeholder="Ej: Medios de pago, Horarios de atención..."
-                            helperText="Nombre que verá el agente al buscar en el inbox"
-                        />
+            <ResponsiveDialog
+                open={abierto}
+                onClose={cerrar}
+                maxWidth="md"
+                sucio={sucio && !guardando}
+                title={editando ? 'Editar respuesta rápida' : 'Nueva respuesta rápida'}
+                actions={
+                    <>
+                        <Button onClick={cerrar} disabled={guardando}>Cancelar</Button>
+                        <Button
+                            variant="contained"
+                            onClick={guardar}
+                            disabled={!form.titulo.trim() || !form.contenido.trim() || guardando}
+                            startIcon={guardando ? <CircularProgress size={16} color="inherit" /> : undefined}
+                        >
+                            {editando ? 'Guardar cambios' : 'Crear respuesta'}
+                        </Button>
+                    </>
+                }
+            >
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                    {errorDialogo && <Alert severity="error">{errorDialogo}</Alert>}
 
-                        {/* Tags */}
-                        <Box>
-                            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                                Tags / Categorías
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
-                                {form.tags.map(tag => (
-                                    <Chip
-                                        key={tag}
-                                        label={tag}
-                                        size="small"
-                                        onDelete={() => quitarTag(tag)}
-                                    />
+                    <TextField
+                        label="Título"
+                        fullWidth
+                        value={form.titulo}
+                        onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
+                        placeholder="Ej: Medios de pago, Horarios de atención"
+                        helperText="El nombre con el que el asesor la busca en Conversaciones."
+                    />
+
+                    <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.75 }}>Tags</Typography>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                            <Autocomplete
+                                freeSolo
+                                fullWidth
+                                options={todosLosTags.filter((t) => !form.tags.includes(t))}
+                                inputValue={tagTexto}
+                                onInputChange={(_, v, motivo) => {
+                                    if (motivo === 'input' && v.includes(',')) {
+                                        agregarTags(v);
+                                        return;
+                                    }
+                                    setTagTexto(v);
+                                }}
+                                onChange={(_, v) => {
+                                    if (typeof v === 'string' && v.trim()) agregarTags(v);
+                                }}
+                                value={null}
+                                blurOnSelect
+                                clearOnBlur={false}
+                                renderInput={(p) => <TextField {...p} placeholder="Escribí un tag o elegí uno que ya existe" helperText="Sirven para filtrar la lista." />}
+                            />
+                            <Button variant="outlined" onClick={() => agregarTags(tagTexto)} disabled={!tagTexto.trim()} sx={{ minHeight: 44, flex: 'none' }}>
+                                Agregar
+                            </Button>
+                        </Box>
+                        {form.tags.length > 0 && (
+                            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1 }}>
+                                {form.tags.map((t) => (
+                                    <Chip key={t} label={t} onDelete={() => setForm((f) => ({ ...f, tags: f.tags.filter((x) => x !== t) }))} sx={{ fontSize: 13, height: { xs: 32, md: 26 } }} />
                                 ))}
                             </Box>
-                            <TextField
-                                size="small"
-                                placeholder="Escribí un tag y presioná Enter (ej: peugeot, pagos...)"
-                                value={tagInput}
-                                onChange={e => setTagInput(e.target.value)}
-                                onKeyDown={agregarTag}
-                                fullWidth
-                            />
+                        )}
+                    </Box>
+
+                    <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.75 }}>Contenido</Typography>
+                        <Box sx={{ display: 'flex', gap: 0.5, mb: 1 }}>
+                            {FORMATOS.map(({ id, Icono, etiqueta, envolver }) => (
+                                <Tooltip key={id} title={etiqueta}>
+                                    <IconButton aria-label={etiqueta} onClick={() => aplicarFormato(envolver)} sx={{ width: 44, height: 44, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+                                        <Icono size={18} strokeWidth={1.75} aria-hidden />
+                                    </IconButton>
+                                </Tooltip>
+                            ))}
                         </Box>
+                        <TextField
+                            inputRef={textareaRef}
+                            multiline
+                            minRows={5}
+                            maxRows={12}
+                            fullWidth
+                            value={form.contenido}
+                            onChange={(e) => setForm((f) => ({ ...f, contenido: e.target.value }))}
+                            placeholder={'Ej: Podés abonar tu cuota por estos medios:\n\n*Transferencia:* CBU 000000000000\n*App Mi Personal*'}
+                            inputProps={{ 'aria-label': 'Contenido de la respuesta' }}
+                        />
+                    </Box>
 
-                        {/* Editor con toolbar */}
-                        <Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                                <Typography variant="caption" color="text.secondary">Contenido</Typography>
-                                <ToggleButtonGroup
-                                    value={vistaEditor}
-                                    exclusive
-                                    onChange={(_, v) => v && setVistaEditor(v)}
-                                    size="small"
-                                >
-                                    <ToggleButton value="editar" sx={{ py: 0.25, px: 1, fontSize: 11 }}>
-                                        <EditNoteIcon sx={{ fontSize: 14, mr: 0.5 }} /> Editar
-                                    </ToggleButton>
-                                    <ToggleButton value="preview" sx={{ py: 0.25, px: 1, fontSize: 11 }}>
-                                        <VisibilityIcon sx={{ fontSize: 14, mr: 0.5 }} /> Preview
-                                    </ToggleButton>
-                                </ToggleButtonGroup>
-                            </Box>
-
-                            {vistaEditor === 'editar' ? (
-                                <>
-                                    {/* Toolbar de formato */}
-                                    <Paper variant="outlined" sx={{ p: 0.5, mb: 0.5, display: 'flex', gap: 0.5, borderBottom: 'none', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
-                                        <Tooltip title="Negrita — *texto*">
-                                            <IconButton size="small" onClick={() => insertarFormato('bold')}><FormatBoldIcon fontSize="small" /></IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Cursiva — _texto_">
-                                            <IconButton size="small" onClick={() => insertarFormato('italic')}><FormatItalicIcon fontSize="small" /></IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Tachado — ~texto~">
-                                            <IconButton size="small" onClick={() => insertarFormato('strike')}><StrikethroughSIcon fontSize="small" /></IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Monoespaciado — ```texto```">
-                                            <IconButton size="small" onClick={() => insertarFormato('mono')}><CodeIcon fontSize="small" /></IconButton>
-                                        </Tooltip>
-                                        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-                                        <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', fontSize: 10, display: { xs: 'none', sm: 'block' } }}>
-                                            *negrita* · _cursiva_ · ~tachado~ · ```mono```
-                                        </Typography>
-                                    </Paper>
-                                    <TextField
-                                        inputRef={textareaRef}
-                                        multiline
-                                        minRows={5}
-                                        maxRows={12}
-                                        fullWidth
-                                        value={form.contenido}
-                                        onChange={e => setForm(f => ({ ...f, contenido: e.target.value }))}
-                                        placeholder={'Ej: Podés abonar tu cuota por los siguientes medios:\n\n*Transferencia bancaria:* CBU 000000000000\n*App Mi Personal:* personal.com.ar/pagos\n*Personal Pay*'}
-                                        sx={{ '& .MuiOutlinedInput-root': { borderTopLeftRadius: 0, borderTopRightRadius: 0 } }}
-                                    />
-                                </>
+                    <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.75 }}>Así se ve en WhatsApp</Typography>
+                        <Box sx={{ bgcolor: 'action.hover', borderRadius: 2, p: 2, display: 'flex', flexDirection: 'column', minHeight: 80 }}>
+                            {form.contenido.trim() ? (
+                                <WaBurbuja direccion="saliente">{formatoWhatsApp(form.contenido)}</WaBurbuja>
                             ) : (
-                                /* Preview */
-                                <Paper
-                                    variant="outlined"
-                                    sx={{
-                                        p: 2,
-                                        minHeight: 120,
-                                        bgcolor: theme.palette.mode === 'dark' ? '#1a2e1a' : '#e7f3e7',
-                                        borderRadius: 2,
-                                    }}
-                                >
-                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                        Vista previa (estilo WhatsApp)
-                                    </Typography>
-                                    <Box
-                                        sx={{ fontSize: 14, lineHeight: 1.6, wordBreak: 'break-word' }}
-                                        dangerouslySetInnerHTML={{ __html: renderWaMarkdown(form.contenido) || '<span style="opacity:0.4">Sin contenido</span>' }}
-                                    />
-                                </Paper>
+                                <Typography variant="body2" color="text.secondary">Escribí el contenido para verlo acá.</Typography>
                             )}
                         </Box>
+                    </Box>
 
-                        <FormControlLabel
-                            control={<Switch checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} />}
-                            label="Plantilla activa (visible para agentes)"
-                        />
-                    </Stack>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={cerrarDialog}>Cancelar</Button>
-                    <Button
-                        variant="contained"
-                        onClick={guardar}
-                        disabled={!form.titulo.trim() || !form.contenido.trim() || guardando}
-                    >
-                        {guardando ? <CircularProgress size={20} /> : editando ? 'Guardar cambios' : 'Crear plantilla'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                    <FormControlLabel
+                        sx={{ minHeight: 44 }}
+                        control={<Switch checked={form.activo} onChange={(e) => setForm((f) => ({ ...f, activo: e.target.checked }))} />}
+                        label="Activa (la ven los asesores)"
+                    />
+                </Box>
+            </ResponsiveDialog>
 
-            {/* Confirmar eliminar */}
-            <Dialog open={!!confirmarEliminar} onClose={() => setConfirmarEliminar(null)} maxWidth="xs" fullWidth fullScreen={isSmall}>
-                <DialogTitle>Eliminar plantilla</DialogTitle>
-                <DialogContent>
-                    <Typography>¿Eliminás <strong>{confirmarEliminar?.titulo}</strong>? Esta acción no se puede deshacer.</Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setConfirmarEliminar(null)}>Cancelar</Button>
-                    <Button variant="contained" color="error" onClick={eliminar} disabled={eliminando}>
-                        {eliminando ? <CircularProgress size={20} /> : 'Eliminar'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            <Snackbar open={!!snack} autoHideDuration={3000} onClose={() => setSnack('')}>
-                <Alert severity="success" onClose={() => setSnack('')}>{snack}</Alert>
-            </Snackbar>
-        </Box>
+            <ConfirmDialog
+                open={!!aEliminar}
+                peligro
+                cargando={eliminando}
+                titulo="¿Eliminar la respuesta rápida?"
+                mensaje={<>Se va a eliminar <strong>{aEliminar?.titulo}</strong>. Los asesores dejan de verla en Conversaciones. No se puede deshacer.</>}
+                confirmarTexto="Eliminar"
+                onConfirmar={eliminar}
+                onCancelar={() => setAEliminar(null)}
+            />
+        </PageContainer>
     );
 }

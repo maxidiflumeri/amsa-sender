@@ -2,6 +2,35 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { BedrockService } from 'src/modules/ai/bedrock.service';
 
+/** El día (YYYY-MM-DD) de Argentina de una fecha. Argentina no tiene horario de verano: siempre UTC-3. */
+export function diaAR(fecha: Date): string {
+  return new Date(fecha.getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * Los cierres de conversaciones de un rango: la productividad sale de acá. Cada vez que alguien resuelve una
+ * conversación queda una fila en `WaApiCierreConversacion` con quién y cuándo, y esa fila no cambia después.
+ *
+ * Antes se contaban las conversaciones que HOY están asignadas al agente, con el último mensaje en el rango y que HOY
+ * están resueltas. Si el cliente volvía a escribir ("gracias"), la conversación se reabría y su último mensaje se corría:
+ * el cierre desaparecía del día en que se hizo; si se cerraba dos veces contaba una, y si se reasignaba pasaba a otro
+ * agente. Por eso el número daba la mitad que S1 y cambiaba según el día en que se sacaba el reporte.
+ * Se registran desde el 22/04/2026: un rango anterior no tiene cierres.
+ */
+export function resumirCierres(cierres: Array<{ usuarioId: number | null; conversacionId: number }>) {
+  const porUsuario = new Map<number, { cierres: number; conversaciones: Set<number> }>();
+  const conversaciones = new Set<number>();
+  for (const c of cierres) {
+    conversaciones.add(c.conversacionId);
+    if (c.usuarioId == null) continue;
+    const u = porUsuario.get(c.usuarioId) ?? { cierres: 0, conversaciones: new Set<number>() };
+    u.cierres++;
+    u.conversaciones.add(c.conversacionId);
+    porUsuario.set(c.usuarioId, u);
+  }
+  return { total: cierres.length, conversacionesDistintas: conversaciones.size, porUsuario };
+}
+
 @Injectable()
 export class WapiAnaliticaService {
   constructor(
@@ -315,9 +344,17 @@ export class WapiAnaliticaService {
   }
 
   async metricasAgentes(desde: Date, hasta: Date) {
-    // Obtener todos los usuarios con sus conversaciones en el rango
+    // Los cierres del período: de acá salen las "resueltas" (ver `resumirCierres`).
+    const cierres = await this.prisma.waApiCierreConversacion.findMany({
+      where: { creadoAt: { gte: desde, lte: hasta } },
+      select: { usuarioId: true, conversacionId: true, creadoAt: true },
+    });
+    const resumen = resumirCierres(cierres);
+
+    // Los agentes activos, y también los que ya no lo están pero cerraron conversaciones en el período: lo que
+    // cerró alguien que se fue sigue siendo de esa fecha.
     const usuarios = await this.prisma.usuario.findMany({
-      where: { activo: true },
+      where: { OR: [{ activo: true }, { id: { in: [...resumen.porUsuario.keys()] } }] },
       include: {
         conversaciones: {
           where: {
@@ -334,7 +371,8 @@ export class WapiAnaliticaService {
     });
 
     const totalConvs = todasConvs.length;
-    const resueltas = todasConvs.filter(c => c.estado === 'resuelta').length;
+    const resueltas = resumen.total;
+    const conversacionesCerradas = resumen.conversacionesDistintas;
 
     const tiemposPrimResp = todasConvs
       .filter(c => c.primeraRespuestaAt)
@@ -397,12 +435,16 @@ export class WapiAnaliticaService {
           .filter(c => c.resolvedAt)
           .map(c => new Date(c.resolvedAt!).getTime() - new Date(c.creadoAt).getTime());
 
+        const deCierres = resumen.porUsuario.get(u.id);
         return {
           id: u.id,
           nombre: u.nombre,
           email: u.email,
+          activo: u.activo,
           asignadas: convs.length,
-          resueltas: convs.filter(c => c.estado === 'resuelta').length,
+          // Cierres que hizo en el período: cada cierre cuenta, en la fecha en que se hizo.
+          resueltas: deCierres?.cierres ?? 0,
+          conversacionesCerradas: deCierres?.conversaciones.size ?? 0,
           activas: convs.filter(c => c.estado === 'asignada').length,
           avgPrimeraRespuestaMs: tPrimResp.length > 0
             ? Math.round(tPrimResp.reduce((a, b) => a + b, 0) / tPrimResp.length)
@@ -420,19 +462,20 @@ export class WapiAnaliticaService {
     const diasMs = Math.ceil((hasta.getTime() - desde.getTime()) / (24 * 60 * 60 * 1000));
     const evolucionMap: Record<string, { convs: number; resueltas: number }> = {};
 
+    // Los días son de Argentina: con `toISOString` (UTC), lo que pasaba después de las 21 caía en el día siguiente.
     for (let i = 0; i <= diasMs; i++) {
-      const d = new Date(desde);
-      d.setDate(d.getDate() + i);
-      const key = d.toISOString().slice(0, 10);
-      evolucionMap[key] = { convs: 0, resueltas: 0 };
+      const key = diaAR(new Date(desde.getTime() + i * 24 * 60 * 60 * 1000));
+      if (key <= diaAR(hasta)) evolucionMap[key] = { convs: 0, resueltas: 0 };
     }
 
     todasConvs.forEach(c => {
-      const key = new Date(c.ultimoMensajeAt!).toISOString().slice(0, 10);
-      if (evolucionMap[key]) {
-        evolucionMap[key].convs++;
-        if (c.estado === 'resuelta') evolucionMap[key].resueltas++;
-      }
+      const key = diaAR(new Date(c.ultimoMensajeAt!));
+      if (evolucionMap[key]) evolucionMap[key].convs++;
+    });
+    // Los cierres, en el día en que se hicieron.
+    cierres.forEach(c => {
+      const key = diaAR(new Date(c.creadoAt));
+      if (evolucionMap[key]) evolucionMap[key].resueltas++;
     });
 
     const evolucionDiaria = Object.entries(evolucionMap).map(([fecha, v]) => ({
@@ -443,7 +486,7 @@ export class WapiAnaliticaService {
 
     return {
       periodo: { desde, hasta },
-      global: { totalConvs, resueltas, avgPrimeraRespuestaMs, avgResolucionMs },
+      global: { totalConvs, resueltas, conversacionesCerradas, avgPrimeraRespuestaMs, avgResolucionMs },
       agentes: agentesData,
       evolucionDiaria,
     };
@@ -578,7 +621,13 @@ export class WapiAnaliticaService {
     const actividadPorDia = diasCount.map((count, dia) => ({ dia, count }));
 
     const asignadas = conversaciones.length;
-    const resueltas = conversaciones.filter(c => c.estado === 'resuelta').length;
+    // Los cierres que hizo en el período (ver `resumirCierres`), no las conversaciones que hoy están resueltas.
+    const cierresDelAgente = await this.prisma.waApiCierreConversacion.findMany({
+      where: { usuarioId: userId, creadoAt: { gte: desde, lte: hasta } },
+      select: { usuarioId: true, conversacionId: true },
+    });
+    const resueltas = cierresDelAgente.length;
+    const conversacionesCerradas = new Set(cierresDelAgente.map(c => c.conversacionId)).size;
     const activas = conversaciones.filter(c => c.estado === 'asignada').length;
 
     const tPrimResp = conversaciones
@@ -594,6 +643,7 @@ export class WapiAnaliticaService {
       metricas: {
         asignadas,
         resueltas,
+        conversacionesCerradas,
         activas,
         avgPrimeraRespuestaMs: tPrimResp.length > 0
           ? Math.round(tPrimResp.reduce((a, b) => a + b, 0) / tPrimResp.length)

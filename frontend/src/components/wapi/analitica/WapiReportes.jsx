@@ -1,220 +1,221 @@
-import { useState, useEffect } from 'react';
-import {
-    Box, Typography, Paper, Grid, Button, MenuItem,
-    CircularProgress, Alert, Card, CardContent,
-    Stack, Chip, TextField,
-} from '@mui/material';
-import DownloadIcon from '@mui/icons-material/Download';
+import { useCallback, useEffect, useState } from 'react';
+import { Autocomplete, Box, Button, ButtonBase, CircularProgress, Paper, TextField, Typography } from '@mui/material';
+import { Check, Download } from 'lucide-react';
 import api from '../../../api/axios';
+import { BloqueEstado, SectionCard, StatusChip } from '../../ui';
+import { mensajeDeError, useFeedback } from '../../../context/FeedbackContext';
+import { descargarBlob } from '../../../utils/descargar';
+import { aDiaLocal, diaLocalHaceDias } from '../../analitica/formato';
 
 const TIPOS_REPORTE = [
     {
         key: 'campania-csv',
-        label: 'Contactos de campaña (CSV)',
-        descripcion: 'Lista completa de contactos con estados, timestamps y flags de respuesta.',
+        label: 'Contactos de campaña',
+        descripcion: 'Lista completa de contactos con estados, horarios y si respondieron.',
         formato: 'CSV',
         necesitaCampania: true,
-        color: 'info',
+        tono: 'info',
     },
     {
         key: 'campania-excel',
-        label: 'Reporte completo de campaña (Excel)',
-        descripcion: 'Libro Excel con 3 hojas: Resumen KPIs, Contactos y Errores.',
+        label: 'Reporte completo de campaña',
+        descripcion: 'Libro Excel con 3 hojas: resumen de indicadores, contactos y errores.',
         formato: 'Excel',
         necesitaCampania: true,
-        color: 'success',
+        tono: 'ok',
     },
     {
         key: 'bajas-csv',
-        label: 'Lista de bajas (CSV)',
-        descripcion: 'Todos los números que se dieron de baja con campaña, template y fecha.',
+        label: 'Lista de bajas',
+        descripcion: 'Todos los números que se dieron de baja, con campaña, plantilla y fecha.',
         formato: 'CSV',
         necesitaCampania: false,
-        color: 'warning',
+        tono: 'aviso',
     },
     {
         key: 'agentes-excel',
-        label: 'Performance de agentes (Excel)',
-        descripcion: 'KPIs de todos los asesores para el período seleccionado.',
+        label: 'Rendimiento de agentes',
+        descripcion: 'Indicadores de todos los asesores para el período elegido.',
         formato: 'Excel',
         necesitaCampania: false,
         tieneRango: true,
-        color: 'primary',
+        tono: 'acento',
     },
 ];
 
 export default function WapiReportes() {
+    const feedback = useFeedback();
     const [campanias, setCampanias] = useState([]);
-    const [campaniaId, setCampaniaId] = useState('');
+    const [estadoLista, setEstadoLista] = useState('cargando');
+    const [campania, setCampania] = useState(null);
     const [tipoKey, setTipoKey] = useState('');
-    const [desde, setDesde] = useState(() => {
-        const d = new Date();
-        d.setDate(d.getDate() - 30);
-        return d.toISOString().slice(0, 10);
-    });
-    const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10));
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    const [desde, setDesde] = useState(() => diaLocalHaceDias(30));
+    const [hasta, setHasta] = useState(() => aDiaLocal());
+    const [generando, setGenerando] = useState(false);
 
-    useEffect(() => {
-        api.get('/wapi/campanias').then(r => setCampanias(r.data || [])).catch(() => {});
+    const cargarCampanias = useCallback(() => {
+        setEstadoLista('cargando');
+        api.get('/wapi/campanias')
+            .then((r) => {
+                setCampanias(r.data || []);
+                setEstadoLista('ok');
+            })
+            .catch(() => setEstadoLista('error'));
     }, []);
 
-    const tipoSeleccionado = TIPOS_REPORTE.find(t => t.key === tipoKey);
+    useEffect(() => {
+        cargarCampanias();
+    }, [cargarCampanias]);
+
+    const tipo = TIPOS_REPORTE.find((t) => t.key === tipoKey);
+    const rangoInvalido = !!tipo?.tieneRango && (!desde || !hasta || desde > hasta);
+    const faltaCampania = !!tipo?.necesitaCampania && !campania;
+    const puedeDescargar = !!tipo && !faltaCampania && !rangoInvalido && !generando;
 
     const descargar = async () => {
-        if (!tipoKey) { setError('Seleccioná un tipo de reporte'); return; }
-        if (tipoSeleccionado?.necesitaCampania && !campaniaId) { setError('Seleccioná una campaña'); return; }
-
-        setLoading(true);
-        setError('');
-        setSuccess('');
-
+        if (!puedeDescargar) return;
+        setGenerando(true);
         try {
             let url = '';
-            let filename = '';
-
+            let nombre = '';
             if (tipoKey === 'campania-csv') {
-                url = `/wapi/reportes/campania/${campaniaId}/csv`;
-                filename = `campania-${campaniaId}.csv`;
+                url = `/wapi/reportes/campania/${campania.id}/csv`;
+                nombre = `campania-${campania.id}.csv`;
             } else if (tipoKey === 'campania-excel') {
-                url = `/wapi/reportes/campania/${campaniaId}/excel`;
-                filename = `campania-${campaniaId}.xlsx`;
+                url = `/wapi/reportes/campania/${campania.id}/excel`;
+                nombre = `campania-${campania.id}.xlsx`;
             } else if (tipoKey === 'bajas-csv') {
                 url = '/wapi/reportes/bajas/csv';
-                filename = 'bajas.csv';
-            } else if (tipoKey === 'agentes-excel') {
-                url = `/wapi/reportes/agentes/excel?desde=${desde}&hasta=${hasta}`;
-                filename = `agentes-${desde}_${hasta}.xlsx`;
+                nombre = 'bajas.csv';
+            } else {
+                // El backend hace `new Date(...)` con lo que llega: sin zona, en prod (UTC) el rango se corría 3 horas.
+                // Con el offset de Argentina explícito, desde y hasta son los días completos que ve la persona.
+                const params = new URLSearchParams({ desde: `${desde}T00:00:00.000-03:00`, hasta: `${hasta}T23:59:59.999-03:00` });
+                url = `/wapi/reportes/agentes/excel?${params}`;
+                nombre = `agentes-${desde}_${hasta}.xlsx`;
             }
-
             const res = await api.get(url, { responseType: 'blob' });
-            const href = URL.createObjectURL(new Blob([res.data]));
-            const a = document.createElement('a');
-            a.href = href;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(href);
-            setSuccess(`Reporte "${tipoSeleccionado?.label}" generado y descargado.`);
-        } catch (e) {
-            setError('Error al generar el reporte. Intentá de nuevo.');
+            descargarBlob(new Blob([res.data]), nombre);
+            feedback.exito(`Se descargó "${tipo.label}".`);
+        } catch (err) {
+            feedback.error(mensajeDeError(err, 'No se pudo generar el reporte. Probá de nuevo.'), {
+                accion: { etiqueta: 'Reintentar', onClick: descargar },
+            });
         } finally {
-            setLoading(false);
+            setGenerando(false);
         }
     };
 
     return (
-        <Box>
-            <Typography variant="h6" mb={3}>Generador de Reportes</Typography>
-
-            {/* Cards de tipos de reporte */}
-            <Grid container spacing={2} mb={4}>
-                {TIPOS_REPORTE.map(t => (
-                    <Grid item xs={12} sm={6} md={3} key={t.key}>
-                        <Card
-                            variant="outlined"
-                            sx={{
-                                height: '100%',
-                                cursor: 'pointer',
-                                border: tipoKey === t.key ? '2px solid' : '1px solid',
-                                borderColor: tipoKey === t.key ? `${t.color}.main` : 'divider',
-                                transition: 'all 0.15s',
-                                '&:hover': { boxShadow: 2 },
-                            }}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box
+                role="radiogroup"
+                aria-label="Tipo de reporte"
+                sx={{
+                    display: 'grid',
+                    gap: 1.5,
+                    gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' },
+                }}
+            >
+                {TIPOS_REPORTE.map((t) => {
+                    const elegido = tipoKey === t.key;
+                    return (
+                        <ButtonBase
+                            key={t.key}
+                            role="radio"
+                            aria-checked={elegido}
                             onClick={() => setTipoKey(t.key)}
+                            sx={{ display: 'block', textAlign: 'left', borderRadius: '14px', minWidth: 0 }}
                         >
-                            <CardContent sx={{ pb: 1 }}>
-                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={1}>
-                                    <Typography variant="subtitle2" fontWeight="bold">{t.label}</Typography>
-                                    <Chip label={t.formato} color={t.color} size="small" />
-                                </Stack>
+                            <Paper
+                                variant="outlined"
+                                sx={{
+                                    p: 2,
+                                    height: '100%',
+                                    borderRadius: '14px',
+                                    borderColor: elegido ? 'primary.main' : 'divider',
+                                    boxShadow: (th) => (elegido ? `inset 0 0 0 1px ${th.palette.primary.main}` : 'none'),
+                                    bgcolor: elegido ? 'action.selected' : 'background.paper',
+                                }}
+                            >
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 0.75 }}>
+                                    <Typography sx={{ fontSize: 15, fontWeight: 650 }}>{t.label}</Typography>
+                                    {elegido ? <Check size={18} strokeWidth={2} aria-hidden /> : <StatusChip label={t.formato} tono={t.tono} />}
+                                </Box>
                                 <Typography variant="body2" color="text.secondary">{t.descripcion}</Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                ))}
-            </Grid>
+                            </Paper>
+                        </ButtonBase>
+                    );
+                })}
+            </Box>
 
-            {/* Formulario de generación */}
-            <Paper variant="outlined" sx={{ p: 3 }}>
-                <Typography variant="subtitle2" fontWeight="bold" mb={2}>Configurar y descargar</Typography>
-
-                <Grid container spacing={2} alignItems="center">
-                    <Grid item xs={12} sm={6} md={4}>
-                        <TextField
-                            select
-                            fullWidth
-                            label="Tipo de reporte"
-                            value={tipoKey}
-                            onChange={e => setTipoKey(e.target.value)}
-                        >
-                            <MenuItem value=""><em>Seleccionar...</em></MenuItem>
-                            {TIPOS_REPORTE.map(t => (
-                                <MenuItem key={t.key} value={t.key}>{t.label}</MenuItem>
-                            ))}
-                        </TextField>
-                    </Grid>
-
-                    <Grid item xs={12} sm={6} md={4}>
-                        <TextField
-                            select
-                            fullWidth
-                            label="Campaña"
-                            value={tipoSeleccionado?.necesitaCampania ? campaniaId : ''}
-                            onChange={e => setCampaniaId(e.target.value)}
-                            disabled={!tipoSeleccionado?.necesitaCampania}
-                        >
-                            <MenuItem value=""><em>Seleccionar...</em></MenuItem>
-                            {campanias.map(c => (
-                                <MenuItem key={c.id} value={c.id}>{c.nombre}</MenuItem>
-                            ))}
-                        </TextField>
-                    </Grid>
-
-                    {tipoSeleccionado?.tieneRango && (
-                        <>
-                            <Grid item xs={6} sm={3} md={2}>
+            <SectionCard title="Configurar y descargar" subtitle={tipo ? tipo.label : 'Elegí un tipo de reporte arriba.'}>
+                {estadoLista === 'error' && tipo?.necesitaCampania ? (
+                    <BloqueEstado estado="error" mensaje="No se pudieron cargar las campañas." onReintentar={cargarCampanias} />
+                ) : (
+                    <Box
+                        sx={{
+                            display: 'grid',
+                            gap: 2,
+                            gridTemplateColumns: { xs: '1fr', md: tipo?.tieneRango ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)' },
+                            maxWidth: 640,
+                        }}
+                    >
+                        {tipo?.necesitaCampania && (
+                            <Autocomplete
+                                sx={{ gridColumn: '1 / -1' }}
+                                options={campanias}
+                                loading={estadoLista === 'cargando'}
+                                loadingText="Cargando campañas…"
+                                noOptionsText="No hay campañas con ese nombre"
+                                getOptionLabel={(c) => c.nombre ?? ''}
+                                isOptionEqualToValue={(a, b) => a.id === b.id}
+                                value={campania}
+                                onChange={(_, v) => setCampania(v)}
+                                renderInput={(params) => <TextField {...params} label="Campaña" placeholder="Escribí para buscar" />}
+                            />
+                        )}
+                        {tipo?.tieneRango && (
+                            <>
                                 <TextField
-                                    fullWidth
                                     type="date"
                                     label="Desde"
                                     value={desde}
-                                    onChange={e => setDesde(e.target.value)}
-                                    InputLabelProps={{ shrink: true }}
+                                    onChange={(e) => setDesde(e.target.value)}
+                                    slotProps={{ inputLabel: { shrink: true } }}
+                                    error={!!desde && !!hasta && desde > hasta}
                                 />
-                            </Grid>
-                            <Grid item xs={6} sm={3} md={2}>
                                 <TextField
-                                    fullWidth
                                     type="date"
                                     label="Hasta"
                                     value={hasta}
-                                    onChange={e => setHasta(e.target.value)}
-                                    InputLabelProps={{ shrink: true }}
+                                    onChange={(e) => setHasta(e.target.value)}
+                                    slotProps={{ inputLabel: { shrink: true } }}
+                                    error={!!desde && !!hasta && desde > hasta}
+                                    helperText={desde > hasta ? 'Tiene que ser posterior a "Desde".' : 'Incluye el día entero.'}
                                 />
-                            </Grid>
-                        </>
-                    )}
-
-                    <Grid item xs={12} sm="auto">
-                        <Button
-                            variant="contained"
-                            size="large"
-                            fullWidth
-                            startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <DownloadIcon />}
-                            onClick={descargar}
-                            disabled={loading || !tipoKey}
-                            sx={{ whiteSpace: 'nowrap', width: { sm: 'auto' } }}
-                        >
-                            {loading ? 'Generando...' : 'Generar y descargar'}
-                        </Button>
-                    </Grid>
-                </Grid>
-
-                {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-                {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
-            </Paper>
+                            </>
+                        )}
+                        {!tipo && (
+                            <Typography variant="body2" color="text.secondary">
+                                Cuando elijas un tipo vas a ver acá lo que hay que completar.
+                            </Typography>
+                        )}
+                        <Box sx={{ gridColumn: '1 / -1' }}>
+                            <Button
+                                variant="contained"
+                                onClick={descargar}
+                                disabled={!puedeDescargar}
+                                aria-busy={generando}
+                                startIcon={generando ? <CircularProgress size={18} color="inherit" /> : <Download size={18} strokeWidth={1.75} aria-hidden />}
+                                sx={{ width: { xs: '100%', sm: 'auto' }, minHeight: { xs: 44, sm: 36 } }}
+                            >
+                                {generando ? 'Generando…' : 'Generar y descargar'}
+                            </Button>
+                        </Box>
+                    </Box>
+                )}
+            </SectionCard>
         </Box>
     );
 }

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verificar-ui": "node scripts/verificar-ui.mjs"
   },
   "dependencies": {
     "@date-io/date-fns": "^3.2.1",
@@ -15,6 +16,7 @@
     "@emoji-mart/react": "^1.1.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
+    "@fontsource/inter": "^5.2.8",
     "@mui/icons-material": "^7.1.0",
     "@mui/lab": "^7.0.0-beta.13",
     "@mui/material": "^7.1.0",
@@ -27,6 +29,7 @@
     "emoji-mart": "^5.6.0",
     "framer-motion": "^12.23.0",
     "handlebars": "^4.7.8",
+    "lucide-react": "1.52.0",
     "papaparse": "^5.5.3",
     "quill": "2.0.3",
     "react": "^19.1.0",
