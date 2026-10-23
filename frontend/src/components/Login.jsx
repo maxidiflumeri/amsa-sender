@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Box, CircularProgress, Container, Typography, useTheme } from '@mui/material';
 import { GoogleLogin } from '@react-oauth/google';
 import { Navigate } from 'react-router-dom';
@@ -33,20 +33,6 @@ const Login = () => {
     const oscuro = useTheme().palette.mode === 'dark';
     const [error, setError] = useState('');
     const [entrando, setEntrando] = useState(false);
-    const [ancho, setAncho] = useState(280);
-    const cajaRef = useRef(null);
-
-    // El botón de Google se dibuja con un ancho en píxeles (200 a 400): se mide la tarjeta para que ocupe todo.
-    useLayoutEffect(() => {
-        const el = cajaRef.current;
-        if (!el) return undefined;
-        const medir = () => setAncho(Math.max(200, Math.min(400, Math.floor(el.getBoundingClientRect().width))));
-        medir();
-        const ro = new ResizeObserver(medir);
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, []);
-
     useEffect(() => {
         document.title = 'Ingresar — AMSA Sender';
     }, []);
@@ -113,7 +99,9 @@ const Login = () => {
                             </Alert>
                         )}
 
-                        <Box ref={cajaRef} sx={{ width: '100%', minHeight: 44, display: 'flex', justifyContent: 'center' }}>
+                        {/* `colorScheme: 'light'`: la app marca la página como oscura y, con el iframe de Google en claro, el
+                            navegador le pinta un fondo blanco opaco alrededor del botón. Con el mismo esquema queda transparente. */}
+                        <Box sx={{ width: '100%', minHeight: 44, display: 'flex', justifyContent: 'center', colorScheme: 'light' }}>
                             {entrando ? (
                                 <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, color: 'text.secondary', minHeight: 44 }}>
                                     <CircularProgress size={20} />
@@ -125,10 +113,9 @@ const Login = () => {
                                     onError={() => setError('No se pudo conectar con Google. Revisá que no tengas bloqueadas las ventanas emergentes y probá de nuevo.')}
                                     theme={oscuro ? 'filled_black' : 'outline'}
                                     size="large"
-                                    shape="rectangular"
+                                    shape="pill"
                                     text="signin_with"
                                     locale="es"
-                                    width={ancho}
                                 />
                             )}
                         </Box>

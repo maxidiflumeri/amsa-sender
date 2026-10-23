@@ -251,6 +251,9 @@ function DialogoBuscador({ onCerrar }) {
                     mt: { xs: 'calc(12px + env(safe-area-inset-top))', sm: '12vh' },
                     mx: { xs: 1.5, sm: 4 },
                     width: { xs: 'calc(100% - 24px)', sm: 'calc(100% - 64px)' },
+                    // Desde `md`, el mismo ancho que el campo de la barra (centrado en la pantalla, como esta ventana):
+                    // los bordes de los dos coinciden.
+                    maxWidth: { md: 560 },
                     borderRadius: '16px',
                     overflow: 'hidden',
                 },
